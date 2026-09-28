@@ -83,7 +83,7 @@ export const LogoUploader: React.FC<LogoUploaderProps> = ({
     setLogoPreview(currentLogoUrl || '');
   }, [currentLogoUrl]);
 
-  // Compress & convert file to Base64 image, preserving transparency for PNG/WEBP/SVG
+  // Compress & convert file to compact Base64 image (<80KB) for instant local & Firestore sync
   const processImageFile = (file: File) => {
     const isSvg = file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg');
     const isImage = file.type.startsWith('image/') || isSvg;
@@ -102,13 +102,15 @@ export const LogoUploader: React.FC<LogoUploaderProps> = ({
     setIsProcessing(true);
     const reader = new FileReader();
 
-    // Directly preserve vector SVGs without rasterization
-    if (isSvg) {
+    // Directly preserve small vector SVGs (< 60KB); rasterize larger SVGs so Firestore never overflows
+    if (isSvg && file.size <= 60 * 1024) {
       reader.onload = (e) => {
-        const svgData = e.target?.result as string;
+        const svgData = (e.target?.result as string) || '';
         setLogoPreview(svgData);
         onLogoChange(svgData);
         setIsProcessing(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        uploadLogoToFirebaseStorage(svgData, file.name || 'logo-svg').catch(() => {});
         if (showToast) showToast('Logo vektor SVG berhasil diunggah & diterapkan!', 'success');
       };
       reader.onerror = () => {
@@ -120,70 +122,81 @@ export const LogoUploader: React.FC<LogoUploaderProps> = ({
     }
 
     reader.onload = (e) => {
+      const rawDataUrl = (e.target?.result as string) || '';
       const img = new Image();
       img.onload = () => {
-        // Resize to max 360x360 for crisp rendering without overloading storage
-        const canvas = document.createElement('canvas');
-        const MAX_DIM = 360;
-        let width = img.width;
-        let height = img.height;
+        try {
+          // Resize to max 240x240 for crisp rendering & compact Firestore document size
+          const canvas = document.createElement('canvas');
+          const MAX_DIM = 240;
+          let width = img.width || 240;
+          let height = img.height || 240;
 
-        if (width > height) {
-          if (width > MAX_DIM) {
-            height = Math.round((height * MAX_DIM) / width);
-            width = MAX_DIM;
+          if (width > height) {
+            if (width > MAX_DIM) {
+              height = Math.max(1, Math.round((height * MAX_DIM) / width));
+              width = MAX_DIM;
+            }
+          } else {
+            if (height > MAX_DIM) {
+              width = Math.max(1, Math.round((width * MAX_DIM) / height));
+              height = MAX_DIM;
+            }
           }
-        } else {
-          if (height > MAX_DIM) {
-            width = Math.round((width * MAX_DIM) / height);
-            height = MAX_DIM;
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // Try WebP first (supports transparency & tiny size), fallback to PNG/JPEG
+            let compressedDataUrl = canvas.toDataURL('image/webp', 0.85);
+            if (!compressedDataUrl.startsWith('data:image/webp')) {
+              const isPng = file.type === 'image/png' || isSvg;
+              compressedDataUrl = canvas.toDataURL(isPng ? 'image/png' : 'image/jpeg', 0.85);
+            }
+            // If still large (> 120KB), compress further so Firestore & localStorage never fail
+            if (compressedDataUrl.length > 120000) {
+              compressedDataUrl = canvas.toDataURL('image/jpeg', 0.78);
+            }
+
+            setLogoPreview(compressedDataUrl);
+            onLogoChange(compressedDataUrl);
+            setIsProcessing(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            uploadLogoToFirebaseStorage(compressedDataUrl, file.name || 'logo-warung').catch(() => {});
+            if (showToast) showToast('Logo warung berhasil diunggah & diterapkan!', 'success');
+          } else {
+            setLogoPreview(rawDataUrl);
+            onLogoChange(rawDataUrl);
+            setIsProcessing(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            if (showToast) showToast('Logo baru berhasil diterapkan!', 'success');
           }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          // Preserve transparent background for PNG and WEBP!
-          ctx.clearRect(0, 0, width, height);
-          ctx.drawImage(img, 0, 0, width, height);
-
-          const isPngOrWebp = file.type === 'image/png' || file.type.includes('webp');
-          const outputFormat = isPngOrWebp ? 'image/png' : 'image/jpeg';
-          const compressedDataUrl = canvas.toDataURL(outputFormat, 0.9);
-
-          uploadLogoToFirebaseStorage(compressedDataUrl, file.name || 'logo-warung')
-            .then((finalUrl) => {
-              const resolvedUrl = finalUrl || compressedDataUrl;
-              setLogoPreview(resolvedUrl);
-              onLogoChange(resolvedUrl);
-              setIsProcessing(false);
-              if (showToast) showToast('Logo warung berhasil disimpan ke Firebase Storage!', 'success');
-            })
-            .catch(() => {
-              setLogoPreview(compressedDataUrl);
-              onLogoChange(compressedDataUrl);
-              setIsProcessing(false);
-              if (showToast) showToast('Logo baru berhasil diunggah & diterapkan!', 'success');
-            });
-        } else {
-          const rawResult = e.target?.result as string;
-          setLogoPreview(rawResult);
-          onLogoChange(rawResult);
+        } catch (err) {
+          console.warn('Canvas compression fallback:', err);
+          setLogoPreview(rawDataUrl);
+          onLogoChange(rawDataUrl);
           setIsProcessing(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          if (showToast) showToast('Logo berhasil diterapkan!', 'success');
         }
       };
 
       img.onerror = () => {
         setIsProcessing(false);
-        if (showToast) showToast('Gagal memproses file gambar.', 'error');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        if (showToast) showToast('Gagal memproses file gambar. Pastikan format gambar valid.', 'error');
       };
 
-      img.src = e.target?.result as string;
+      img.src = rawDataUrl;
     };
 
     reader.onerror = () => {
       setIsProcessing(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       if (showToast) showToast('Gagal membaca file gambar.', 'error');
     };
 

@@ -614,9 +614,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
 
           <LogoUploader
-            currentLogoUrl={formData.logoUrl || ''}
+            currentLogoUrl={formData.logoUrl || '/icon.svg'}
             storeName={formData.storeName}
-            onLogoChange={(newUrl) => handleInputChange('logoUrl', newUrl)}
+            onLogoChange={(newUrl) => {
+              const resolvedLogo = newUrl && newUrl.trim() !== '' ? newUrl : '/icon.svg';
+              handleInputChange('logoUrl', resolvedLogo);
+              onSaveSettings({
+                ...formData,
+                logoUrl: resolvedLogo,
+              });
+            }}
             showToast={showToast}
           />
         </div>

@@ -138,36 +138,21 @@ export function subscribeToAuditLogs(
 }
 
 /**
- * Upload warung logo or product image to Firebase Storage
+ * Process warung logo or product image for cloud persistence in Firestore
  */
 export async function uploadLogoToFirebaseStorage(
   fileOrDataUrl: File | string,
   customName = 'logo-warung'
 ): Promise<string> {
   try {
-    await ensureFirebaseAuth();
-    const safeName = customName.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const path = `logos/${Date.now()}_${safeName}`;
-    const fileRef = storageRef(storage, path);
-
-    if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
-      await uploadString(fileRef, fileOrDataUrl, 'data_url');
-      const downloadUrl = await getDownloadURL(fileRef);
-      await logAuditActivity('UPLOAD_LOGO', 'Mengunggah logo warung ke Firebase Storage', 'Owner', 'SETTINGS');
-      return downloadUrl;
-    } else if (fileOrDataUrl instanceof File) {
-      await uploadBytes(fileRef, fileOrDataUrl);
-      const downloadUrl = await getDownloadURL(fileRef);
-      await logAuditActivity('UPLOAD_LOGO', `Mengunggah file logo ${fileOrDataUrl.name} ke Firebase Storage`, 'Owner', 'SETTINGS');
-      return downloadUrl;
-    }
-    return typeof fileOrDataUrl === 'string' ? fileOrDataUrl : '';
-  } catch (err) {
-    console.warn('Firebase Storage fallback to optimized URL:', err);
     if (typeof fileOrDataUrl === 'string') {
+      logAuditActivity('UPLOAD_LOGO', `Memperbarui logo warung (${customName})`, 'Owner', 'SETTINGS').catch(() => {});
       return fileOrDataUrl;
     }
-    throw new Error('Terjadi kesalahan saat mengunggah gambar. Silakan coba lagi.');
+    return '';
+  } catch (err) {
+    console.warn('Logo upload helper notice:', err);
+    return typeof fileOrDataUrl === 'string' ? fileOrDataUrl : '';
   }
 }
 
@@ -1193,7 +1178,7 @@ export async function saveSettingsToFirebase(settings: StoreSettings): Promise<b
     await setDoc(docRef, payload, { merge: true });
     return true;
   } catch (err) {
-    console.error('Gagal menyimpan settings ke Firebase:', err);
+    console.warn('Gagal menyimpan settings ke Firebase:', err);
     return false;
   }
 }

@@ -25,25 +25,42 @@ export const LogoEditorModal: React.FC<LogoEditorModalProps> = ({
   onSaveSettings,
   showToast,
 }) => {
-  const [currentLogo, setCurrentLogo] = useState<string>(settings.logoUrl || '');
+  const [currentLogo, setCurrentLogo] = useState<string>(settings.logoUrl || '/icon.svg');
   const [storeName, setStoreName] = useState<string>(settings.storeName || 'Warung Bang Kobra');
   const [storeSlogan, setStoreSlogan] = useState<string>(settings.storeSlogan || settings.tagline || '');
+  const wasOpenRef = React.useRef<boolean>(false);
 
-  // Keep modal state fully synced with current settings whenever modal opens or settings update
+  // Initialize modal state ONLY when modal transitions from closed to open
+  // so background cloud sync updates do not overwrite the user's selected logo
   useEffect(() => {
-    if (isOpen) {
-      setCurrentLogo(settings.logoUrl || '');
+    if (isOpen && !wasOpenRef.current) {
+      setCurrentLogo(settings.logoUrl || '/icon.svg');
       setStoreName(settings.storeName || 'Warung Bang Kobra');
       setStoreSlogan(settings.storeSlogan || settings.tagline || '');
     }
+    wasOpenRef.current = isOpen;
   }, [isOpen, settings]);
 
   if (!isOpen) return null;
 
+  const handleLogoSelected = (newLogoUrl: string) => {
+    const resolvedLogo = newLogoUrl && newLogoUrl.trim() !== '' ? newLogoUrl : '/icon.svg';
+    setCurrentLogo(resolvedLogo);
+    // Immediately apply to settings so Header, Sidebar, and Cloud stay in sync right away
+    onSaveSettings({
+      ...settings,
+      logoUrl: resolvedLogo,
+      storeName: storeName.trim() || settings.storeName,
+      storeSlogan: storeSlogan.trim(),
+      tagline: storeSlogan.trim() || settings.tagline,
+    });
+  };
+
   const handleSave = () => {
+    const resolvedLogo = currentLogo && currentLogo.trim() !== '' ? currentLogo : '/icon.svg';
     const updated: StoreSettings = {
       ...settings,
-      logoUrl: currentLogo,
+      logoUrl: resolvedLogo,
       storeName: storeName.trim() || settings.storeName,
       storeSlogan: storeSlogan.trim(),
       tagline: storeSlogan.trim() || settings.tagline,
@@ -124,7 +141,7 @@ export const LogoEditorModal: React.FC<LogoEditorModalProps> = ({
           <LogoUploader
             currentLogoUrl={currentLogo}
             storeName={storeName}
-            onLogoChange={setCurrentLogo}
+            onLogoChange={handleLogoSelected}
             showToast={showToast}
           />
         </div>

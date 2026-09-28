@@ -543,7 +543,7 @@ export const Navigation: React.FC<NavigationProps> = ({
             )}
 
             {/* Quick Warung Logo Upload in Drawer */}
-            {onOpenLogoEditor && role === 'ADMIN' && (
+            {onOpenLogoEditor && (role === 'ADMIN' || effectiveRole === 'Owner' || effectiveRole === 'Admin') && (
               <div className="pt-2 border-t border-stone-800">
                 <button
                   type="button"
