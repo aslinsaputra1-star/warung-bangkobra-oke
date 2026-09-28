@@ -1,0 +1,256 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net - Default Deny Catch-All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Core Verification Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Bootstrap check for developer/owner runtime email
+    function isBootstrapOwner() {
+      return isSignedIn() && request.auth.token.email == 'rayyanarasid549@gmail.com';
+    }
+
+    function hasUserDoc() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function getUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function getUserRole() {
+      return hasUserDoc() ? getUserDoc().role : (isBootstrapOwner() ? 'Owner' : 'Customer');
+    }
+
+    // OWNER: Memiliki akses penuh
+    function isOwner() {
+      return isSignedIn() && (
+        isBootstrapOwner() ||
+        getUserRole() == 'Owner' ||
+        getUserRole() == 'owner'
+      );
+    }
+
+    // ADMIN: Memiliki akses operasional yang lebih luas
+    function isAdmin() {
+      return isOwner() || (
+        isSignedIn() && (
+          getUserRole() == 'Admin' ||
+          getUserRole() == 'admin' ||
+          getUserRole() == 'ADMIN'
+        )
+      );
+    }
+
+    // KASIR: Hanya dapat mengakses data sesuai role
+    function isKasir() {
+      return isAdmin() || (
+        isSignedIn() && (
+          getUserRole() == 'Kasir' ||
+          getUserRole() == 'kasir' ||
+          getUserRole() == 'KASIR'
+        )
+      );
+    }
+
+    // STAFF: Akses dapur dan operasional dasar
+    function isStaff() {
+      return isKasir() || (
+        isSignedIn() && (
+          getUserRole() == 'Staff' ||
+          getUserRole() == 'staff'
+        )
+      );
+    }
+
+    // DELIVERY: Petugas pengantaran Pesantren DQM
+    function isDelivery() {
+      return isStaff() || (
+        isSignedIn() && (
+          getUserRole() == 'Delivery' ||
+          getUserRole() == 'delivery' ||
+          getUserRole() == 'DELIVERY'
+        )
+      );
+    }
+
+    // --- Entity Validation Helpers ---
+
+    // USERS: Never store raw password or PIN in Firestore!
+    function isValidUser(data) {
+      return (
+        (!('nama' in data) || (data.nama is string && data.nama.size() <= 150)) &&
+        (!('password' in data)) &&
+        (!('pin' in data)) &&
+        (!('raw_password' in data))
+      );
+    }
+
+    function isValidProduct(data) {
+      return (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+        (!('nama' in data) || (data.nama is string && data.nama.size() <= 200)) &&
+        (!('harga_jual' in data) || (data.harga_jual is number && data.harga_jual >= 0)) &&
+        (!('stok' in data) || data.stok is number) &&
+        (!('password' in data));
+    }
+
+    function isValidCategory(data) {
+      return (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+        (!('nama' in data) || (data.nama is string && data.nama.size() <= 120)) &&
+        (!('password' in data));
+    }
+
+    function isValidOrder(data) {
+      return (!('id_transaksi' in data) || (data.id_transaksi is string && data.id_transaksi.size() <= 128)) &&
+        (!('nama_pelanggan' in data) || (data.nama_pelanggan is string && data.nama_pelanggan.size() <= 150)) &&
+        (!('total' in data) || (data.total is number && data.total >= 0)) &&
+        (!('password' in data));
+    }
+
+    function isValidExpense(data) {
+      return (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+        (!('jumlah' in data) || (data.jumlah is number && data.jumlah >= 0)) &&
+        (!('password' in data));
+    }
+
+    function isValidReport(data) {
+      return (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+        (!('password' in data));
+    }
+
+    // --- Collection Security Rules ---
+
+    // Ping / connection test
+    match /_connection_test/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // USERS COLLECTION
+    // Never store raw password or PIN in Firestore!
+    match /users/{userId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(userId) && isValidUser(incoming());
+      allow delete: if isValidId(userId);
+    }
+
+    // PRODUCTS CATALOG
+    match /products/{productId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(productId) && isValidProduct(incoming());
+      allow delete: if isValidId(productId);
+    }
+
+    // CATEGORIES
+    match /categories/{categoryId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(categoryId) && isValidCategory(incoming());
+      allow delete: if isValidId(categoryId);
+    }
+
+    // ORDERS & POS TRANSACTIONS
+    match /orders/{orderId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(orderId) && isValidOrder(incoming());
+      allow delete: if isValidId(orderId);
+    }
+
+    // EXPENSES COLLECTION
+    match /expenses/{expenseId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(expenseId) && isValidExpense(incoming());
+      allow delete: if isValidId(expenseId);
+    }
+
+    // REPORTS & DASHBOARD ANALYTICS
+    match /reports/{reportId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(reportId) && isValidReport(incoming());
+      allow delete: if isValidId(reportId);
+    }
+
+    // CUSTOMERS
+    match /customers/{customerId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(customerId);
+      allow delete: if isValidId(customerId);
+    }
+
+    // STOCK MUTATIONS & MOVEMENTS
+    match /stock_mutations/{mutationId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(mutationId);
+      allow delete: if isValidId(mutationId);
+    }
+
+    match /stock_movements/{movementId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(movementId);
+      allow delete: if isValidId(movementId);
+    }
+
+    // ORDER ITEMS & TRANSACTION ITEMS
+    match /order_items/{itemId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(itemId);
+      allow delete: if isValidId(itemId);
+    }
+
+    match /transactions/{txId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(txId);
+      allow delete: if isValidId(txId);
+    }
+
+    match /transaction_items/{itemId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(itemId);
+      allow delete: if isValidId(itemId);
+    }
+
+    // DELIVERIES & QUEUES
+    match /deliveries/{deliveryId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(deliveryId);
+      allow delete: if isValidId(deliveryId);
+    }
+
+    match /queues/{queueId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(queueId);
+      allow delete: if isValidId(queueId);
+    }
+
+    // AUDIT LOGS
+    match /audit_logs/{logId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(logId);
+      allow delete: if isValidId(logId);
+    }
+
+    // STORE SETTINGS
+    match /settings/{settingId} {
+      allow get, list: if true;
+      allow write: if isValidId(settingId);
+    }
+  }
+}

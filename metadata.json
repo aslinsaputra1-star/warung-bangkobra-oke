@@ -1,0 +1,8 @@
+{
+  "name": "Remix Warung Bang Kobra - POS \u0026 Order Management",
+  "description": "Aplikasi web Point of Sale (POS) dan manajemen pesanan modern untuk Warung Bang Kobra dengan fitur kasir cepat, pesanan WhatsApp, kontrol stok, laporan laba rugi, dan sinkronisasi Google Sheets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

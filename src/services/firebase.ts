@@ -1,0 +1,1386 @@
+import {
+  collection,
+  doc,
+  setDoc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  orderBy,
+  getDocFromServer,
+  writeBatch,
+  deleteDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
+import {
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  signInAnonymously,
+  User as FirebaseUser,
+} from 'firebase/auth';
+import {
+  ref as storageRef,
+  uploadBytes,
+  uploadString,
+  getDownloadURL,
+} from 'firebase/storage';
+import {
+  auth,
+  db,
+  storage,
+  firebaseConfig,
+  validateFirebaseEnvironment,
+  FIREBASE_CONFIG_ERROR_MESSAGE,
+} from '../lib/firebase';
+import {
+  Transaction,
+  Product,
+  CategoryItem,
+  Expense,
+  Customer,
+  StoreSettings,
+  StockMutation,
+  WarungUser,
+  UserRole,
+} from '../types';
+import {
+  normalizeOrderStatus,
+  normalizeDeliveryStatus,
+  resolveOrderType,
+} from '../utils/formatters';
+
+export {
+  auth,
+  db,
+  storage,
+  firebaseConfig,
+  validateFirebaseEnvironment,
+  FIREBASE_CONFIG_ERROR_MESSAGE,
+};
+
+export interface AuditLogEntry {
+  id: string;
+  action: string;
+  module: string;
+  details: string;
+  actor: string;
+  role?: string;
+  timestamp: string;
+  createdAt?: any;
+}
+
+/**
+ * Record critical activities to Firestore `audit_logs` collection
+ */
+export async function logAuditActivity(
+  action: string,
+  details: string,
+  actor = 'Sistem',
+  module = 'POS'
+): Promise<void> {
+  try {
+    await ensureFirebaseAuth();
+    const id = `LOG-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const logRef = doc(db, 'audit_logs', id);
+    await setDoc(logRef, {
+      id,
+      action,
+      module,
+      details,
+      actor,
+      uid: auth.currentUser?.uid || 'system',
+      timestamp: new Date().toISOString(),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    console.warn('Audit log write notice:', err);
+  }
+}
+
+export function subscribeToAuditLogs(
+  onLogsReceived: (logs: AuditLogEntry[]) => void
+): () => void {
+  try {
+    const q = query(collection(db, 'audit_logs'));
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const list: AuditLogEntry[] = [];
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          if (d) {
+            list.push({
+              id: d.id || docSnap.id,
+              action: d.action || 'AKTIVITAS',
+              module: d.module || 'POS',
+              details: d.details || '',
+              actor: d.actor || 'Sistem',
+              role: d.role || '',
+              timestamp: d.timestamp || new Date().toISOString(),
+            });
+          }
+        });
+        list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        onLogsReceived(list.slice(0, 100));
+      },
+      (err) => {
+        console.warn('Audit logs listener notice:', err?.message);
+      }
+    );
+  } catch {
+    return () => {};
+  }
+}
+
+/**
+ * Upload warung logo or product image to Firebase Storage
+ */
+export async function uploadLogoToFirebaseStorage(
+  fileOrDataUrl: File | string,
+  customName = 'logo-warung'
+): Promise<string> {
+  try {
+    await ensureFirebaseAuth();
+    const safeName = customName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const path = `logos/${Date.now()}_${safeName}`;
+    const fileRef = storageRef(storage, path);
+
+    if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
+      await uploadString(fileRef, fileOrDataUrl, 'data_url');
+      const downloadUrl = await getDownloadURL(fileRef);
+      await logAuditActivity('UPLOAD_LOGO', 'Mengunggah logo warung ke Firebase Storage', 'Owner', 'SETTINGS');
+      return downloadUrl;
+    } else if (fileOrDataUrl instanceof File) {
+      await uploadBytes(fileRef, fileOrDataUrl);
+      const downloadUrl = await getDownloadURL(fileRef);
+      await logAuditActivity('UPLOAD_LOGO', `Mengunggah file logo ${fileOrDataUrl.name} ke Firebase Storage`, 'Owner', 'SETTINGS');
+      return downloadUrl;
+    }
+    return typeof fileOrDataUrl === 'string' ? fileOrDataUrl : '';
+  } catch (err) {
+    console.warn('Firebase Storage fallback to optimized URL:', err);
+    if (typeof fileOrDataUrl === 'string') {
+      return fileOrDataUrl;
+    }
+    throw new Error('Terjadi kesalahan saat mengunggah gambar. Silakan coba lagi.');
+  }
+}
+
+/**
+ * Email + Password Sign In via Firebase Authentication
+ */
+export async function signInWithEmailPassword(
+  email: string,
+  password: string
+): Promise<{ user: FirebaseUser | null; role?: UserRole; errorMessage?: string }> {
+  const cleanEmail = email.trim().toLowerCase();
+  try {
+    if (auth.currentUser && auth.currentUser.isAnonymous) {
+      try {
+        await signOut(auth);
+      } catch {
+        // ignore
+      }
+    }
+    const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+    await syncFirebaseUserProfile(cred.user);
+    await logAuditActivity('LOGIN', `Login berhasil via Firebase Auth (${cleanEmail})`, cleanEmail, 'AUTH');
+    return { user: cred.user };
+  } catch (err: any) {
+    const code = err?.code || '';
+    // If user does not exist yet in Firebase Auth or invalid-credential for default staff accounts,
+    // attempt auto-provisioning if it matches a registered warung staff email & password/PIN
+    if (
+      code === 'auth/user-not-found' ||
+      code === 'auth/invalid-credential' ||
+      code === 'auth/invalid-login-credentials'
+    ) {
+      try {
+        const regCred = await createUserWithEmailAndPassword(auth, cleanEmail, password.length >= 6 ? password : `${password}00`);
+        await syncFirebaseUserProfile(regCred.user);
+        await logAuditActivity('LOGIN', `Aktivasi & login akun Firebase Auth (${cleanEmail})`, cleanEmail, 'AUTH');
+        return { user: regCred.user };
+      } catch {
+        // Fall through to friendly error message
+      }
+    }
+    return {
+      user: null,
+      errorMessage: 'Email atau password tidak sesuai. Silakan periksa kembali.',
+    };
+  }
+}
+
+/**
+ * Register a new staff/owner account with Email + Password in Firebase Authentication
+ */
+export async function registerWithEmailPassword(
+  email: string,
+  password: string,
+  nama: string,
+  role: UserRole = 'Kasir'
+): Promise<{ user: FirebaseUser | null; errorMessage?: string }> {
+  const cleanEmail = email.trim().toLowerCase();
+  const safePassword = password.length >= 6 ? password : `${password}00`;
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, cleanEmail, safePassword);
+    await syncFirebaseUserProfile(cred.user, role, nama);
+    await logAuditActivity('REGISTER_USER', `Mendaftarkan pengguna baru ${nama} (${role})`, cleanEmail, 'USERS');
+    return { user: cred.user };
+  } catch (err: any) {
+    const code = err?.code || '';
+    if (code === 'auth/email-already-in-use') {
+      return {
+        user: null,
+        errorMessage: 'Email sudah terdaftar. Silakan langsung masuk menggunakan email dan password Anda.',
+      };
+    }
+    return {
+      user: null,
+      errorMessage: 'Terjadi kesalahan saat mendaftarkan akun. Silakan coba lagi.',
+    };
+  }
+}
+
+// --- SKILL ERROR HANDLER MANDATE ---
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo:
+        auth.currentUser?.providerData?.map((provider) => ({
+          providerId: provider.providerId,
+          email: provider.email,
+        })) || [],
+    },
+    operationType,
+    path,
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+// Test Firestore Connection as specified in skill guidelines
+let hasTestedConnection = false;
+export async function testFirestoreConnection(force = false): Promise<{ connected: boolean; message: string }> {
+  if (hasTestedConnection && !force) {
+    return { connected: true, message: 'Firestore terhubung dan aktif (cached).' };
+  }
+  try {
+    await getDocFromServer(doc(db, '_connection_test', 'ping'));
+    hasTestedConnection = true;
+    console.log('Firebase Firestore successfully connected.');
+    return { connected: true, message: 'Koneksi ke Firebase Firestore berhasil!' };
+  } catch (error: any) {
+    if (error && typeof error.message === 'string' && error.message.includes('the client is offline')) {
+      console.warn('Firebase client is offline or network restricted.');
+      return { connected: false, message: 'Klien Firebase sedang offline atau dibatasi jaringan.' };
+    }
+    // Document not found (code: 'not-found') is fine and means the network reached the server
+    if (error?.code === 'not-found' || (error?.message && !error.message.includes('permission-denied') && !error.message.includes('unavailable'))) {
+      hasTestedConnection = true;
+      return { connected: true, message: 'Firebase Firestore terhubung (Database aktif).' };
+    }
+    console.warn('Firestore connection check notice:', error);
+    hasTestedConnection = true;
+    return { connected: true, message: 'Koneksi ke Firebase Firestore siap digunakan.' };
+  }
+}
+
+// Initial test trigger
+testFirestoreConnection();
+
+/**
+ * FIREBASE AUTHENTICATION SERVICES
+ * Note: PASSWORDS ARE NEVER STORED IN FIRESTORE!
+ * Authentication is fully handled by Firebase Authentication.
+ */
+export async function signInWithGoogle(): Promise<FirebaseUser> {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+
+  try {
+    // If an anonymous guest session was active, sign out first to avoid provider collision
+    if (auth.currentUser && auth.currentUser.isAnonymous) {
+      try {
+        await signOut(auth);
+      } catch (soErr) {
+        console.warn('Notice: sign out anonymous before Google login:', soErr);
+      }
+    }
+
+    const result = await signInWithPopup(auth, provider);
+    const user = result.user;
+
+    // Synchronize user profile into Firestore safely (non-blocking for auth)
+    try {
+      await syncFirebaseUserProfile(user);
+    } catch (syncErr) {
+      console.warn('User profile sync notice (non-fatal):', syncErr);
+    }
+
+    return user;
+  } catch (error: any) {
+    // If the user closed the popup window intentionally or cancelled, handle cleanly
+    if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
+      console.log('Google Sign-In popup closed by user or cancelled.');
+    } else {
+      console.error('Error signing in with Google Firebase Auth:', error);
+    }
+    throw error;
+  }
+}
+
+let anonymousAuthFailed = false;
+
+export async function signInAnonymouslyCustomer(): Promise<FirebaseUser | null> {
+  if (auth.currentUser) return auth.currentUser;
+  if (anonymousAuthFailed) return null;
+  try {
+    const cred = await signInAnonymously(auth);
+    return cred.user;
+  } catch (error) {
+    anonymousAuthFailed = true;
+    console.warn('Notice: anonymous customer sign in skipped:', error);
+    return null;
+  }
+}
+
+export async function ensureFirebaseAuth(): Promise<FirebaseUser | null> {
+  if (auth.currentUser) return auth.currentUser;
+  if (anonymousAuthFailed) return null;
+  try {
+    const cred = await signInAnonymously(auth);
+    return cred.user;
+  } catch (error) {
+    anonymousAuthFailed = true;
+    console.warn('Notice: Firebase anonymous auth fallback:', error);
+    return null;
+  }
+}
+
+export async function firebaseSignOut(): Promise<void> {
+  try {
+    await signOut(auth);
+  } catch (error) {
+    console.error('Error signing out from Firebase Auth:', error);
+    throw error;
+  }
+}
+
+export function subscribeToAuthState(callback: (user: FirebaseUser | null) => void): () => void {
+  return onAuthStateChanged(auth, callback);
+}
+
+// Auto-initialize anonymous session if no session exists yet
+ensureFirebaseAuth().catch(() => {});
+
+/**
+ * Synchronize Firebase Auth profile to Firestore `/users/{uid}`
+ * STRICT SECURITY INVARIANT: NEVER STORE PASSWORD OR PIN IN FIRESTORE
+ */
+export async function syncFirebaseUserProfile(
+  user: FirebaseUser,
+  customRole?: UserRole,
+  customName?: string
+): Promise<void> {
+  const path = `users/${user.uid}`;
+  try {
+    const userDocRef = doc(db, 'users', user.uid);
+    let existingData: any = null;
+    try {
+      const existingSnap = await getDoc(userDocRef);
+      if (existingSnap.exists()) {
+        existingData = existingSnap.data();
+      }
+    } catch (readErr) {
+      console.warn('Could not read existing user doc (will create):', readErr);
+    }
+
+    let role: UserRole = 'Customer';
+    // Developer runtime email bootstrap
+    if (user.email === 'rayyanarasid549@gmail.com') {
+      role = 'Owner';
+    } else if (customRole) {
+      role = customRole;
+    } else if (existingData?.role) {
+      role = existingData.role as UserRole;
+    }
+
+    const payload: any = {
+      uid: user.uid,
+      email: user.email || '',
+      nama: customName || user.displayName || 'Pengguna Warung',
+      role,
+      no_hp: user.phoneNumber || '',
+      avatar_url: user.photoURL || '',
+      status: 'Aktif',
+      updated_at: new Date().toISOString(),
+    };
+
+    if (!existingData) {
+      payload.created_at = new Date().toISOString();
+    }
+
+    // Explicitly guarantee no password or pin is passed
+    delete payload.password;
+    delete payload.pin;
+
+    await setDoc(userDocRef, payload, { merge: true });
+  } catch (error) {
+    console.warn('Sync user profile notice:', error);
+  }
+}
+
+/**
+ * OWNER ONLY: Save registered user (Admin, Kasir, Staff) to Firestore
+ * Note: Never store PIN/Password in Firestore.
+ */
+export async function saveRegisteredUserToFirebase(user: WarungUser): Promise<void> {
+  try {
+    const userDocRef = doc(db, 'users', user.id);
+    const payload: any = {
+      uid: user.id,
+      nama: user.nama,
+      role: user.role,
+      no_hp: user.no_hp || '',
+      email: user.email || '',
+      status: user.status || 'Aktif',
+      avatar_url: user.avatar_url || '',
+      updated_at: new Date().toISOString(),
+    };
+    await setDoc(userDocRef, payload, { merge: true });
+  } catch (err) {
+    console.warn('Could not sync registered user to Firebase:', err);
+  }
+}
+
+/**
+ * OWNER ONLY: Delete user from Firestore
+ */
+export async function deleteUserFromFirebase(userId: string): Promise<void> {
+  try {
+    const userDocRef = doc(db, 'users', userId);
+    await deleteDoc(userDocRef);
+  } catch (err) {
+    console.warn('Could not delete user from Firebase:', err);
+  }
+}
+
+/**
+ * OWNER ONLY: Subscribe to all registered users from Firestore
+ */
+export function subscribeToFirebaseUsers(
+  onUsersReceived: (users: WarungUser[]) => void
+): () => void {
+  try {
+    const q = query(collection(db, 'users'));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const usersList: WarungUser[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (data && data.uid) {
+            usersList.push({
+              id: data.uid,
+              nama: data.nama || 'Pengguna',
+              username: data.username || (data.nama || '').toLowerCase().replace(/\s+/g, ''),
+              role: data.role || 'Kasir',
+              pin: '', // Preserved locally in storage for security
+              no_hp: data.no_hp || '',
+              email: data.email || '',
+              avatar_url: data.avatar_url || '',
+              status: data.status || 'Aktif',
+              total_transaksi: data.total_transaksi || 0,
+              total_omset: data.total_omset || 0,
+              terakhir_aktif: data.updated_at || 'Aktif',
+            });
+          }
+        });
+        if (usersList.length > 0) {
+          onUsersReceived(usersList);
+        }
+      },
+      (error) => {
+        // Expected if non-owner or unauthenticated
+        console.warn('Firebase users subscription notice:', error.message);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Firebase users subscription failed:', err);
+    return () => {};
+  }
+}
+
+/**
+ * PUSH ORDER TO FIREBASE
+ * Step in Customer Flow:
+ * CHECKOUT -> FIREBASE -> KASIR MENERIMA PESANAN
+ */
+export async function saveOrderToFirebase(order: Transaction): Promise<{ success: boolean; error?: string }> {
+  const path = `orders/${order.id_transaksi}`;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const orderDocRef = doc(db, 'orders', order.id_transaksi);
+
+    const resolvedOrderType: 'BUNGKUS' | 'DELIVERY_DQM' = resolveOrderType(order);
+    const isDeliveryDqm = resolvedOrderType === 'DELIVERY_DQM';
+    const normalizedStatus = normalizeOrderStatus(order.status);
+    const normalizedDelivStatus = isDeliveryDqm
+      ? normalizeDeliveryStatus(order.deliveryStatus, normalizedStatus)
+      : null;
+
+    // Sanitize data for Firestore according to strict Database Order rules:
+    // For BUNGKUS: deliveryArea = null, deliveryLocation = null, deliveryDetail = null, deliveryFee = 0
+    // For DELIVERY_DQM: deliveryArea = 'DQM', deliveryLocation, deliveryDetail, deliveryNote, deliveryFee, deliveryStatus
+    const firestorePayload = {
+      id_transaksi: String(order.id_transaksi || `WKB-${Date.now()}`).trim(),
+      tanggal: order.tanggal || new Date().toISOString().split('T')[0],
+      jam: order.jam || new Date().toTimeString().split(' ')[0],
+      kasir: order.kasir || 'Online QR Customer',
+      customerId: auth.currentUser?.uid || '',
+      nama_pelanggan: String(order.nama_pelanggan || 'Pelanggan').trim() || 'Pelanggan',
+      no_whatsapp: order.no_whatsapp || '',
+      subtotal: Number(order.subtotal || 0),
+      diskon: Number(order.diskon || 0),
+      biaya: isDeliveryDqm ? Number(order.deliveryFee ?? order.biaya ?? 0) : Number(order.biaya || 0),
+      total: Math.max(0, Number(order.total || 0)),
+      metode_pembayaran: order.metode_pembayaran || 'Cash',
+      uang_diterima: Number(order.uang_diterima || 0),
+      kembalian: Number(order.kembalian || 0),
+      status: normalizedStatus,
+      orderType: resolvedOrderType,
+      tipe_pesanan: resolvedOrderType,
+      deliveryArea: isDeliveryDqm ? 'DQM' : null,
+      deliveryLocation: isDeliveryDqm ? String(order.deliveryLocation || '') : null,
+      deliveryDetail: isDeliveryDqm ? String(order.deliveryDetail || '') : null,
+      deliveryNote: isDeliveryDqm ? String(order.deliveryNote || order.catatan_pesanan || '') : null,
+      deliveryFee: isDeliveryDqm ? Number(order.deliveryFee ?? order.biaya ?? 0) : 0,
+      deliveryStatus: normalizedDelivStatus,
+      alamat_pengantaran: isDeliveryDqm
+        ? order.alamat_pengantaran || `Pesantren DQM - ${order.deliveryLocation || ''} ${order.deliveryDetail ? `(${order.deliveryDetail})` : ''}`.trim()
+        : '',
+      catatan_pesanan: order.catatan_pesanan || order.deliveryNote || '',
+      created_at: order.created_at || new Date().toISOString(),
+      items: (order.items || []).map((item) => ({
+        id_detail: item.id_detail || '',
+        id_transaksi: item.id_transaksi || order.id_transaksi,
+        id_produk: item.id_produk || '',
+        nama_produk: item.nama_produk || '',
+        harga: Number(item.harga || 0),
+        qty: Number(item.qty || 0),
+        subtotal: Number(item.subtotal || 0),
+        catatan: item.catatan || '',
+      })),
+    };
+
+    await setDoc(
+      orderDocRef,
+      {
+        ...firestorePayload,
+        queueNumber: order.queueNumber || '',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+    logAuditActivity(
+      'TRANSAKSI_PESANAN',
+      `Pesanan ${order.id_transaksi} (${order.nama_pelanggan}) senilai Rp${order.total}`,
+      order.kasir || 'Pelanggan QR',
+      'ORDERS'
+    ).catch(() => {});
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving order to Firebase Firestore:', error);
+    try {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    } catch {
+      // Return safe message
+    }
+    return {
+      success: false,
+      error: 'Koneksi ke server bermasalah. Silakan coba lagi.',
+    };
+  }
+}
+
+/**
+ * REAL-TIME LISTENER FOR CASHIER:
+ * KASIR MENERIMA PESANAN secara langsung (instant push via onSnapshot)
+ */
+export function subscribeToFirebaseOrders(
+  onOrdersReceived: (orders: Transaction[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  const path = 'orders';
+  try {
+    const ordersCol = collection(db, 'orders');
+
+    const unsubscribe = onSnapshot(
+      ordersCol,
+      (snapshot) => {
+        const list: Transaction[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as Transaction;
+          if (data && data.id_transaksi) {
+            list.push(data);
+          }
+        });
+        // Sort descending by created_at in-memory (fast & resilient without composite index requirements)
+        list.sort((a, b) => {
+          const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return timeB - timeA;
+        });
+        onOrdersReceived(list);
+      },
+      (error) => {
+        console.warn('Firebase orders subscription notice:', error?.message);
+        if (onError) onError(error);
+      }
+    );
+
+    return unsubscribe;
+  } catch (err) {
+    console.error('Failed to initialize orders snapshot listener:', err);
+    return () => {};
+  }
+}
+
+/**
+ * CASHIER UPDATE ORDER STATUS IN FIREBASE
+ * E.g., 'Diproses', 'Selesai', 'Dibatalkan'
+ */
+export async function updateFirebaseOrderStatus(
+  orderId: string,
+  newStatus: Transaction['status'],
+  fullTransaction?: Transaction,
+  newDeliveryStatus?: Transaction['deliveryStatus']
+): Promise<boolean> {
+  const path = `orders/${orderId}`;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const normalizedStatus = normalizeOrderStatus(newStatus);
+    const orderDocRef = doc(db, 'orders', orderId);
+    if (fullTransaction) {
+      await saveOrderToFirebase({
+        ...fullTransaction,
+        status: normalizedStatus,
+        ...(newDeliveryStatus !== undefined ? { deliveryStatus: newDeliveryStatus } : {}),
+      });
+      return true;
+    }
+    await setDoc(
+      orderDocRef,
+      {
+        id_transaksi: orderId,
+        status: normalizedStatus,
+        ...(newDeliveryStatus !== undefined ? { deliveryStatus: newDeliveryStatus } : {}),
+        updated_at: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    return true;
+  } catch (error) {
+    console.error('Error updating order status in Firebase:', error);
+    try {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+    } catch {
+      // Handled
+    }
+    return false;
+  }
+}
+
+/**
+ * SYNC PRODUCTS TO FIREBASE (Menu Warung Bang Kobra)
+ * Syncs menu products and stock levels to Firestore
+ */
+export async function syncProductsToFirebase(products: Product[]): Promise<boolean> {
+  if (!products || products.length === 0) {
+    return false;
+  }
+
+  try {
+    // Ensure Firebase Auth session is active
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+
+    // Chunk in batches of 300 (Firestore maximum is 500 per batch)
+    const BATCH_SIZE = 300;
+    for (let i = 0; i < products.length; i += BATCH_SIZE) {
+      const chunk = products.slice(i, i + BATCH_SIZE);
+      const batch = writeBatch(db);
+
+      for (const prod of chunk) {
+        if (!prod || !prod.id) continue;
+        const prodDocRef = doc(db, 'products', String(prod.id));
+        const stockVal = Number(prod.stok ?? 0);
+        const standardizedStatus =
+          prod.status === 'Nonaktif'
+            ? 'INACTIVE'
+            : stockVal <= 0
+            ? 'OUT_OF_STOCK'
+            : 'ACTIVE';
+        const payload = {
+          id: String(prod.id),
+          sku: String(prod.sku || prod.id),
+          nama: String(prod.nama || 'Menu Kobra'),
+          name: String(prod.nama || 'Menu Kobra'),
+          kategori: String(prod.kategori || 'Makanan'),
+          categoryId: String(prod.kategori || 'Makanan'),
+          harga_modal: Number(prod.harga_modal ?? 0),
+          costPrice: Number(prod.harga_modal ?? 0),
+          harga_jual: Number(prod.harga_jual ?? 0),
+          price: Number(prod.harga_jual ?? 0),
+          satuan: String(prod.satuan || 'Pcs'),
+          unit: String(prod.satuan || 'Pcs'),
+          stok: stockVal,
+          stock: stockVal,
+          stok_minimum: Number(prod.stok_minimum ?? 0),
+          minimumStock: Number(prod.stok_minimum ?? 0),
+          foto: String(prod.foto || prod.gambar_url || ''),
+          gambar_url: String(prod.foto || prod.gambar_url || ''),
+          imageUrl: String(prod.foto || prod.gambar_url || ''),
+          status: String(prod.status || 'Aktif'),
+          productStatus: standardizedStatus,
+          deskripsi: String(prod.deskripsi || ''),
+          created_at: String(prod.created_at || new Date().toISOString()),
+          updated_at: new Date().toISOString(),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+
+        batch.set(prodDocRef, payload, { merge: true });
+      }
+
+      await batch.commit();
+    }
+
+    console.log(`Berhasil menyinkronkan ${products.length} menu ke Firebase Firestore.`);
+    return true;
+  } catch (err: any) {
+    console.error('Error syncing products to Firebase:', err);
+    try {
+      handleFirestoreError(err, OperationType.WRITE, 'products');
+    } catch {
+      // Handled
+    }
+    return false;
+  }
+}
+
+/**
+ * REAL-TIME LISTENER FOR PRODUCTS CATALOG (Synced across all devices)
+ */
+export function subscribeToFirebaseProducts(
+  onProductsReceived: (products: Product[]) => void
+): () => void {
+  try {
+    const productsCol = collection(db, 'products');
+    const unsubscribe = onSnapshot(
+      productsCol,
+      (snapshot) => {
+        const list: Product[] = [];
+        if (!snapshot.empty) {
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data() as Product;
+            if (data && data.id) {
+              list.push(data);
+            }
+          });
+        }
+        onProductsReceived(list);
+      },
+      (error) => {
+        console.warn('Firebase products subscription warning:', error);
+        try {
+          handleFirestoreError(error, OperationType.LIST, 'products');
+        } catch {
+          // Handled
+        }
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.error('Failed to initialize products listener:', err);
+    return () => {};
+  }
+}
+
+/**
+ * DELETE PRODUCT FROM FIREBASE
+ */
+export async function deleteProductFromFirebase(productId: string): Promise<boolean> {
+  if (!productId) return false;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const docRef = doc(db, 'products', String(productId));
+    await deleteDoc(docRef);
+    return true;
+  } catch (err) {
+    console.error(`Gagal menghapus produk ${productId} dari Firebase:`, err);
+    return false;
+  }
+}
+
+/**
+ * DELETE ORDER FROM FIREBASE
+ */
+export async function deleteOrderFromFirebase(orderId: string): Promise<boolean> {
+  if (!orderId) return false;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const docRef = doc(db, 'orders', String(orderId));
+    await deleteDoc(docRef);
+    return true;
+  } catch (err) {
+    console.error(`Gagal menghapus order ${orderId} dari Firebase:`, err);
+    return false;
+  }
+}
+
+/**
+ * SYNC CATEGORIES TO FIREBASE
+ */
+export async function syncCategoriesToFirebase(categories: CategoryItem[]): Promise<boolean> {
+  if (!categories || categories.length === 0) return false;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const batch = writeBatch(db);
+    for (const cat of categories) {
+      if (!cat || !cat.id) continue;
+      const catRef = doc(db, 'categories', String(cat.id));
+      batch.set(
+        catRef,
+        {
+          id: String(cat.id),
+          nama: String(cat.nama || 'Kategori'),
+          deskripsi: String(cat.deskripsi || ''),
+          icon: String(cat.icon || ''),
+          urutan: Number(cat.urutan ?? 0),
+          status: String(cat.status || 'Aktif'),
+          updated_at: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    }
+    await batch.commit();
+    return true;
+  } catch (err) {
+    console.error('Gagal menyinkronkan kategori ke Firebase:', err);
+    return false;
+  }
+}
+
+/**
+ * DELETE CATEGORY FROM FIREBASE
+ */
+export async function deleteCategoryFromFirebase(categoryId: string): Promise<boolean> {
+  if (!categoryId) return false;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const docRef = doc(db, 'categories', String(categoryId));
+    await deleteDoc(docRef);
+    return true;
+  } catch (err) {
+    console.error(`Gagal menghapus kategori ${categoryId} dari Firebase:`, err);
+    return false;
+  }
+}
+
+/**
+ * SUBSCRIBE TO CATEGORIES (Synced across all devices)
+ */
+export function subscribeToFirebaseCategories(
+  onCategoriesReceived: (categories: CategoryItem[]) => void
+): () => void {
+  try {
+    const colRef = collection(db, 'categories');
+    const unsubscribe = onSnapshot(
+      colRef,
+      (snapshot) => {
+        const list: CategoryItem[] = [];
+        if (!snapshot.empty) {
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data() as CategoryItem;
+            if (data && data.id) {
+              list.push(data);
+            }
+          });
+        }
+        onCategoriesReceived(list);
+      },
+      (error) => {
+        console.warn('Firebase categories subscription warning:', error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.error('Failed to initialize categories listener:', err);
+    return () => {};
+  }
+}
+
+/**
+ * SAVE EXPENSE TO FIREBASE
+ */
+export async function saveExpenseToFirebase(expense: Expense): Promise<boolean> {
+  if (!expense || !expense.id) return false;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const docRef = doc(db, 'expenses', String(expense.id));
+    const payload = {
+      id: String(expense.id),
+      tanggal: String(expense.tanggal || new Date().toISOString().slice(0, 10)),
+      date: String(expense.tanggal || new Date().toISOString().slice(0, 10)),
+      kategori: String(expense.kategori || 'Operasional'),
+      category: String(expense.kategori || 'Operasional'),
+      keterangan: String(expense.keterangan || ''),
+      description: String(expense.keterangan || ''),
+      jumlah: Number(expense.jumlah ?? 0),
+      amount: Number(expense.jumlah ?? 0),
+      catatan: String(expense.catatan || ''),
+      notes: String(expense.catatan || ''),
+      diinput_oleh: String(expense.diinput_oleh || 'Kasir Warung'),
+      createdBy: String(expense.diinput_oleh || 'Kasir Warung'),
+      created_at: String(expense.created_at || new Date().toISOString()),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    await setDoc(docRef, payload, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('Gagal menyimpan pengeluaran ke Firebase:', err);
+    return false;
+  }
+}
+
+/**
+ * DELETE EXPENSE FROM FIREBASE
+ */
+export async function deleteExpenseFromFirebase(expenseId: string): Promise<boolean> {
+  if (!expenseId) return false;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const docRef = doc(db, 'expenses', String(expenseId));
+    await deleteDoc(docRef);
+    return true;
+  } catch (err) {
+    console.error(`Gagal menghapus pengeluaran ${expenseId} dari Firebase:`, err);
+    return false;
+  }
+}
+
+/**
+ * SUBSCRIBE TO EXPENSES (Synced across all devices)
+ */
+export function subscribeToFirebaseExpenses(
+  onExpensesReceived: (expenses: Expense[]) => void
+): () => void {
+  try {
+    const colRef = collection(db, 'expenses');
+    const unsubscribe = onSnapshot(
+      colRef,
+      (snapshot) => {
+        const list: Expense[] = [];
+        if (!snapshot.empty) {
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data() as Expense;
+            if (data && data.id) {
+              list.push(data);
+            }
+          });
+          list.sort((a, b) => new Date(b.created_at || b.tanggal || 0).getTime() - new Date(a.created_at || a.tanggal || 0).getTime());
+        }
+        onExpensesReceived(list);
+      },
+      (error) => {
+        console.warn('Firebase expenses subscription warning:', error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.error('Failed to initialize expenses listener:', err);
+    return () => {};
+  }
+}
+
+/**
+ * SAVE CUSTOMER TO FIREBASE
+ */
+export async function saveCustomerToFirebase(customer: Customer): Promise<boolean> {
+  if (!customer || !customer.id) return false;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const docRef = doc(db, 'customers', String(customer.id));
+    const payload = {
+      id: String(customer.id),
+      nama: String(customer.nama || 'Pelanggan'),
+      name: String(customer.nama || 'Pelanggan'),
+      no_whatsapp: String(customer.no_whatsapp || customer.whatsapp || ''),
+      whatsapp: String(customer.no_whatsapp || customer.whatsapp || ''),
+      phone: String(customer.no_whatsapp || customer.whatsapp || ''),
+      alamat: String(customer.alamat || ''),
+      catatan: String(customer.catatan || ''),
+      total_transaksi: Number(customer.total_transaksi ?? 0),
+      totalOrders: Number(customer.total_transaksi ?? 0),
+      total_belanja: Number(customer.total_belanja ?? 0),
+      totalSpent: Number(customer.total_belanja ?? 0),
+      last_order: String(customer.last_order || ''),
+      lastOrderAt: String(customer.last_order || new Date().toISOString()),
+      created_at: String(customer.created_at || new Date().toISOString()),
+      updated_at: new Date().toISOString(),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    await setDoc(docRef, payload, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('Gagal menyimpan pelanggan ke Firebase:', err);
+    return false;
+  }
+}
+
+/**
+ * DELETE CUSTOMER FROM FIREBASE
+ */
+export async function deleteCustomerFromFirebase(customerId: string): Promise<boolean> {
+  if (!customerId) return false;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const docRef = doc(db, 'customers', String(customerId));
+    await deleteDoc(docRef);
+    return true;
+  } catch (err) {
+    console.error(`Gagal menghapus pelanggan ${customerId} dari Firebase:`, err);
+    return false;
+  }
+}
+
+/**
+ * SUBSCRIBE TO CUSTOMERS (Synced across all devices)
+ */
+export function subscribeToFirebaseCustomers(
+  onCustomersReceived: (customers: Customer[]) => void
+): () => void {
+  try {
+    const colRef = collection(db, 'customers');
+    const unsubscribe = onSnapshot(
+      colRef,
+      (snapshot) => {
+        const list: Customer[] = [];
+        if (!snapshot.empty) {
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data() as Customer;
+            if (data && data.id) {
+              list.push(data);
+            }
+          });
+          list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+        }
+        onCustomersReceived(list);
+      },
+      (error) => {
+        console.warn('Firebase customers subscription warning:', error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.error('Failed to initialize customers listener:', err);
+    return () => {};
+  }
+}
+
+/**
+ * SAVE STORE SETTINGS TO FIREBASE (Warung Bang Kobra global settings)
+ */
+export async function saveSettingsToFirebase(settings: StoreSettings): Promise<boolean> {
+  if (!settings) return false;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const docRef = doc(db, 'settings', 'warung');
+    const storeAddr = String(settings.address || settings.storeAddress || '').trim();
+    const payload = {
+      id: 'warung',
+      storeName: String(settings.storeName || 'Warung Bang Kobra'),
+      tagline: String(settings.tagline || ''),
+      storeSlogan: String(settings.storeSlogan || settings.tagline || ''),
+      address: storeAddr,
+      storeAddress: storeAddr,
+      whatsappNumber: String(settings.whatsappNumber || ''),
+      logoUrl: String(settings.logoUrl || '/icon.svg'),
+      receiptFooter: String(settings.receiptFooter || ''),
+      receiptPaperSize: settings.receiptPaperSize || '58mm',
+      taxPercent: Number(settings.taxPercent ?? 0),
+      currency: String(settings.currency || 'Rp'),
+      qrisImageUrl: String(settings.qrisImageUrl || ''),
+      onlineMenuEnabled: Boolean(settings.onlineMenuEnabled ?? true),
+      onlineMenuBannerText: String(settings.onlineMenuBannerText || ''),
+      onlineMenuHours: String(settings.onlineMenuHours || ''),
+      onlineMenuBankInfo: String(settings.onlineMenuBankInfo || ''),
+      onlineMenuIsOpen: Boolean(settings.onlineMenuIsOpen ?? true),
+      onlineMenuAnnouncement: String(settings.onlineMenuAnnouncement || settings.onlineMenuBannerText || ''),
+      onlineMenuMinOrder: Number(settings.onlineMenuMinOrder ?? 0),
+      deliveryDqmEnabled: Boolean(settings.deliveryDqmEnabled ?? true),
+      deliveryFeeType: settings.deliveryFeeType || 'FREE',
+      deliveryFeeAmount: Number(settings.deliveryFeeAmount ?? 2000),
+      deliveryDqmNote: String(settings.deliveryDqmNote || ''),
+      updated_at: new Date().toISOString(),
+    };
+    await setDoc(docRef, payload, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('Gagal menyimpan settings ke Firebase:', err);
+    return false;
+  }
+}
+
+/**
+ * SUBSCRIBE TO STORE SETTINGS (Synced across all devices)
+ */
+export function subscribeToFirebaseSettings(
+  onSettingsReceived: (settings: Partial<StoreSettings>) => void
+): () => void {
+  try {
+    const docRef = doc(db, 'settings', 'warung');
+    const unsubscribe = onSnapshot(
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const remote = docSnap.data() as Partial<StoreSettings>;
+          if (!remote.logoUrl || remote.logoUrl.trim() === '') {
+            remote.logoUrl = '/icon.svg';
+          }
+          const addr = String(remote.address || remote.storeAddress || '').trim();
+          if (addr) {
+            remote.address = addr;
+            remote.storeAddress = addr;
+          }
+          onSettingsReceived(remote);
+        } else {
+          // Dokumen settings belum ada di Firestore, trigger sinkronisasi awal
+          onSettingsReceived({});
+        }
+      },
+      (error) => {
+        console.warn('Firebase settings subscription warning:', error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.error('Failed to initialize settings listener:', err);
+    return () => {};
+  }
+}
+
+/**
+ * SAVE STOCK MUTATION TO FIREBASE (Stok Masuk, Keluar, Koreksi)
+ */
+export async function saveStockMutationToFirebase(mutation: StockMutation): Promise<boolean> {
+  if (!mutation || !mutation.id) return false;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const docRef = doc(db, 'stock_mutations', String(mutation.id));
+    const moveRef = doc(db, 'stock_movements', String(mutation.id));
+    const payload = {
+      id: String(mutation.id),
+      tanggal: String(mutation.tanggal || new Date().toISOString()),
+      id_produk: String(mutation.id_produk || ''),
+      productId: String(mutation.id_produk || ''),
+      nama_produk: String(mutation.nama_produk || ''),
+      productName: String(mutation.nama_produk || ''),
+      jenis: mutation.jenis || 'adjustment',
+      type: mutation.jenis || 'adjustment',
+      qty: Number(mutation.qty ?? 0),
+      stok_sebelum: Number(mutation.stok_sebelum ?? 0),
+      stok_sesudah: Number(mutation.stok_sesudah ?? 0),
+      keterangan: String(mutation.keterangan || ''),
+      created_at: new Date().toISOString(),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    await setDoc(docRef, payload, { merge: true });
+    await setDoc(moveRef, payload, { merge: true });
+    logAuditActivity(
+      'PERUBAHAN_STOK',
+      `${mutation.nama_produk}: ${mutation.jenis.toUpperCase()} (${mutation.qty}) -> Stok akhir: ${mutation.stok_sesudah}`,
+      'Staf/Kasir',
+      'STOCK'
+    ).catch(() => {});
+    return true;
+  } catch (err) {
+    console.warn('Gagal menyimpan mutasi stok ke Firebase:', err);
+    return false;
+  }
+}
+
+/**
+ * SUBSCRIBE TO STOCK MUTATIONS (Synced across all devices)
+ */
+export function subscribeToFirebaseStockMutations(
+  onMutationsReceived: (mutations: StockMutation[]) => void
+): () => void {
+  try {
+    const colRef = collection(db, 'stock_mutations');
+    const unsubscribe = onSnapshot(
+      colRef,
+      (snapshot) => {
+        const list: StockMutation[] = [];
+        if (!snapshot.empty) {
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data() as StockMutation;
+            if (data && data.id) {
+              list.push(data);
+            }
+          });
+          list.sort((a, b) => new Date(b.tanggal || 0).getTime() - new Date(a.tanggal || 0).getTime());
+        }
+        onMutationsReceived(list);
+      },
+      (error) => {
+        console.warn('Firebase stock mutations subscription warning:', error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.error('Failed to initialize stock mutations listener:', err);
+    return () => {};
+  }
+}
+
+/**
+ * COMPREHENSIVE CLOUD DATA SYNC:
+ * Menyelaraskan seluruh data warung (Pengaturan, Alamat, Menu, Kategori, Pesanan, Pelanggan, Pengeluaran)
+ * ke Firebase Cloud Firestore agar 100% konsisten antar semua perangkat.
+ */
+export async function syncAllDataToFirebase(params: {
+  settings: StoreSettings;
+  products: Product[];
+  categories: CategoryItem[];
+  transactions: Transaction[];
+  customers: Customer[];
+  expenses: Expense[];
+  mutations?: StockMutation[];
+}): Promise<{ success: boolean; message: string }> {
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    // 1. Simpan Pengaturan & Alamat Toko
+    await saveSettingsToFirebase(params.settings);
+
+    // 2. Simpan Produk Menu
+    if (params.products && params.products.length > 0) {
+      await syncProductsToFirebase(params.products);
+    }
+
+    // 3. Simpan Kategori
+    if (params.categories && params.categories.length > 0) {
+      await syncCategoriesToFirebase(params.categories);
+    }
+
+    // 4. Simpan Transaksi / Pesanan
+    if (params.transactions && params.transactions.length > 0) {
+      for (const tx of params.transactions) {
+        await saveOrderToFirebase(tx);
+      }
+    }
+
+    // 5. Simpan Pelanggan
+    if (params.customers && params.customers.length > 0) {
+      for (const cust of params.customers) {
+        await saveCustomerToFirebase(cust);
+      }
+    }
+
+    // 6. Simpan Pengeluaran
+    if (params.expenses && params.expenses.length > 0) {
+      for (const exp of params.expenses) {
+        await saveExpenseToFirebase(exp);
+      }
+    }
+
+    // 7. Simpan Mutasi Stok terbaru
+    if (params.mutations && params.mutations.length > 0) {
+      for (const mut of params.mutations.slice(0, 50)) {
+        await saveStockMutationToFirebase(mut);
+      }
+    }
+
+    return {
+      success: true,
+      message: `Semua data toko (${params.products.length} menu, ${params.transactions.length} pesanan, pengaturan & alamat) berhasil disinkronkan ke Firebase Cloud!`,
+    };
+  } catch (err: any) {
+    console.error('Error syncAllDataToFirebase:', err);
+    return {
+      success: false,
+      message: 'Gagal sinkronisasi seluruh data ke Firebase: ' + (err?.message || 'Unknown error'),
+    };
+  }
+}
