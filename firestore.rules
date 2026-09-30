@@ -227,11 +227,26 @@ service cloud.firestore {
       allow delete: if isValidId(itemId);
     }
 
-    // DELIVERIES & QUEUES
+    // DELIVERIES, DELIVERY PROOFS & QUEUES
     match /deliveries/{deliveryId} {
       allow get, list: if true;
       allow create, update: if isValidId(deliveryId);
-      allow delete: if isValidId(deliveryId);
+      allow delete: if isAdmin();
+    }
+
+    // DELIVERY PROOFS DQM (Section 9 & 10)
+    // Only OWNER, ADMIN, KASIR, STAFF, DELIVERY can update delivery status/proof.
+    // Proof photos cannot be arbitrarily deleted. Customers can view proof status.
+    match /delivery_proofs/{proofId} {
+      allow get, list: if true;
+      allow create: if isValidId(proofId) && (!('destination' in incoming()) || incoming().destination == 'DQM');
+      allow update: if isValidId(proofId) && (!('destination' in incoming()) || incoming().destination == 'DQM') && (
+        !('proofPhotoUrl' in existing()) ||
+        existing().proofPhotoUrl == '' ||
+        ('proofPhotoUrl' in incoming() && incoming().proofPhotoUrl != '') ||
+        isAdmin()
+      );
+      allow delete: if isOwner() || isAdmin();
     }
 
     match /queues/{queueId} {

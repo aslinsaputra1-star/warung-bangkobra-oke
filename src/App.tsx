@@ -37,6 +37,7 @@ import { CategoriesView } from './components/Categories/CategoriesView';
 import { UsersManagementView } from './components/Users/UsersManagementView';
 import { OrdersManagementView } from './components/Orders/OrdersManagementView';
 import { DeliveryDQMDashboard } from './components/Orders/DeliveryDQMDashboard';
+import { DeliveryProofModal } from './components/Orders/DeliveryProofModal';
 import { ProtectedRoute } from './components/Auth/ProtectedRoute';
 import { LoginModal } from './components/Auth/LoginModal';
 import { LoginView } from './components/Auth/LoginView';
@@ -218,6 +219,18 @@ export default function App() {
 
   // Global Receipt Modal (e.g. from Dashboard / Reports)
   const [receiptTx, setReceiptTx] = useState<Transaction | null>(null);
+
+  // Shared Delivery Proof Link Viewer (?proof=WBK-XXXX)
+  const [sharedProofOrderId, setSharedProofOrderId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const proofParam = params.get('proof');
+      if (proofParam && proofParam.trim() !== '') {
+        return proofParam.trim();
+      }
+    }
+    return null;
+  });
 
   // Incoming QR Order Alert Banner for Cashier
   const [newOrderAlert, setNewOrderAlert] = useState<Transaction | null>(null);
@@ -677,8 +690,13 @@ export default function App() {
   const handleUpdateDeliveryStatus = (
     txId: string,
     newDeliveryStatus: Transaction['deliveryStatus'],
-    mappedOrderStatus: Transaction['status']
+    mappedOrderStatus: Transaction['status'],
+    fullUpdatedTx?: Transaction
   ) => {
+    if (fullUpdatedTx) {
+      handleUpdateTransaction(fullUpdatedTx);
+      return;
+    }
     const current = StorageService.getTransactions();
     const target = current.find((t) => t.id_transaksi === txId);
     if (!target) return;
@@ -843,6 +861,63 @@ export default function App() {
             {FIREBASE_CONFIG_ERROR_MESSAGE}
           </p>
         </div>
+      </div>
+    );
+  }
+
+  // 0. Direct Shared Delivery Proof Viewer (when customer opens WhatsApp link ?proof=WBK-XXXX)
+  if (sharedProofOrderId) {
+    const matchedTx =
+      transactions.find(
+        (t) => t.id_transaksi.toLowerCase() === sharedProofOrderId.toLowerCase()
+      ) ||
+      ({
+        id_transaksi: sharedProofOrderId,
+        tanggal: new Date().toISOString().split('T')[0],
+        jam: '10:30:00',
+        kasir: 'Warung Bang Kobra',
+        nama_pelanggan: 'Pelanggan DQM',
+        no_whatsapp: '',
+        subtotal: 0,
+        diskon: 0,
+        biaya: 0,
+        total: 0,
+        metode_pembayaran: 'QRIS',
+        uang_diterima: 0,
+        kembalian: 0,
+        status: 'SELESAI',
+        orderType: 'DELIVERY_DQM',
+        tipe_pesanan: 'DELIVERY_DQM',
+        deliveryArea: 'DQM',
+        deliveryStatus: 'DITERIMA',
+        items: [],
+        created_at: new Date().toISOString(),
+      } as Transaction);
+
+    const matchedProof =
+      StorageService.getDeliveryProofs().find(
+        (p) => p.orderId.toLowerCase() === sharedProofOrderId.toLowerCase()
+      ) || null;
+
+    return (
+      <div className="min-h-screen bg-stone-950 text-stone-100">
+        <DeliveryProofModal
+          isOpen={true}
+          onClose={() => {
+            setSharedProofOrderId(null);
+            if (typeof window !== 'undefined' && window.history.replaceState) {
+              window.history.replaceState({}, document.title, window.location.pathname);
+            }
+          }}
+          transaction={matchedTx}
+          existingProof={matchedProof}
+          settings={settings}
+          currentUserRole={currentUser?.role || 'Customer'}
+          currentUserName={currentUser?.nama || 'Pelanggan DQM'}
+          initialMode="view"
+          readOnlyCustomerView={!isStaffAuthenticated}
+          showToast={showToast}
+        />
       </div>
     );
   }
@@ -1073,6 +1148,7 @@ export default function App() {
               transactions={transactions}
               settings={settings}
               userRole={effectiveRole}
+              currentUserName={currentUser?.nama || settings.activeCashier || 'Petugas Delivery DQM'}
               onUpdateDeliveryStatus={handleUpdateDeliveryStatus}
               onViewReceipt={setReceiptTx}
               showToast={showToast}

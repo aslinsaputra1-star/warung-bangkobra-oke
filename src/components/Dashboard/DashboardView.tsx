@@ -20,6 +20,7 @@ import {
   formatRupiah,
   formatDateIndo,
   normalizeOrderStatus,
+  normalizeDeliveryStatus,
   resolveOrderType,
   getOrderStatusLabel,
 } from '../../utils/formatters';
@@ -129,6 +130,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const recentTransactions = useMemo(() => {
     return transactions.slice(0, 5);
   }, [transactions]);
+
+  // 12. DASHBOARD STATISTIK DELIVERY DQM (Realtime Firebase)
+  const deliveryStats = useMemo(() => {
+    const dqmOrders = transactions.filter((tx) => resolveOrderType(tx) === 'DELIVERY_DQM');
+    let todayTotal = 0;
+    let menunggu = 0;
+    let diantar = 0;
+    let sampai = 0;
+    let diterima = 0;
+    let gagal = 0;
+
+    dqmOrders.forEach((tx) => {
+      const txDate = tx.tanggal || (tx.created_at ? tx.created_at.slice(0, 10) : '');
+      if (txDate === todayStr) {
+        todayTotal += 1;
+      }
+      const st = normalizeDeliveryStatus(tx);
+      if (st === 'MENUNGGU') menunggu += 1;
+      else if (st === 'DIANTAR') diantar += 1;
+      else if (st === 'SAMPAI') sampai += 1;
+      else if (st === 'DITERIMA') diterima += 1;
+      else if (st === 'GAGAL DIANTAR') gagal += 1;
+    });
+
+    return {
+      todayTotal,
+      menunggu,
+      diantar,
+      sampai,
+      diterima,
+      gagal,
+    };
+  }, [transactions, todayStr]);
 
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
@@ -261,6 +295,119 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="text-[11px] text-stone-400 flex items-center justify-between">
             <span>Perlu restok segera</span>
             <ArrowRight className="w-3.5 h-3.5 text-stone-500" />
+          </div>
+        </div>
+      </div>
+
+      {/* 12. DASHBOARD REAL-TIME STATISTIK DELIVERY DQM */}
+      <div className="bg-gradient-to-r from-red-950/70 via-stone-900 to-stone-900 border-2 border-red-600/40 rounded-3xl p-4 sm:p-5 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-red-600/20 border border-orange-500/40 text-orange-400 flex items-center justify-center shrink-0">
+              <Bike className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm sm:text-base font-black text-white">
+                  STATISTIK DELIVERY DQM &amp; BUKTI PENGANTARAN
+                </h3>
+                <span className="px-2 py-0.5 rounded-md bg-orange-500 text-stone-950 text-[10px] font-black">
+                  REALTIME FIREBASE
+                </span>
+              </div>
+              <p className="text-xs text-stone-300">
+                Status pengantaran ke area Pesantren DQM diperbarui secara otomatis tanpa refresh halaman.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onNavigate('delivery_dqm')}
+            className="min-h-[42px] px-4 py-2 rounded-2xl bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-lg transition cursor-pointer shrink-0"
+          >
+            <span>Buka Halaman Delivery &amp; Riwayat DQM</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+          <div
+            onClick={() => onNavigate('delivery_dqm')}
+            className="p-3.5 rounded-2xl bg-stone-950/90 border border-red-500/40 hover:border-orange-400 cursor-pointer transition"
+          >
+            <div className="text-[10px] font-black text-orange-400 uppercase tracking-wider">
+              HARI INI
+            </div>
+            <div className="text-2xl font-black text-white font-mono tabular-nums mt-0.5">
+              {deliveryStats.todayTotal}
+            </div>
+            <div className="text-xs font-bold text-stone-300 mt-0.5">Delivery Hari Ini</div>
+          </div>
+
+          <div
+            onClick={() => onNavigate('delivery_dqm')}
+            className="p-3.5 rounded-2xl bg-stone-950/90 border border-amber-500/30 hover:border-amber-400 cursor-pointer transition"
+          >
+            <div className="text-[10px] font-black text-amber-400 uppercase tracking-wider">
+              MENUNGGU
+            </div>
+            <div className="text-2xl font-black text-white font-mono tabular-nums mt-0.5">
+              {deliveryStats.menunggu}
+            </div>
+            <div className="text-xs font-bold text-stone-300 mt-0.5">Menunggu</div>
+          </div>
+
+          <div
+            onClick={() => onNavigate('delivery_dqm')}
+            className="p-3.5 rounded-2xl bg-stone-950/90 border border-orange-500/30 hover:border-orange-400 cursor-pointer transition"
+          >
+            <div className="text-[10px] font-black text-orange-400 uppercase tracking-wider">
+              DIANTAR
+            </div>
+            <div className="text-2xl font-black text-white font-mono tabular-nums mt-0.5">
+              {deliveryStats.diantar}
+            </div>
+            <div className="text-xs font-bold text-stone-300 mt-0.5">Sedang Diantar</div>
+          </div>
+
+          <div
+            onClick={() => onNavigate('delivery_dqm')}
+            className="p-3.5 rounded-2xl bg-stone-950/90 border border-sky-500/30 hover:border-sky-400 cursor-pointer transition"
+          >
+            <div className="text-[10px] font-black text-sky-400 uppercase tracking-wider">
+              SAMPAI
+            </div>
+            <div className="text-2xl font-black text-white font-mono tabular-nums mt-0.5">
+              {deliveryStats.sampai}
+            </div>
+            <div className="text-xs font-bold text-stone-300 mt-0.5">Sudah Sampai</div>
+          </div>
+
+          <div
+            onClick={() => onNavigate('delivery_dqm')}
+            className="p-3.5 rounded-2xl bg-stone-950/90 border border-emerald-500/30 hover:border-emerald-400 cursor-pointer transition"
+          >
+            <div className="text-[10px] font-black text-emerald-400 uppercase tracking-wider">
+              ✓ DITERIMA
+            </div>
+            <div className="text-2xl font-black text-white font-mono tabular-nums mt-0.5">
+              {deliveryStats.diterima}
+            </div>
+            <div className="text-xs font-bold text-stone-300 mt-0.5">Sudah Diterima</div>
+          </div>
+
+          <div
+            onClick={() => onNavigate('delivery_dqm')}
+            className="p-3.5 rounded-2xl bg-stone-950/90 border border-rose-500/30 hover:border-rose-400 cursor-pointer transition"
+          >
+            <div className="text-[10px] font-black text-rose-400 uppercase tracking-wider">
+              GAGAL
+            </div>
+            <div className="text-2xl font-black text-white font-mono tabular-nums mt-0.5">
+              {deliveryStats.gagal}
+            </div>
+            <div className="text-xs font-bold text-stone-300 mt-0.5">Gagal Diantar</div>
           </div>
         </div>
       </div>

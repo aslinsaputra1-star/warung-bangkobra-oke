@@ -48,18 +48,17 @@ export function normalizeDeliveryStatus(
   if (rawDeliveryStatus) {
     const ds = rawDeliveryStatus.toUpperCase().trim();
     if (ds === 'MENUNGGU') return 'MENUNGGU';
-    if (ds === 'DIPROSES') return 'DIPROSES';
-    if (ds === 'SIAP DIANTAR' || ds === 'SIAP') return 'SIAP DIANTAR';
     if (ds === 'DIANTAR' || ds === 'SEDANG DIANTAR') return 'DIANTAR';
-    if (ds === 'SELESAI') return 'SELESAI';
-    if (ds === 'DIBATALKAN') return 'DIBATALKAN';
+    if (ds === 'SAMPAI' || ds === 'SUDAH SAMPAI' || ds === 'SIAP DIANTAR' || ds === 'SIAP') return 'SAMPAI';
+    if (ds === 'DITERIMA' || ds === 'SUDAH DITERIMA' || ds === 'SELESAI') return 'DITERIMA';
+    if (ds === 'GAGAL DIANTAR' || ds === 'GAGAL' || ds === 'DIBATALKAN') return 'GAGAL DIANTAR';
+    if (ds === 'DIPROSES') return 'MENUNGGU';
   }
   const ordStatus = normalizeOrderStatus(rawOrderStatus);
-  if (ordStatus === 'MENUNGGU') return 'MENUNGGU';
-  if (ordStatus === 'DIPROSES') return 'DIPROSES';
-  if (ordStatus === 'SIAP') return 'SIAP DIANTAR';
-  if (ordStatus === 'SELESAI') return 'SELESAI';
-  if (ordStatus === 'DIBATALKAN') return 'DIBATALKAN';
+  if (ordStatus === 'MENUNGGU' || ordStatus === 'DIPROSES') return 'MENUNGGU';
+  if (ordStatus === 'SIAP') return 'SAMPAI';
+  if (ordStatus === 'SELESAI') return 'DITERIMA';
+  if (ordStatus === 'DIBATALKAN') return 'GAGAL DIANTAR';
   return 'MENUNGGU';
 }
 
@@ -71,7 +70,7 @@ export function getOrderStatusLabel(
     const resolvedType = resolveOrderType(statusOrTx);
     if (resolvedType === 'DELIVERY_DQM') {
       const ds = normalizeDeliveryStatus(statusOrTx);
-      return ds === 'DIANTAR' ? 'SEDANG DIANTAR' : ds;
+      return getDeliveryStatusLabel(ds);
     }
     const norm = normalizeOrderStatus(statusOrTx.status);
     return norm === 'SIAP' ? 'SIAP DIAMBIL' : norm;
@@ -79,7 +78,7 @@ export function getOrderStatusLabel(
   const norm = normalizeOrderStatus(typeof statusOrTx === 'string' ? statusOrTx : undefined);
   const isDelivery = orderType === 'DELIVERY_DQM' || orderType === 'Delivery';
   if (norm === 'SIAP') {
-    return isDelivery ? 'SIAP DIANTAR' : 'SIAP DIAMBIL';
+    return isDelivery ? 'SAMPAI' : 'SIAP DIAMBIL';
   }
   return norm;
 }
@@ -87,9 +86,39 @@ export function getOrderStatusLabel(
 export function getDeliveryStatusLabel(deliveryStatus?: DeliveryStatus | string | null): string {
   if (!deliveryStatus) return 'MENUNGGU';
   const upper = deliveryStatus.toUpperCase().trim();
-  if (upper === 'DIANTAR' || upper === 'SEDANG DIANTAR') return 'SEDANG DIANTAR';
-  if (upper === 'SIAP' || upper === 'SIAP DIANTAR') return 'SIAP DIANTAR';
-  return upper;
+  if (upper === 'DIANTAR' || upper === 'SEDANG DIANTAR') return 'DIANTAR';
+  if (upper === 'SAMPAI' || upper === 'SIAP' || upper === 'SIAP DIANTAR') return 'SAMPAI';
+  if (upper === 'DITERIMA' || upper === 'SELESAI') return 'DITERIMA';
+  if (upper === 'GAGAL DIANTAR' || upper === 'DIBATALKAN') return 'GAGAL DIANTAR';
+  return 'MENUNGGU';
+}
+
+export function buildDeliveryProofShareUrl(orderId: string): string {
+  const baseUrl =
+    typeof window !== 'undefined' ? window.location.origin : 'https://warungbangkobra.web.app';
+  return `${baseUrl}/?proof=${encodeURIComponent(orderId)}`;
+}
+
+export function buildDeliveryProofWhatsAppMessage(params: {
+  orderNumber: string;
+  status?: string;
+  receiverName: string;
+  deliveredAt: string;
+  proofLink?: string;
+}): string {
+  const link = params.proofLink || buildDeliveryProofShareUrl(params.orderNumber);
+  const statusText = params.status || 'DITERIMA';
+  return (
+    `Assalamu'alaikum,\n` +
+    `Pesanan dari WARUNG BANG KOBRA telah diantar ke DQM.\n\n` +
+    `No. Pesanan: ${params.orderNumber}\n` +
+    `Status: ${statusText}\n` +
+    `Penerima: ${params.receiverName}\n` +
+    `Waktu: ${params.deliveredAt}\n\n` +
+    `Bukti pengantaran:\n` +
+    `${link}\n\n` +
+    `Terima kasih.`
+  );
 }
 
 export function isOrderCompleted(status?: string): boolean {

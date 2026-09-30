@@ -16,11 +16,37 @@ export type OrderType = 'BUNGKUS' | 'DELIVERY_DQM';
 
 export type DeliveryStatus =
   | 'MENUNGGU'
+  | 'DIANTAR'
+  | 'SAMPAI'
+  | 'DITERIMA'
+  | 'GAGAL DIANTAR'
   | 'DIPROSES'
   | 'SIAP DIANTAR'
-  | 'DIANTAR'
   | 'SELESAI'
   | 'DIBATALKAN';
+
+export interface DeliveryProof {
+  deliveryId: string;
+  orderId: string;
+  orderNumber: string;
+  customerId?: string;
+  customerName: string;
+  customerPhone: string;
+  destination: 'DQM';
+  detailLocation: string;
+  courierId?: string;
+  courierName: string;
+  receiverName: string;
+  receiverPhone: string;
+  status: DeliveryStatus;
+  deliveryStatus: DeliveryStatus;
+  proofPhotoUrl: string;
+  deliveryNote: string;
+  sentAt?: string;
+  deliveredAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export type OrderQueueStatus =
   | 'MENUNGGU'
@@ -99,6 +125,15 @@ export interface Transaction {
   deliveryNote?: string | null;
   deliveryFee?: number;
   deliveryStatus?: DeliveryStatus | null;
+  deliveryId?: string;
+  courierId?: string;
+  courierName?: string;
+  sentAt?: string;
+  deliveredAt?: string;
+  receiverName?: string;
+  receiverPhone?: string;
+  proofPhotoUrl?: string;
+  updated_at?: string;
   queueNumber?: string;
   tipe_pesanan?: 'BUNGKUS' | 'DELIVERY_DQM' | 'Takeaway' | 'Delivery';
   alamat_pengantaran?: string;

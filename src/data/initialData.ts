@@ -438,8 +438,8 @@ export const INITIAL_EXPENSES: Expense[] = [
 
 export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
-    id_transaksi: 'WKB-20260907-001',
-    tanggal: '2026-09-07',
+    id_transaksi: 'WBK-20260930-0001',
+    tanggal: '2026-09-30',
     jam: '09:45:00',
     kasir: 'Budi Kasir',
     nama_pelanggan: 'Budi Santoso',
@@ -461,7 +461,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
     items: [
       {
         id_detail: 'DTL-001-1',
-        id_transaksi: 'WKB-20260907-001',
+        id_transaksi: 'WBK-20260930-0001',
         id_produk: 'PRD-MKN-001',
         nama_produk: 'Mi Aceh',
         harga: 18000,
@@ -471,7 +471,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
       },
       {
         id_detail: 'DTL-001-2',
-        id_transaksi: 'WKB-20260907-001',
+        id_transaksi: 'WBK-20260930-0001',
         id_produk: 'PRD-MNM-002',
         nama_produk: 'Es Kopi Gula Aren',
         harga: 12000,
@@ -481,7 +481,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
       },
       {
         id_detail: 'DTL-001-3',
-        id_transaksi: 'WKB-20260907-001',
+        id_transaksi: 'WBK-20260930-0001',
         id_produk: 'PRD-MKN-010',
         nama_produk: 'Risoles',
         harga: 10000,
@@ -489,11 +489,11 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
         subtotal: 10000,
       },
     ],
-    created_at: '2026-09-07T09:45:00.000Z',
+    created_at: '2026-09-30T09:45:00.000Z',
   },
   {
-    id_transaksi: 'WKB-20260907-002',
-    tanggal: '2026-09-07',
+    id_transaksi: 'WBK-20260930-0002',
+    tanggal: '2026-09-30',
     jam: '10:30:00',
     kasir: 'Online QR Customer',
     nama_pelanggan: 'Ahmad',
@@ -505,21 +505,29 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
     metode_pembayaran: 'QRIS',
     uang_diterima: 48000,
     kembalian: 0,
-    status: 'DIPROSES',
+    status: 'SELESAI',
     orderType: 'DELIVERY_DQM',
     tipe_pesanan: 'DELIVERY_DQM',
     deliveryArea: 'DQM',
     deliveryLocation: 'Asrama Putra',
     deliveryDetail: 'Kamar 12',
-    deliveryNote: 'Antar setelah Maghrib',
+    deliveryNote: 'Pesanan telah diterima dengan baik.',
     deliveryFee: 0,
-    deliveryStatus: 'SIAP DIANTAR',
+    deliveryStatus: 'DITERIMA',
+    deliveryId: 'DLV-WBK-20260930-0002',
+    courierName: 'Hendra (Petugas Delivery DQM)',
+    receiverName: 'Ahmad (Kamar 12)',
+    receiverPhone: '087811223344',
+    sentAt: '2026-09-30T10:15:00.000Z',
+    deliveredAt: '2026-09-30T10:30:00.000Z',
+    proofPhotoUrl:
+      'https://images.unsplash.com/photo-1526367790999-0150786686a2?w=600&auto=format&fit=crop&q=80',
     alamat_pengantaran: 'Pesantren DQM - Asrama Putra (Kamar 12)',
-    catatan_pesanan: 'Antar setelah Maghrib',
+    catatan_pesanan: 'Pesanan telah diterima dengan baik.',
     items: [
       {
         id_detail: 'DTL-002-1',
-        id_transaksi: 'WKB-20260907-002',
+        id_transaksi: 'WBK-20260930-0002',
         id_produk: 'PRD-MKN-002',
         nama_produk: 'Mi Rendang',
         harga: 20000,
@@ -528,7 +536,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
       },
       {
         id_detail: 'DTL-002-2',
-        id_transaksi: 'WKB-20260907-002',
+        id_transaksi: 'WBK-20260930-0002',
         id_produk: 'PRD-MNM-008',
         nama_produk: 'Nutrisi Mangga',
         harga: 8000,
@@ -536,7 +544,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
         subtotal: 8000,
       },
     ],
-    created_at: '2026-09-07T10:30:00.000Z',
+    created_at: '2026-09-30T10:05:00.000Z',
   },
 ];
 

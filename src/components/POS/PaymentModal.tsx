@@ -187,7 +187,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               >
                 <ShoppingBag className={`w-5 h-5 shrink-0 ${orderType === 'BUNGKUS' ? 'text-amber-400' : 'text-stone-500'}`} />
                 <div>
-                  <div className="font-black text-xs text-stone-100">○ BUNGKUS</div>
+                  <div className="font-black text-xs text-stone-100">○ TAKEAWAY (BUNGKUS)</div>
                   <div className="text-[10px] text-stone-400">Ambil di Warung</div>
                 </div>
               </button>
@@ -208,18 +208,18 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 <Truck className={`w-5 h-5 shrink-0 ${orderType === 'DELIVERY_DQM' ? 'text-teal-400' : 'text-stone-500'}`} />
                 <div>
                   <div className="font-black text-xs text-stone-100">○ DELIVERY DQM</div>
-                  <div className="text-[10px] text-stone-400">Khusus Pesantren DQM</div>
+                  <div className="text-[10px] text-stone-400">Khusus Area DQM</div>
                 </div>
               </button>
             </div>
 
             {orderType === 'BUNGKUS' ? (
               <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-500/30 text-xs font-bold text-amber-300">
-                Pesanan akan disiapkan untuk diambil.
+                Pesanan TAKEAWAY akan disiapkan untuk diambil di Warung Bang Kobra.
               </div>
             ) : (
               <div className="p-3 rounded-xl bg-teal-950/30 border border-teal-500/40 text-xs font-bold text-teal-300">
-                Delivery hanya tersedia di area Pesantren DQM.
+                Tujuan terkunci: <strong>DQM</strong> (Delivery hanya untuk area Pesantren DQM).
               </div>
             )}
           </div>
@@ -254,100 +254,66 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             </div>
           </div>
 
-          {/* DELIVERY DQM Specific Form */}
+          {/* DELIVERY DQM Specific Form (Destination strictly locked to DQM) */}
           {orderType === 'DELIVERY_DQM' && (
             <div className="p-3.5 rounded-2xl bg-stone-950 border border-teal-500/40 space-y-3">
-              <div>
-                <label className="text-xs font-bold text-stone-300 mb-1 block">
-                  Area Pengantaran *
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedArea('DQM');
-                      setErrorMessage(null);
-                    }}
-                    className={`py-2 px-3 rounded-xl text-xs font-black border cursor-pointer ${
-                      selectedArea === 'DQM'
-                        ? 'bg-teal-500 text-stone-950 border-teal-400'
-                        : 'bg-stone-900 text-stone-400 border-stone-800'
-                    }`}
-                  >
-                    Pesantren DQM
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedArea('OUTSIDE')}
-                    className={`py-2 px-3 rounded-xl text-xs font-bold border cursor-pointer ${
-                      selectedArea === 'OUTSIDE'
-                        ? 'bg-rose-600 text-white border-rose-500'
-                        : 'bg-stone-900 text-stone-400 border-stone-800'
-                    }`}
-                  >
-                    Luar Pesantren DQM
-                  </button>
-                </div>
+              <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-teal-500/15 border border-teal-500/40 text-xs">
+                <span className="font-bold text-stone-300 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-teal-400" />
+                  <span>Tujuan Pengantaran:</span>
+                </span>
+                <span className="font-black text-teal-300">AREA PESANTREN DQM</span>
               </div>
 
-              {selectedArea !== 'DQM' ? (
-                <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-500 text-rose-200 text-xs font-black flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                  <span>Delivery hanya tersedia untuk area Pesantren DQM.</span>
-                </div>
-              ) : (
-                <>
-                  <div>
-                    <label className="text-xs font-bold text-stone-300 mb-1 block">
-                      Lokasi DQM (Asrama / Blok / Gedung) *
-                    </label>
-                    <select
-                      value={deliveryLocation}
-                      onChange={(e) => setDeliveryLocation(e.target.value)}
-                      className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs font-bold text-stone-100 focus:outline-none focus:border-teal-400"
-                    >
-                      {DQM_LOCATIONS.map((loc) => (
-                        <option key={loc} value={loc}>
-                          {loc}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+              <div>
+                <label className="text-xs font-bold text-stone-300 mb-1 block">
+                  Lokasi DQM (Asrama / Blok / Gedung) *
+                </label>
+                <select
+                  value={deliveryLocation}
+                  onChange={(e) => setDeliveryLocation(e.target.value)}
+                  className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs font-bold text-stone-100 focus:outline-none focus:border-teal-400"
+                >
+                  {DQM_LOCATIONS.map((loc) => (
+                    <option key={loc} value={loc}>
+                      {loc}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                  <div>
-                    <label className="text-xs font-bold text-stone-300 mb-1 block">
-                      Detail Lokasi (Kamar / Kelas / Ruangan) *
-                    </label>
-                    <input
-                      type="text"
-                      value={deliveryDetail}
-                      onChange={(e) => setDeliveryDetail(e.target.value)}
-                      placeholder="Contoh: Kamar 12"
-                      className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-teal-400"
-                    />
-                  </div>
+              <div>
+                <label className="text-xs font-bold text-stone-300 mb-1 block">
+                  Detail Lokasi (Kamar / Kelas / Ruangan) *
+                </label>
+                <input
+                  type="text"
+                  value={deliveryDetail}
+                  onChange={(e) => setDeliveryDetail(e.target.value)}
+                  placeholder="Contoh: Kamar 12"
+                  className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-teal-400"
+                />
+              </div>
 
-                  <div>
-                    <label className="text-xs font-bold text-stone-300 mb-1 block">
-                      Catatan Pesanan / Pengantaran
-                    </label>
-                    <input
-                      type="text"
-                      value={deliveryNote}
-                      onChange={(e) => setDeliveryNote(e.target.value)}
-                      placeholder="Contoh: Antar setelah Maghrib"
-                      className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-teal-400"
-                    />
-                  </div>
+              <div>
+                <label className="text-xs font-bold text-stone-300 mb-1 block">
+                  Catatan Pesanan / Pengantaran
+                </label>
+                <input
+                  type="text"
+                  value={deliveryNote}
+                  onChange={(e) => setDeliveryNote(e.target.value)}
+                  placeholder="Contoh: Antar setelah Maghrib"
+                  className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-teal-400"
+                />
+              </div>
 
-                  <div className="flex items-center justify-between pt-1 text-xs">
-                    <span className="text-stone-400">Biaya Delivery DQM:</span>
-                    <span className="font-black text-emerald-400">
-                      {deliveryFee > 0 ? formatRupiah(deliveryFee) : 'GRATIS'}
-                    </span>
-                  </div>
-                </>
-              )}
+              <div className="flex items-center justify-between pt-1 text-xs">
+                <span className="text-stone-400">Biaya Delivery DQM:</span>
+                <span className="font-black text-emerald-400">
+                  {deliveryFee > 0 ? formatRupiah(deliveryFee) : 'GRATIS'}
+                </span>
+              </div>
             </div>
           )}
 

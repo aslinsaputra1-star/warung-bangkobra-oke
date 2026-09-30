@@ -46,6 +46,7 @@ import {
   StockMutation,
   WarungUser,
   UserRole,
+  DeliveryProof,
 } from '../types';
 import {
   normalizeOrderStatus,
@@ -582,6 +583,14 @@ export async function saveOrderToFirebase(order: Transaction): Promise<{ success
       deliveryNote: isDeliveryDqm ? String(order.deliveryNote || order.catatan_pesanan || '') : null,
       deliveryFee: isDeliveryDqm ? Number(order.deliveryFee ?? order.biaya ?? 0) : 0,
       deliveryStatus: normalizedDelivStatus,
+      deliveryId: isDeliveryDqm ? String(order.deliveryId || `DLV-${order.id_transaksi}`) : null,
+      courierId: isDeliveryDqm ? String(order.courierId || '') : null,
+      courierName: isDeliveryDqm ? String(order.courierName || '') : null,
+      sentAt: isDeliveryDqm ? String(order.sentAt || '') : null,
+      deliveredAt: isDeliveryDqm ? String(order.deliveredAt || '') : null,
+      receiverName: isDeliveryDqm ? String(order.receiverName || '') : null,
+      receiverPhone: isDeliveryDqm ? String(order.receiverPhone || '') : null,
+      proofPhotoUrl: isDeliveryDqm ? String(order.proofPhotoUrl || '') : null,
       alamat_pengantaran: isDeliveryDqm
         ? order.alamat_pengantaran || `Pesantren DQM - ${order.deliveryLocation || ''} ${order.deliveryDetail ? `(${order.deliveryDetail})` : ''}`.trim()
         : '',
@@ -609,6 +618,48 @@ export async function saveOrderToFirebase(order: Transaction): Promise<{ success
       },
       { merge: true }
     );
+
+    // Automatically ensure a corresponding document in `delivery_proofs` for every DELIVERY_DQM order
+    if (isDeliveryDqm) {
+      const proofDocRef = doc(db, 'delivery_proofs', firestorePayload.id_transaksi);
+      const detailLoc = [
+        firestorePayload.deliveryLocation || 'Area DQM',
+        firestorePayload.deliveryDetail || '',
+      ]
+        .filter(Boolean)
+        .join(' - ');
+      const nowIso = new Date().toISOString();
+      await setDoc(
+        proofDocRef,
+        {
+          deliveryId: firestorePayload.deliveryId || `DLV-${firestorePayload.id_transaksi}`,
+          orderId: firestorePayload.id_transaksi,
+          orderNumber: firestorePayload.id_transaksi,
+          customerId: firestorePayload.customerId || '',
+          customerName: firestorePayload.nama_pelanggan,
+          customerPhone: firestorePayload.no_whatsapp || '',
+          destination: 'DQM',
+          detailLocation: detailLoc || firestorePayload.alamat_pengantaran || 'Pesantren DQM',
+          ...(firestorePayload.courierId ? { courierId: firestorePayload.courierId } : {}),
+          ...(firestorePayload.courierName ? { courierName: firestorePayload.courierName } : {}),
+          ...(firestorePayload.receiverName ? { receiverName: firestorePayload.receiverName } : {}),
+          ...(firestorePayload.receiverPhone ? { receiverPhone: firestorePayload.receiverPhone } : {}),
+          status: normalizedDelivStatus || 'MENUNGGU',
+          deliveryStatus: normalizedDelivStatus || 'MENUNGGU',
+          ...(firestorePayload.proofPhotoUrl ? { proofPhotoUrl: firestorePayload.proofPhotoUrl } : {}),
+          deliveryNote:
+            firestorePayload.deliveryNote ||
+            firestorePayload.catatan_pesanan ||
+            'Pesanan Delivery DQM',
+          ...(firestorePayload.sentAt ? { sentAt: firestorePayload.sentAt } : {}),
+          ...(firestorePayload.deliveredAt ? { deliveredAt: firestorePayload.deliveredAt } : {}),
+          createdAt: firestorePayload.created_at || nowIso,
+          updatedAt: nowIso,
+        },
+        { merge: true }
+      );
+    }
+
     logAuditActivity(
       'TRANSAKSI_PESANAN',
       `Pesanan ${order.id_transaksi} (${order.nama_pelanggan}) senilai Rp${order.total}`,
@@ -1367,5 +1418,182 @@ export async function syncAllDataToFirebase(params: {
       success: false,
       message: 'Gagal sinkronisasi seluruh data ke Firebase: ' + (err?.message || 'Unknown error'),
     };
+  }
+}
+
+/**
+ * UPLOAD DELIVERY PROOF PHOTO TO FIREBASE STORAGE (With fast fallback)
+ */
+export async function uploadDeliveryProofPhoto(
+  fileOrDataUrl: File | string,
+  orderId: string
+): Promise<string> {
+  try {
+    await ensureFirebaseAuth();
+    const safeOrder = String(orderId || 'DQM').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const path = `delivery_proofs/${safeOrder}_${Date.now()}.jpg`;
+    const fileRef = storageRef(storage, path);
+
+    const uploadTask = async (): Promise<string> => {
+      if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
+        await uploadString(fileRef, fileOrDataUrl, 'data_url');
+        return await getDownloadURL(fileRef);
+      } else if (fileOrDataUrl instanceof File) {
+        await uploadBytes(fileRef, fileOrDataUrl);
+        return await getDownloadURL(fileRef);
+      }
+      return typeof fileOrDataUrl === 'string' ? fileOrDataUrl : '';
+    };
+
+    // Race with 2.2s timeout so camera/photo upload is always fast even if Storage CORS is restricted
+    const timeoutPromise = new Promise<string>((resolve) => {
+      setTimeout(() => {
+        resolve(typeof fileOrDataUrl === 'string' ? fileOrDataUrl : '');
+      }, 2200);
+    });
+
+    const resultUrl = await Promise.race([uploadTask(), timeoutPromise]);
+    logAuditActivity(
+      'UPLOAD_BUKTI_DELIVERY',
+      `Mengunggah foto bukti pengantaran DQM untuk pesanan ${orderId}`,
+      auth.currentUser?.email || 'Petugas Delivery',
+      'DELIVERY_DQM'
+    ).catch(() => {});
+    return resultUrl || (typeof fileOrDataUrl === 'string' ? fileOrDataUrl : '');
+  } catch (err) {
+    console.warn('Delivery proof photo fallback to inline dataUrl:', err);
+    return typeof fileOrDataUrl === 'string' ? fileOrDataUrl : '';
+  }
+}
+
+/**
+ * SAVE DELIVERY PROOF TO FIREBASE `delivery_proofs` AND SYNC TO `orders`
+ */
+export async function saveDeliveryProofToFirebase(
+  proof: DeliveryProof,
+  actorName = 'Petugas Delivery'
+): Promise<boolean> {
+  if (!proof || !proof.orderId) return false;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const cleanOrderId = String(proof.orderId).trim();
+    const deliveryId = String(proof.deliveryId || `DLV-${cleanOrderId}`).trim();
+    const proofDocRef = doc(db, 'delivery_proofs', cleanOrderId);
+    const orderDocRef = doc(db, 'orders', cleanOrderId);
+
+    const normalizedDelivStatus = normalizeDeliveryStatus(proof.status || proof.deliveryStatus);
+    const nowIso = new Date().toISOString();
+
+    const proofPayload = {
+      deliveryId,
+      orderId: cleanOrderId,
+      orderNumber: String(proof.orderNumber || cleanOrderId),
+      customerId: String(proof.customerId || auth.currentUser?.uid || ''),
+      customerName: String(proof.customerName || 'Pelanggan'),
+      customerPhone: String(proof.customerPhone || ''),
+      destination: 'DQM' as const,
+      detailLocation: String(proof.detailLocation || 'Pesantren DQM'),
+      courierId: String(proof.courierId || auth.currentUser?.uid || ''),
+      courierName: String(proof.courierName || actorName || 'Kurir Warung Bang Kobra'),
+      receiverName: String(proof.receiverName || proof.customerName || 'Penerima'),
+      receiverPhone: String(proof.receiverPhone || proof.customerPhone || ''),
+      status: normalizedDelivStatus,
+      deliveryStatus: normalizedDelivStatus,
+      proofPhotoUrl: String(proof.proofPhotoUrl || ''),
+      deliveryNote: String(proof.deliveryNote || 'Pesanan telah diterima dengan baik.'),
+      sentAt: String(proof.sentAt || ''),
+      deliveredAt: String(
+        proof.deliveredAt || (normalizedDelivStatus === 'DITERIMA' ? nowIso : '')
+      ),
+      createdAt: String(proof.createdAt || nowIso),
+      updatedAt: nowIso,
+      serverUpdatedAt: serverTimestamp(),
+    };
+
+    await setDoc(proofDocRef, proofPayload, { merge: true });
+
+    let mappedOrderStatus = 'DIPROSES';
+    if (normalizedDelivStatus === 'MENUNGGU') mappedOrderStatus = 'MENUNGGU';
+    else if (normalizedDelivStatus === 'DIANTAR') mappedOrderStatus = 'DIPROSES';
+    else if (normalizedDelivStatus === 'SAMPAI') mappedOrderStatus = 'SIAP';
+    else if (normalizedDelivStatus === 'DITERIMA') mappedOrderStatus = 'SELESAI';
+    else if (normalizedDelivStatus === 'GAGAL DIANTAR') mappedOrderStatus = 'DIBATALKAN';
+
+    await setDoc(
+      orderDocRef,
+      {
+        id_transaksi: cleanOrderId,
+        deliveryId,
+        status: mappedOrderStatus,
+        deliveryStatus: normalizedDelivStatus,
+        courierId: proofPayload.courierId,
+        courierName: proofPayload.courierName,
+        receiverName: proofPayload.receiverName,
+        receiverPhone: proofPayload.receiverPhone,
+        proofPhotoUrl: proofPayload.proofPhotoUrl,
+        deliveryNote: proofPayload.deliveryNote,
+        sentAt: proofPayload.sentAt,
+        deliveredAt: proofPayload.deliveredAt,
+        updated_at: nowIso,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    logAuditActivity(
+      'BUKTI_DELIVERY_DQM',
+      `Pesanan ${cleanOrderId} -> Status: ${normalizedDelivStatus} | Kurir: ${proofPayload.courierName} | Penerima: ${proofPayload.receiverName}`,
+      actorName,
+      'DELIVERY_DQM'
+    ).catch(() => {});
+
+    return true;
+  } catch (err) {
+    console.warn('Error saving delivery proof to Firebase:', err);
+    return false;
+  }
+}
+
+/**
+ * REAL-TIME LISTENER FOR `delivery_proofs` COLLECTION
+ */
+export function subscribeToFirebaseDeliveryProofs(
+  onProofsReceived: (proofs: DeliveryProof[]) => void
+): () => void {
+  try {
+    const colRef = collection(db, 'delivery_proofs');
+    return onSnapshot(
+      colRef,
+      (snapshot) => {
+        const list: DeliveryProof[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as DeliveryProof;
+          if (data && (data.orderId || data.deliveryId)) {
+            list.push({
+              ...data,
+              orderId: data.orderId || docSnap.id,
+              orderNumber: data.orderNumber || data.orderId || docSnap.id,
+              destination: 'DQM',
+              status: normalizeDeliveryStatus(data.status || data.deliveryStatus),
+              deliveryStatus: normalizeDeliveryStatus(data.deliveryStatus || data.status),
+            });
+          }
+        });
+        list.sort(
+          (a, b) =>
+            new Date(b.updatedAt || b.createdAt || 0).getTime() -
+            new Date(a.updatedAt || a.createdAt || 0).getTime()
+        );
+        onProofsReceived(list);
+      },
+      (err) => {
+        console.warn('Firebase delivery_proofs subscription notice:', err?.message);
+      }
+    );
+  } catch (err) {
+    console.warn('Failed to initialize delivery_proofs listener:', err);
+    return () => {};
   }
 }

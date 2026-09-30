@@ -16,6 +16,8 @@ import {
   MapPin,
   PackageCheck,
   Navigation,
+  Camera,
+  Eye,
 } from 'lucide-react';
 import { Transaction, Product, StoreSettings, DeliveryStatus } from '../../types';
 import {
@@ -30,6 +32,8 @@ import {
 import { exportTransactionsToExcel } from '../../utils/excelHelper';
 import { WhatsAppOrderView } from '../WhatsApp/WhatsAppOrderView';
 import { TakeawayQueueBoard } from './TakeawayQueueBoard';
+import { DeliveryProofModal } from './DeliveryProofModal';
+import { StorageService } from '../../services/storage';
 
 interface OrdersManagementViewProps {
   transactions: Transaction[];
@@ -59,6 +63,10 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
     'ALL' | 'MENUNGGU' | 'DIPROSES' | 'SIAP' | 'SELESAI' | 'DIBATALKAN'
   >('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const [proofModalTx, setProofModalTx] = useState<{
+    tx: Transaction;
+    mode: 'form' | 'view';
+  } | null>(null);
 
   // Filter transactions for ANTRIAN KASIR
   const filteredTransactions = useMemo(() => {
@@ -595,19 +603,6 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
                         <>
                           <button
                             type="button"
-                            onClick={() => handleUpdateStatus(tx, 'SIAP', 'SIAP DIANTAR')}
-                            className={`min-h-[38px] px-3 rounded-xl text-xs font-black border transition cursor-pointer flex items-center gap-1 ${
-                              dStatus === 'SIAP DIANTAR'
-                                ? 'bg-teal-500 text-stone-950 border-teal-400'
-                                : 'bg-stone-950 hover:bg-stone-800 text-teal-300 border-stone-800'
-                            }`}
-                          >
-                            <PackageCheck className="w-3.5 h-3.5" />
-                            <span>SIAP DIANTAR</span>
-                          </button>
-
-                          <button
-                            type="button"
                             onClick={() => handleUpdateStatus(tx, 'DIPROSES', 'DIANTAR')}
                             className={`min-h-[38px] px-3 rounded-xl text-xs font-black border transition cursor-pointer flex items-center gap-1 ${
                               dStatus === 'DIANTAR'
@@ -616,55 +611,121 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
                             }`}
                           >
                             <Navigation className="w-3.5 h-3.5" />
-                            <span>SEDANG DIANTAR</span>
+                            <span>DIANTAR</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateStatus(tx, 'SIAP', 'SAMPAI')}
+                            className={`min-h-[38px] px-3 rounded-xl text-xs font-black border transition cursor-pointer flex items-center gap-1 ${
+                              dStatus === 'SAMPAI'
+                                ? 'bg-sky-500 text-stone-950 border-sky-400'
+                                : 'bg-stone-950 hover:bg-stone-800 text-sky-300 border-stone-800'
+                            }`}
+                          >
+                            <PackageCheck className="w-3.5 h-3.5" />
+                            <span>SAMPAI</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setProofModalTx({
+                                tx,
+                                mode: 'form',
+                              })
+                            }
+                            className={`min-h-[38px] px-3.5 rounded-xl text-xs font-black border transition cursor-pointer flex items-center gap-1 ${
+                              dStatus === 'DITERIMA'
+                                ? 'bg-emerald-500 text-stone-950 border-emerald-400'
+                                : 'bg-stone-950 hover:bg-stone-800 text-emerald-300 border-stone-800'
+                            }`}
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>✓ DITERIMA (BUKTI)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateStatus(tx, 'DIBATALKAN', 'GAGAL DIANTAR')}
+                            className={`min-h-[38px] px-3 rounded-xl text-xs font-black border transition cursor-pointer flex items-center gap-1 ${
+                              dStatus === 'GAGAL DIANTAR'
+                                ? 'bg-rose-600 text-white border-rose-500'
+                                : 'bg-stone-950 hover:bg-stone-800 text-rose-400 border-stone-800'
+                            }`}
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>GAGAL DIANTAR</span>
                           </button>
                         </>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleUpdateStatus(tx, 'SIAP');
-                            callTakeawayQueueVoice(queueNo, tx.nama_pelanggan);
-                          }}
-                          className={`min-h-[38px] px-3 rounded-xl text-xs font-black border transition cursor-pointer flex items-center gap-1 ${
-                            normStatus === 'SIAP'
-                              ? 'bg-teal-500 text-stone-950 border-teal-400'
-                              : 'bg-stone-950 hover:bg-stone-800 text-teal-300 border-stone-800'
-                          }`}
-                        >
-                          <PackageCheck className="w-3.5 h-3.5" />
-                          <span>SIAP DIAMBIL</span>
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateStatus(tx, 'SIAP');
+                              callTakeawayQueueVoice(queueNo, tx.nama_pelanggan);
+                            }}
+                            className={`min-h-[38px] px-3 rounded-xl text-xs font-black border transition cursor-pointer flex items-center gap-1 ${
+                              normStatus === 'SIAP'
+                                ? 'bg-teal-500 text-stone-950 border-teal-400'
+                                : 'bg-stone-950 hover:bg-stone-800 text-teal-300 border-stone-800'
+                            }`}
+                          >
+                            <PackageCheck className="w-3.5 h-3.5" />
+                            <span>SIAP DIAMBIL</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateStatus(tx, 'SELESAI')}
+                            className={`min-h-[38px] px-3.5 rounded-xl text-xs font-black border transition cursor-pointer flex items-center gap-1 ${
+                              normStatus === 'SELESAI'
+                                ? 'bg-emerald-500 text-stone-950 border-emerald-400'
+                                : 'bg-stone-950 hover:bg-stone-800 text-emerald-300 border-stone-800'
+                            }`}
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>SELESAI</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateStatus(tx, 'DIBATALKAN')}
+                            className={`min-h-[38px] px-3 rounded-xl text-xs font-black border transition cursor-pointer flex items-center gap-1 ${
+                              normStatus === 'DIBATALKAN'
+                                ? 'bg-rose-600 text-white border-rose-500'
+                                : 'bg-stone-950 hover:bg-stone-800 text-rose-400 border-stone-800'
+                            }`}
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>DIBATALKAN</span>
+                          </button>
+                        </>
                       )}
-
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateStatus(tx, 'SELESAI', isDelivery ? 'SELESAI' : undefined)}
-                        className={`min-h-[38px] px-3.5 rounded-xl text-xs font-black border transition cursor-pointer flex items-center gap-1 ${
-                          normStatus === 'SELESAI'
-                            ? 'bg-emerald-500 text-stone-950 border-emerald-400'
-                            : 'bg-stone-950 hover:bg-stone-800 text-emerald-300 border-stone-800'
-                        }`}
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>SELESAI</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateStatus(tx, 'DIBATALKAN', isDelivery ? 'DIBATALKAN' : undefined)}
-                        className={`min-h-[38px] px-3 rounded-xl text-xs font-black border transition cursor-pointer flex items-center gap-1 ${
-                          normStatus === 'DIBATALKAN'
-                            ? 'bg-rose-600 text-white border-rose-500'
-                            : 'bg-stone-950 hover:bg-stone-800 text-rose-400 border-stone-800'
-                        }`}
-                      >
-                        <XCircle className="w-3.5 h-3.5" />
-                        <span>DIBATALKAN</span>
-                      </button>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {isDelivery && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setProofModalTx({ tx, mode: 'form' })}
+                            className="min-h-[38px] px-3 rounded-xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
+                          >
+                            <Camera className="w-3.5 h-3.5" />
+                            <span>Foto Bukti</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setProofModalTx({ tx, mode: 'view' })}
+                            className="min-h-[38px] px-3 rounded-xl bg-stone-950 hover:bg-stone-800 border border-orange-500/40 text-orange-300 font-black text-xs flex items-center gap-1.5 transition cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Bukti Digital</span>
+                          </button>
+                        </>
+                      )}
                       {!isDelivery && (
                         <button
                           type="button"
@@ -717,6 +778,28 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
             )}
           </div>
         </>
+      )}
+
+      {proofModalTx && (
+        <DeliveryProofModal
+          isOpen={true}
+          onClose={() => setProofModalTx(null)}
+          transaction={proofModalTx.tx}
+          existingProof={
+            StorageService.getDeliveryProofs().find(
+              (p) => p.orderId === proofModalTx.tx.id_transaksi
+            ) || null
+          }
+          settings={settings}
+          currentUserRole="Kasir"
+          currentUserName={settings.activeCashier || 'Kasir Warung Bang Kobra'}
+          initialMode={proofModalTx.mode}
+          onProofSaved={(savedProof, updatedTx) => {
+            StorageService.upsertDeliveryProof(savedProof);
+            onUpdateTransaction(updatedTx);
+          }}
+          showToast={showToast}
+        />
       )}
     </div>
   );

@@ -513,6 +513,36 @@
         }
       },
       "required": ["id", "storeName"]
+    },
+    "DeliveryProof": {
+      "title": "DeliveryProof",
+      "description": "Official Delivery Proof record for DQM orders in Warung Bang Kobra",
+      "type": "object",
+      "properties": {
+        "deliveryId": { "type": "string", "maxLength": 64 },
+        "orderId": { "type": "string", "maxLength": 64 },
+        "orderNumber": { "type": "string", "maxLength": 64 },
+        "customerId": { "type": "string", "maxLength": 128 },
+        "customerName": { "type": "string", "maxLength": 120 },
+        "customerPhone": { "type": "string", "maxLength": 32 },
+        "destination": { "type": "string", "enum": ["DQM"] },
+        "detailLocation": { "type": "string", "maxLength": 250 },
+        "courierId": { "type": "string", "maxLength": 128 },
+        "courierName": { "type": "string", "maxLength": 120 },
+        "receiverName": { "type": "string", "maxLength": 120 },
+        "receiverPhone": { "type": "string", "maxLength": 32 },
+        "status": {
+          "type": "string",
+          "enum": ["MENUNGGU", "DIANTAR", "SAMPAI", "DITERIMA", "GAGAL DIANTAR"]
+        },
+        "proofPhotoUrl": { "type": "string" },
+        "deliveryNote": { "type": "string", "maxLength": 400 },
+        "sentAt": { "type": "string", "maxLength": 64 },
+        "deliveredAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["deliveryId", "orderId", "orderNumber", "customerName", "destination", "status"]
     }
   },
   "firestore": {
@@ -531,6 +561,10 @@
     "/orders/{orderId}": {
       "schema": "Order",
       "description": "Transactions and customer QR orders. Creation allowed for valid order schemas; updates permitted for staff or matching transaction ID; deletion restricted to Admin and Owner."
+    },
+    "/delivery_proofs/{proofId}": {
+      "schema": "DeliveryProof",
+      "description": "DQM delivery proof documents linked to orders by orderId. Readable by customers and staff; status updates restricted to Owner, Admin, Kasir, Staff, and Delivery."
     },
     "/expenses/{expenseId}": {
       "schema": "Expense",

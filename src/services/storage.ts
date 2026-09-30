@@ -8,6 +8,7 @@ import {
   SyncState,
   CategoryItem,
   WarungUser,
+  DeliveryProof,
 } from '../types';
 import {
   resolveOrderType,
@@ -37,6 +38,7 @@ const STORAGE_KEYS = {
   SETTINGS: 'wkb_pos_settings',
   SYNC_STATE: 'wkb_pos_sync_state',
   OFFLINE_QUEUE: 'wkb_pos_offline_queue',
+  DELIVERY_PROOFS: 'wkb_pos_delivery_proofs',
 };
 
 function safeGetItem<T>(key: string, fallback: T): T {
@@ -339,6 +341,29 @@ export class StorageService {
 
   static saveStockMutations(mutations: StockMutation[]): void {
     safeSetItem(STORAGE_KEYS.STOCK_MUTATIONS, mutations);
+  }
+
+  // DELIVERY PROOFS DQM
+  static getDeliveryProofs(): DeliveryProof[] {
+    const raw = safeGetItem<DeliveryProof[]>(STORAGE_KEYS.DELIVERY_PROOFS, []);
+    return Array.isArray(raw) ? raw : [];
+  }
+
+  static saveDeliveryProofs(proofs: DeliveryProof[]): void {
+    safeSetItem(STORAGE_KEYS.DELIVERY_PROOFS, proofs);
+  }
+
+  static upsertDeliveryProof(proof: DeliveryProof): DeliveryProof[] {
+    const list = this.getDeliveryProofs();
+    const idx = list.findIndex((p) => p.orderId === proof.orderId || p.deliveryId === proof.deliveryId);
+    let updated: DeliveryProof[];
+    if (idx >= 0) {
+      updated = list.map((item, i) => (i === idx ? { ...item, ...proof } : item));
+    } else {
+      updated = [proof, ...list];
+    }
+    this.saveDeliveryProofs(updated);
+    return updated;
   }
 
   static recordStockAdjustment(

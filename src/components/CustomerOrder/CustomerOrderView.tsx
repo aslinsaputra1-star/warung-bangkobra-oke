@@ -44,6 +44,7 @@ import { StorageService } from '../../services/storage';
 import { saveOrderToFirebase, db } from '../../services/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { BrandLogo } from '../Common/BrandLogo';
+import { DeliveryProofModal } from '../Orders/DeliveryProofModal';
 
 interface CustomerOrderViewProps {
   products: Product[];
@@ -101,6 +102,7 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [liveStatus, setLiveStatus] = useState<OrderQueueStatus>('MENUNGGU');
   const [liveDeliveryStatus, setLiveDeliveryStatus] = useState<DeliveryStatus>('MENUNGGU');
+  const [isViewingCustomerProof, setIsViewingCustomerProof] = useState(false);
   const [completedOrder, setCompletedOrder] = useState<{
     orderId: string;
     total: number;
@@ -118,13 +120,24 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
         orderRef,
         (snap) => {
           if (snap.exists()) {
-            const data = snap.data();
+            const data = snap.data() as Partial<Transaction>;
             if (data?.status) {
               setLiveStatus(normalizeOrderQueueStatus(data.status));
             }
             if (data?.deliveryStatus) {
               setLiveDeliveryStatus(normalizeDeliveryStatus(data.deliveryStatus, data.status));
             }
+            setCompletedOrder((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    createdOrder: {
+                      ...prev.createdOrder,
+                      ...data,
+                    },
+                  }
+                : null
+            );
           }
         },
         (err) => {
@@ -263,8 +276,7 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
     setIsSubmitting(true);
 
     const isDelivery = orderType === 'DELIVERY_DQM';
-    const prefix = isDelivery ? 'DQM' : 'BKS';
-    const orderId = StorageService.generateInvoiceNumber(prefix);
+    const orderId = StorageService.generateInvoiceNumber('WBK');
 
     const now = new Date();
     const tanggal = now.toISOString().split('T')[0];
@@ -874,88 +886,55 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                   </div>
                 ) : (
                   <div className="space-y-3 pt-1">
-                    {/* Area Validation Selector */}
-                    <div>
-                      <label className="text-[11px] text-stone-400 block mb-1 font-semibold">
-                        Area Pengantaran <span className="text-rose-400">*</span>
-                      </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedAreaOption('DQM')}
-                          className={`p-2.5 rounded-xl border text-xs font-extrabold transition cursor-pointer ${
-                            selectedAreaOption === 'DQM'
-                              ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
-                              : 'bg-stone-900 border-stone-800 text-stone-400'
-                          }`}
-                        >
-                          ✅ Area: PESANTREN DQM
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedAreaOption('OUTSIDE')}
-                          className={`p-2.5 rounded-xl border text-xs font-extrabold transition cursor-pointer ${
-                            selectedAreaOption === 'OUTSIDE'
-                              ? 'bg-rose-500/20 border-rose-500 text-rose-300'
-                              : 'bg-stone-900 border-stone-800 text-stone-400'
-                          }`}
-                        >
-                          ❌ Di Luar Pesantren DQM
-                        </button>
-                      </div>
+                    <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-xs font-extrabold text-emerald-300 flex items-center justify-between">
+                      <span>✅ Tujuan Pengantaran: AREA PESANTREN DQM</span>
+                      <span className="px-2 py-0.5 rounded bg-emerald-500 text-stone-950 text-[10px] font-black">
+                        KHUSUS DQM
+                      </span>
                     </div>
 
-                    {selectedAreaOption === 'OUTSIDE' ? (
-                      <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-500 text-rose-200 text-xs font-extrabold flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                        <span>Delivery hanya tersedia untuk area Pesantren DQM.</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div>
-                          <label className="text-[11px] text-stone-400 block mb-1 font-semibold">
-                            Lokasi DQM (Asrama / Blok / Gedung) <span className="text-rose-400">*</span>
-                          </label>
-                          <select
-                            value={deliveryLocation}
-                            onChange={(e) => setDeliveryLocation(e.target.value)}
-                            className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
-                          >
-                            {DQM_LOCATIONS.map((loc) => (
-                              <option key={loc} value={loc}>
-                                {loc}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                    <div>
+                      <label className="text-[11px] text-stone-400 block mb-1 font-semibold">
+                        Lokasi DQM (Asrama / Blok / Gedung) <span className="text-rose-400">*</span>
+                      </label>
+                      <select
+                        value={deliveryLocation}
+                        onChange={(e) => setDeliveryLocation(e.target.value)}
+                        className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
+                      >
+                        {DQM_LOCATIONS.map((loc) => (
+                          <option key={loc} value={loc}>
+                            {loc}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                        <div>
-                          <label className="text-[11px] text-stone-400 block mb-1 font-semibold">
-                            Detail Lokasi (Kamar / Blok / Lantai) <span className="text-rose-400">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="Contoh: Kamar 12 / Blok B Lantai 2"
-                            value={deliveryDetail}
-                            onChange={(e) => setDeliveryDetail(e.target.value)}
-                            className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
-                          />
-                        </div>
+                    <div>
+                      <label className="text-[11px] text-stone-400 block mb-1 font-semibold">
+                        Detail Lokasi (Kamar / Blok / Lantai) <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Contoh: Kamar 12 / Blok B Lantai 2"
+                        value={deliveryDetail}
+                        onChange={(e) => setDeliveryDetail(e.target.value)}
+                        className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
 
-                        <div>
-                          <label className="text-[11px] text-stone-400 block mb-1 font-semibold">
-                            Catatan Pengantaran
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="Contoh: Antar setelah Maghrib"
-                            value={deliveryNote}
-                            onChange={(e) => setDeliveryNote(e.target.value)}
-                            className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
-                          />
-                        </div>
-                      </>
-                    )}
+                    <div>
+                      <label className="text-[11px] text-stone-400 block mb-1 font-semibold">
+                        Catatan Pengantaran
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Contoh: Antar setelah Maghrib"
+                        value={deliveryNote}
+                        onChange={(e) => setDeliveryNote(e.target.value)}
+                        className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -1262,6 +1241,17 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
             </div>
 
             <div className="space-y-2">
+              {orderType === 'DELIVERY_DQM' && (
+                <button
+                  type="button"
+                  onClick={() => setIsViewingCustomerProof(true)}
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-black text-xs shadow-lg transition active:scale-95 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>LIHAT BUKTI PENGANTARAN DQM</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => {
@@ -1286,6 +1276,20 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Customer Read-Only Delivery Proof Modal */}
+      {completedOrder && isViewingCustomerProof && (
+        <DeliveryProofModal
+          isOpen={isViewingCustomerProof}
+          onClose={() => setIsViewingCustomerProof(false)}
+          transaction={completedOrder.createdOrder}
+          settings={settings}
+          currentUserRole="Customer"
+          readOnlyCustomerView={true}
+          initialMode="view"
+          showToast={showToast}
+        />
       )}
     </div>
   );

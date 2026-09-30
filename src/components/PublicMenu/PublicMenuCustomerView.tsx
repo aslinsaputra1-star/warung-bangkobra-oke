@@ -51,6 +51,7 @@ import { StorageService } from '../../services/storage';
 import { saveOrderToFirebase, db } from '../../services/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { BrandLogo } from '../Common/BrandLogo';
+import { DeliveryProofModal } from '../Orders/DeliveryProofModal';
 
 interface PublicMenuCustomerViewProps {
   products: Product[];
@@ -109,6 +110,7 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
   } | null>(null);
   const [liveStatus, setLiveStatus] = useState<OrderQueueStatus>('MENUNGGU');
   const [liveDeliveryStatus, setLiveDeliveryStatus] = useState<DeliveryStatus>('MENUNGGU');
+  const [isViewingCustomerProof, setIsViewingCustomerProof] = useState(false);
 
   // Real-time listener for order status in Firebase Firestore
   useEffect(() => {
@@ -119,13 +121,24 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
         orderRef,
         (snap) => {
           if (snap.exists()) {
-            const data = snap.data();
+            const data = snap.data() as Partial<Transaction>;
             if (data?.status) {
               setLiveStatus(normalizeOrderStatus(data.status));
             }
             if (data?.deliveryStatus) {
               setLiveDeliveryStatus(normalizeDeliveryStatus(data.deliveryStatus, data.status));
             }
+            setCompletedOrder((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    createdOrder: {
+                      ...prev.createdOrder,
+                      ...data,
+                    },
+                  }
+                : null
+            );
           }
         },
         (err) => {
@@ -317,8 +330,7 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
 
     try {
       const isDelivery = orderType === 'DELIVERY_DQM';
-      const prefix = isDelivery ? 'DQM' : 'BKS';
-      const orderId = StorageService.generateInvoiceNumber(prefix);
+      const orderId = StorageService.generateInvoiceNumber('WBK');
       const now = new Date();
       const tanggal = now.toISOString().split('T')[0];
       const jam = now.toTimeString().split(' ')[0];
@@ -1133,91 +1145,59 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                   </div>
                 </div>
 
-                {/* Conditional Fields based on Order Type */}
+                {/* Conditional Fields based on Order Type (Strictly locked to DQM) */}
                 {orderType === 'DELIVERY_DQM' && (
                   <div className="space-y-3 pt-1">
-                    <div>
-                      <label className="text-[11px] font-bold text-stone-400 mb-1 block">
-                        Area Pengantaran *
-                      </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedAreaOption('DQM')}
-                          className={`p-2.5 rounded-xl border text-xs font-extrabold transition cursor-pointer ${
-                            selectedAreaOption === 'DQM'
-                              ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
-                              : 'bg-stone-950 border-stone-800 text-stone-400'
-                          }`}
-                        >
-                          ✅ Area: PESANTREN DQM
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedAreaOption('OUTSIDE')}
-                          className={`p-2.5 rounded-xl border text-xs font-extrabold transition cursor-pointer ${
-                            selectedAreaOption === 'OUTSIDE'
-                              ? 'bg-rose-500/20 border-rose-500 text-rose-300'
-                              : 'bg-stone-950 border-stone-800 text-stone-400'
-                          }`}
-                        >
-                          ❌ Di Luar Pesantren DQM
-                        </button>
-                      </div>
+                    <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-xs font-extrabold text-emerald-300 flex items-center justify-between">
+                      <span>✅ Tujuan Pengantaran: AREA PESANTREN DQM</span>
+                      <span className="px-2 py-0.5 rounded bg-emerald-500 text-stone-950 text-[10px] font-black">
+                        KHUSUS DQM
+                      </span>
                     </div>
 
-                    {selectedAreaOption === 'OUTSIDE' ? (
-                      <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-500 text-rose-200 text-xs font-extrabold flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                        <span>Delivery hanya tersedia untuk area Pesantren DQM.</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div>
-                          <label className="text-[11px] font-bold text-stone-400 mb-1 block">
-                            Lokasi DQM (Asrama / Blok / Gedung) *
-                          </label>
-                          <select
-                            value={deliveryLocation}
-                            onChange={(e) => setDeliveryLocation(e.target.value)}
-                            className="w-full text-xs px-3 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-stone-100 focus:outline-none focus:border-orange-500"
-                          >
-                            {DQM_LOCATIONS.map((loc) => (
-                              <option key={loc} value={loc}>
-                                {loc}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-stone-400 mb-1 block">
+                        Lokasi DQM (Asrama / Blok / Gedung) *
+                      </label>
+                      <select
+                        value={deliveryLocation}
+                        onChange={(e) => setDeliveryLocation(e.target.value)}
+                        className="w-full text-xs px-3 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-stone-100 focus:outline-none focus:border-orange-500"
+                      >
+                        {DQM_LOCATIONS.map((loc) => (
+                          <option key={loc} value={loc}>
+                            {loc}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                        <div>
-                          <label className="text-[11px] font-bold text-stone-400 mb-1 block">
-                            Detail Lokasi (Kamar / Blok / Lantai) *
-                          </label>
-                          <input
-                            type="text"
-                            value={deliveryDetail}
-                            onChange={(e) => setDeliveryDetail(e.target.value)}
-                            placeholder="Contoh: Kamar 12 / Asrama Putra"
-                            className="w-full text-xs px-3 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-stone-100 focus:outline-none focus:border-orange-500"
-                            required
-                          />
-                        </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-stone-400 mb-1 block">
+                        Detail Lokasi (Kamar / Blok / Lantai) *
+                      </label>
+                      <input
+                        type="text"
+                        value={deliveryDetail}
+                        onChange={(e) => setDeliveryDetail(e.target.value)}
+                        placeholder="Contoh: Kamar 12 / Asrama Putra"
+                        className="w-full text-xs px-3 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-stone-100 focus:outline-none focus:border-orange-500"
+                        required
+                      />
+                    </div>
 
-                        <div>
-                          <label className="text-[11px] font-bold text-stone-400 mb-1 block">
-                            Catatan Pesanan / Pengantaran
-                          </label>
-                          <input
-                            type="text"
-                            value={deliveryNote}
-                            onChange={(e) => setDeliveryNote(e.target.value)}
-                            placeholder="Contoh: Antar setelah Maghrib"
-                            className="w-full text-xs px-3 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-stone-100 focus:outline-none focus:border-orange-500"
-                          />
-                        </div>
-                      </>
-                    )}
+                    <div>
+                      <label className="text-[11px] font-bold text-stone-400 mb-1 block">
+                        Catatan Pesanan / Pengantaran
+                      </label>
+                      <input
+                        type="text"
+                        value={deliveryNote}
+                        onChange={(e) => setDeliveryNote(e.target.value)}
+                        placeholder="Contoh: Antar setelah Maghrib"
+                        className="w-full text-xs px-3 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-stone-100 focus:outline-none focus:border-orange-500"
+                      />
+                    </div>
                   </div>
                 )}
 
@@ -1429,6 +1409,17 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
 
             {/* Action Buttons */}
             <div className="space-y-2">
+              {orderType === 'DELIVERY_DQM' && (
+                <button
+                  type="button"
+                  onClick={() => setIsViewingCustomerProof(true)}
+                  className="w-full min-h-[46px] py-2.5 px-4 rounded-2xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg transition cursor-pointer"
+                >
+                  <ReceiptText className="w-4 h-4" />
+                  <span>LIHAT BUKTI PENGANTARAN DQM</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={handleOpenWhatsAppConfirmation}
@@ -1448,6 +1439,20 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Customer Read-Only Delivery Proof Modal */}
+      {completedOrder && isViewingCustomerProof && (
+        <DeliveryProofModal
+          isOpen={isViewingCustomerProof}
+          onClose={() => setIsViewingCustomerProof(false)}
+          transaction={completedOrder.createdOrder}
+          settings={settings}
+          currentUserRole="Customer"
+          readOnlyCustomerView={true}
+          initialMode="view"
+          showToast={showToast}
+        />
       )}
 
       {/* Footer */}
