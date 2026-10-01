@@ -47,6 +47,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<CategoryItem | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<CategoryItem | null>(null);
 
   // Form State
   const [formName, setFormName] = useState('');
@@ -131,16 +132,12 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
       return;
     }
 
-    try {
-      if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-        if (!window.confirm(`Hapus kategori "${cat.nama}"?`)) {
-          return;
-        }
-      }
-    } catch {
-      // Continue if window.confirm is restricted
-    }
+    setCategoryToDelete(cat);
+  };
 
+  const confirmDeleteCategory = () => {
+    if (!categoryToDelete) return;
+    const cat = categoryToDelete;
     if (onDeleteCategory) {
       onDeleteCategory(cat.id);
     } else {
@@ -148,6 +145,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
       setLocalCategories(updated);
     }
     showToast(`Kategori "${cat.nama}" berhasil dihapus`, 'info');
+    setCategoryToDelete(null);
   };
 
   const getCategoryIcon = (nama: string) => {
@@ -398,6 +396,36 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Delete Category Modal */}
+      {categoryToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-stone-900 border-2 border-red-600/40 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl p-6 space-y-4">
+            <h3 className="text-base font-black text-white">
+              Hapus Kategori "{categoryToDelete.nama}"?
+            </h3>
+            <p className="text-xs text-stone-300 leading-relaxed">
+              Apakah Anda yakin ingin menghapus kategori ini dari katalog menu?
+            </p>
+            <div className="pt-2 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setCategoryToDelete(null)}
+                className="min-h-[42px] px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-bold cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteCategory}
+                className="min-h-[42px] px-5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-black shadow-lg shadow-red-950/50 cursor-pointer"
+              >
+                Ya, Hapus Kategori
+              </button>
+            </div>
           </div>
         </div>
       )}

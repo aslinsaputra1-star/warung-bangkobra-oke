@@ -1100,13 +1100,13 @@ export const DeliveryProofModal: React.FC<DeliveryProofModalProps> = ({
                 </div>
               </div>
 
-              {/* Action Buttons Bar (Section 6 & 8) */}
+              {/* Action Buttons Bar */}
               <div className="space-y-3 print:hidden">
                 {/* Primary WhatsApp Share CTA */}
                 <button
                   type="button"
                   onClick={handleSendWhatsAppProof}
-                  className="w-full min-h-[54px] flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-black text-sm shadow-xl shadow-emerald-950/50 transition active:scale-95 cursor-pointer"
+                  className="w-full min-h-[54px] flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-black text-xs sm:text-sm shadow-xl shadow-emerald-950/50 transition active:scale-95 cursor-pointer"
                 >
                   <MessageCircle className="w-5 h-5" />
                   <span>KIRIM BUKTI KE WHATSAPP</span>

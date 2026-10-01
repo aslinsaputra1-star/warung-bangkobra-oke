@@ -48,12 +48,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   }, [transactions, todayStr]);
 
   const todaySales = useMemo(() => {
-    return todayTransactions.reduce((sum, tx) => sum + tx.total, 0);
+    return todayTransactions.reduce((sum, tx) => sum + Number(tx.total || 0), 0);
   }, [todayTransactions]);
 
   const todayItemsSold = useMemo(() => {
     return todayTransactions.reduce(
-      (sum, tx) => sum + tx.items.reduce((s, i) => s + i.qty, 0),
+      (sum, tx) => sum + (tx.items || []).reduce((s, i) => s + Number(i.qty || 0), 0),
       0
     );
   }, [todayTransactions]);
@@ -62,7 +62,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const todayProfit = useMemo(() => {
     let profit = 0;
     todayTransactions.forEach((tx) => {
-      tx.items.forEach((item) => {
+      (tx.items || []).forEach((item) => {
         const prod = products.find((p) => p.id === item.id_produk || p.nama === item.nama_produk);
         const modal = prod ? prod.harga_modal : item.harga * 0.5; // fallback 50% modal if unknown
         profit += (item.harga - modal) * item.qty;
@@ -81,7 +81,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const counts: Record<string, { name: string; qty: number; total: number; foto: string }> = {};
     transactions.forEach((tx) => {
       if (normalizeOrderStatus(tx.status) !== 'DIBATALKAN') {
-        tx.items.forEach((item) => {
+        (tx.items || []).forEach((item) => {
           if (!counts[item.nama_produk]) {
             const prod = products.find(
               (p) => p.id === item.id_produk || p.nama === item.nama_produk

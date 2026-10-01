@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Printer, Share2, Download, CheckCircle2, X, Check } from 'lucide-react';
+import { Printer, Share2, Download, CheckCircle2, Check } from 'lucide-react';
 import { Transaction, StoreSettings } from '../../types';
 import { BrandLogo } from '../Common/BrandLogo';
 import {
@@ -8,6 +8,7 @@ import {
   openWhatsAppChat,
   getTakeawayQueueNumber,
   resolveOrderType,
+  buildDigitalReceiptUrl,
 } from '../../utils/formatters';
 
 interface ReceiptModalProps {
@@ -215,42 +216,48 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="p-4 bg-stone-950/60 border-t border-stone-800 space-y-2">
+        <div className="p-4 bg-stone-950/60 border-t border-stone-800 space-y-2.5">
           <div className="grid grid-cols-2 gap-2">
-            <button
-              id="btn-print-receipt"
-              onClick={handlePrint}
-              className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-sm transition shadow-lg shadow-amber-900/30 active:scale-95"
-            >
-              <Printer className="w-4 h-4" />
-              <span>Cetak Struk</span>
-            </button>
             <button
               id="btn-whatsapp-receipt"
               onClick={handleSendWhatsApp}
-              className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm transition shadow-lg shadow-emerald-900/30 active:scale-95"
+              className="flex items-center justify-center gap-1.5 py-3 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition shadow-lg shadow-emerald-900/30 active:scale-95 cursor-pointer"
             >
               <Share2 className="w-4 h-4" />
-              <span>Kirim WA</span>
+              <span>KIRIM WA</span>
+            </button>
+
+            <button
+              id="btn-print-receipt"
+              onClick={handlePrint}
+              className="flex items-center justify-center gap-1.5 py-3 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-black text-xs transition shadow-lg shadow-amber-900/30 active:scale-95 cursor-pointer"
+            >
+              <Printer className="w-4 h-4" />
+              <span>CETAK STRUK</span>
             </button>
           </div>
 
           <div className="grid grid-cols-2 gap-2 pt-1">
             <button
-              onClick={handleCopyText}
-              className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl font-semibold text-xs border transition ${
+              onClick={() => {
+                const url = buildDigitalReceiptUrl(transaction.id_transaksi);
+                navigator.clipboard.writeText(`${buildCashierReceiptWhatsAppMessage(transaction, settings.storeName)}\n\nStruk Digital:\n${url}`);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2500);
+              }}
+              className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl font-semibold text-xs border transition cursor-pointer ${
                 copied
                   ? 'bg-emerald-950/80 border-emerald-600 text-emerald-300'
                   : 'bg-stone-800 hover:bg-stone-700 text-stone-300 border-stone-700'
               }`}
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Download className="w-3.5 h-3.5" />}
-              <span>{copied ? 'Tersalin!' : 'Salin Teks'}</span>
+              <span>{copied ? 'Tersalin!' : 'Salin Teks & Link'}</span>
             </button>
             <button
               id="btn-receipt-new-tx"
               onClick={onNewTransaction}
-              className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-stone-700 hover:bg-stone-600 text-white font-bold text-xs transition"
+              className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-stone-700 hover:bg-stone-600 text-white font-bold text-xs transition cursor-pointer"
             >
               <span>+ Transaksi Baru</span>
             </button>

@@ -10,45 +10,70 @@ import {
   X,
   Search,
   CheckCircle2,
+  Package,
 } from 'lucide-react';
-import { Product, StockMutation, StoreSettings } from '../../types';
+import { Product, ProductVariant, StockMutation, StoreSettings } from '../../types';
 import { StorageService } from '../../services/storage';
 
 interface StockViewProps {
   products: Product[];
+  variants?: ProductVariant[];
   mutations: StockMutation[];
   settings: StoreSettings;
-  onStockUpdated: (prods: Product[], muts: StockMutation[]) => void;
+  onStockUpdated: (prods: Product[], muts: StockMutation[], vars?: ProductVariant[]) => void;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 export const StockView: React.FC<StockViewProps> = ({
   products,
+  variants = [],
   mutations,
   settings,
   onStockUpdated,
   showToast,
 }) => {
+  const [stockTab, setStockTab] = useState<'variants' | 'products'>('variants');
   const [search, setSearch] = useState('');
   const [filterLowStockOnly, setFilterLowStockOnly] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalTargetMode, setModalTargetMode] = useState<'product' | 'variant'>('variant');
   const [selectedProductId, setSelectedProductId] = useState<string>('');
+  const [selectedVariantId, setSelectedVariantId] = useState<string>('');
   const [mutationType, setMutationType] = useState<'in' | 'out' | 'adjustment'>('in');
   const [qty, setQty] = useState<number>(10);
   const [keterangan, setKeterangan] = useState<string>('');
 
   const filteredProducts = products.filter((p) => {
+    const q = (search || '').toLowerCase();
     const matchesSearch =
-      p.nama.toLowerCase().includes(search.toLowerCase()) ||
-      p.sku.toLowerCase().includes(search.toLowerCase());
+      (p.nama || '').toLowerCase().includes(q) ||
+      (p.sku || '').toLowerCase().includes(q);
     const matchesLowStock = !filterLowStockOnly || p.stok <= p.stok_minimum;
     return matchesSearch && matchesLowStock;
   });
 
-  const lowStockCount = products.filter((p) => p.stok <= p.stok_minimum).length;
+  const filteredVariants = variants.filter((v) => {
+    const q = (search || '').toLowerCase();
+    const prodName =
+      v.productName || products.find((p) => p.id === v.productId)?.nama || '';
+    const matchesSearch =
+      prodName.toLowerCase().includes(q) ||
+      (v.variantName || '').toLowerCase().includes(q) ||
+      (v.sku || '').toLowerCase().includes(q);
+    const matchesLowStock = !filterLowStockOnly || v.stock <= v.minStock;
+    return matchesSearch && matchesLowStock;
+  });
 
-  const openAdjustmentModal = (prodId?: string, type: 'in' | 'out' | 'adjustment' = 'in') => {
-    setSelectedProductId(prodId || (products[0]?.id || ''));
+  const lowStockProductCount = products.filter((p) => p.stok <= p.stok_minimum).length;
+  const lowStockVariantCount = variants.filter((v) => v.stock <= v.minStock).length;
+  const lowStockCount = lowStockProductCount + lowStockVariantCount;
+
+  const openAdjustmentModal = (
+    prodId?: string,
+    type: 'in' | 'out' | 'adjustment' = 'in'
+  ) => {
+    setModalTargetMode('product');
+    setSelectedProductId(prodId || products[0]?.id || '');
     setMutationType(type);
     setQty(10);
     setKeterangan(
@@ -61,8 +86,44 @@ export const StockView: React.FC<StockViewProps> = ({
     setIsModalOpen(true);
   };
 
+  const openVariantAdjustmentModal = (
+    varId?: string,
+    type: 'in' | 'out' | 'adjustment' = 'in'
+  ) => {
+    setModalTargetMode('variant');
+    const targetVar = variants.find((v) => v.variantId === varId) || variants[0];
+    setSelectedVariantId(targetVar?.variantId || '');
+    setMutationType(type);
+    setQty(type === 'adjustment' ? targetVar?.stock ?? 10 : 10);
+    setKeterangan(
+      type === 'in'
+        ? 'Stok masuk varian rasa'
+        : type === 'out'
+        ? 'Stok keluar / rusak varian rasa'
+        : 'Penyesuaian stok fisik varian (Opname)'
+    );
+    setIsModalOpen(true);
+  };
+
   const handleSaveMutation = (e: React.FormEvent) => {
     e.preventDefault();
+    if (modalTargetMode === 'variant') {
+      if (!selectedVariantId) {
+        showToast('Pilih varian rasa yang akan disesuaikan', 'error');
+        return;
+      }
+      const res = StorageService.recordVariantStockAdjustment(
+        selectedVariantId,
+        mutationType,
+        Number(qty),
+        keterangan.trim()
+      );
+      onStockUpdated(res.products, res.mutations, res.variants);
+      setIsModalOpen(false);
+      showToast('Mutasi stok varian rasa berhasil dicatat!', 'success');
+      return;
+    }
+
     if (!selectedProductId) {
       showToast('Pilih produk yang akan disesuaikan', 'error');
       return;
@@ -97,21 +158,57 @@ export const StockView: React.FC<StockViewProps> = ({
         <div className="flex items-center gap-2">
           <button
             id="btn-add-stock-in"
-            onClick={() => openAdjustmentModal(undefined, 'in')}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-950/30 transition active:scale-95"
+            onClick={() =>
+              stockTab === 'variants'
+                ? openVariantAdjustmentModal(undefined, 'in')
+                : openAdjustmentModal(undefined, 'in')
+            }
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-950/30 transition active:scale-95 cursor-pointer"
           >
             <ArrowDownRight className="w-4 h-4" />
             <span>+ Stok Masuk</span>
           </button>
           <button
             id="btn-add-stock-out"
-            onClick={() => openAdjustmentModal(undefined, 'out')}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-950/30 transition active:scale-95"
+            onClick={() =>
+              stockTab === 'variants'
+                ? openVariantAdjustmentModal(undefined, 'out')
+                : openAdjustmentModal(undefined, 'out')
+            }
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-950/30 transition active:scale-95 cursor-pointer"
           >
             <ArrowUpRight className="w-4 h-4" />
             <span>- Stok Keluar</span>
           </button>
         </div>
+      </div>
+
+      {/* Mode Switch: Stok Varian Rasa vs Stok Produk Utama */}
+      <div className="flex items-center gap-2 bg-stone-900 border border-stone-800 rounded-2xl p-2">
+        <button
+          type="button"
+          onClick={() => setStockTab('variants')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer ${
+            stockTab === 'variants'
+              ? 'bg-amber-500 text-stone-950 shadow'
+              : 'text-stone-300 hover:bg-stone-800'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>Stok Per Varian Rasa ({variants.length} Varian)</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setStockTab('products')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer ${
+            stockTab === 'products'
+              ? 'bg-amber-500 text-stone-950 shadow'
+              : 'text-stone-300 hover:bg-stone-800'
+          }`}
+        >
+          <Package className="w-4 h-4" />
+          <span>Stok Produk Utama ({products.length} Menu)</span>
+        </button>
       </div>
 
       {/* Stock Control Status Banner */}
@@ -163,60 +260,153 @@ export const StockView: React.FC<StockViewProps> = ({
         />
       </div>
 
-      {/* Stock Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {filteredProducts.map((p) => {
-          const isLow = p.stok <= p.stok_minimum;
-          return (
-            <div
-              key={p.id}
-              className={`p-4 rounded-2xl bg-stone-900 border transition ${
-                isLow ? 'border-rose-800/80 bg-stone-900/90' : 'border-stone-800'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="text-[10px] uppercase font-bold text-amber-500">{p.kategori}</div>
-                  <h4 className="font-bold text-sm text-stone-100 truncate">{p.nama}</h4>
-                  <p className="text-[11px] text-stone-400 font-mono">{p.sku}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <div
-                    className={`text-lg font-black font-mono ${
-                      isLow ? 'text-rose-400 animate-pulse' : 'text-stone-100'
-                    }`}
-                  >
-                    {p.stok}{' '}
-                    <span className="text-xs font-normal text-stone-400">{p.satuan}</span>
+      {/* Stock Cards Grid: Variants or Main Products */}
+      {stockTab === 'variants' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {filteredVariants.map((v) => {
+            const isOut = v.stock <= 0;
+            const isLow = !isOut && v.stock <= v.minStock;
+            const prodName =
+              v.productName || products.find((p) => p.id === v.productId)?.nama || 'Produk';
+            return (
+              <div
+                key={v.variantId}
+                className={`p-4 rounded-2xl bg-stone-900 border transition ${
+                  isOut
+                    ? 'border-rose-600/80 bg-rose-950/15'
+                    : isLow
+                    ? 'border-amber-600/80 bg-stone-900/90'
+                    : 'border-stone-800'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-[10px] uppercase font-black text-amber-400">
+                      {prodName}
+                    </div>
+                    <h4 className="font-bold text-sm text-stone-100 truncate">
+                      Rasa: {v.variantName}
+                    </h4>
+                    <p className="text-[11px] text-stone-400 font-mono">{v.sku}</p>
                   </div>
-                  <div className="text-[10px] text-stone-400">Min: {p.stok_minimum}</div>
+                  <div className="text-right shrink-0">
+                    <div
+                      className={`text-lg font-black font-mono ${
+                        isOut
+                          ? 'text-rose-500'
+                          : isLow
+                          ? 'text-amber-400 animate-pulse'
+                          : 'text-stone-100'
+                      }`}
+                    >
+                      {v.stock}{' '}
+                      <span className="text-xs font-normal text-stone-400">
+                        {v.unit || 'Cup'}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-stone-400 flex items-center justify-end gap-1">
+                      <span>Min: {v.minStock}</span>
+                      {isOut ? (
+                        <span className="text-rose-400 font-black">• HABIS</span>
+                      ) : isLow ? (
+                        <span className="text-amber-400 font-bold">• MENIPIS</span>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 pt-3 mt-3 border-t border-stone-800/80">
+                  <button
+                    onClick={() => openVariantAdjustmentModal(v.variantId, 'in')}
+                    className="flex-1 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-emerald-400 text-xs font-bold cursor-pointer"
+                  >
+                    + Masuk
+                  </button>
+                  <button
+                    onClick={() => openVariantAdjustmentModal(v.variantId, 'out')}
+                    className="flex-1 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-rose-400 text-xs font-bold cursor-pointer"
+                  >
+                    - Keluar
+                  </button>
+                  <button
+                    onClick={() => openVariantAdjustmentModal(v.variantId, 'adjustment')}
+                    className="flex-1 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-bold cursor-pointer"
+                  >
+                    Audit
+                  </button>
                 </div>
               </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {filteredProducts.map((p) => {
+            const isOut = p.stok <= 0;
+            const isLow = !isOut && p.stok <= p.stok_minimum;
+            return (
+              <div
+                key={p.id}
+                className={`p-4 rounded-2xl bg-stone-900 border transition ${
+                  isOut
+                    ? 'border-rose-600/80 bg-rose-950/15'
+                    : isLow
+                    ? 'border-rose-800/80 bg-stone-900/90'
+                    : 'border-stone-800'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-[10px] uppercase font-bold text-amber-500">
+                      {p.kategori}
+                    </div>
+                    <h4 className="font-bold text-sm text-stone-100 truncate">{p.nama}</h4>
+                    <p className="text-[11px] text-stone-400 font-mono">{p.sku}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div
+                      className={`text-lg font-black font-mono ${
+                        isOut
+                          ? 'text-rose-500'
+                          : isLow
+                          ? 'text-rose-400 animate-pulse'
+                          : 'text-stone-100'
+                      }`}
+                    >
+                      {p.stok}{' '}
+                      <span className="text-xs font-normal text-stone-400">{p.satuan}</span>
+                    </div>
+                    <div className="text-[10px] text-stone-400">
+                      Min: {p.stok_minimum} {isOut ? '• HABIS' : isLow ? '• MENIPIS' : ''}
+                    </div>
+                  </div>
+                </div>
 
-              <div className="flex items-center gap-1.5 pt-3 mt-3 border-t border-stone-800/80">
-                <button
-                  onClick={() => openAdjustmentModal(p.id, 'in')}
-                  className="flex-1 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-emerald-400 text-xs font-bold"
-                >
-                  + Masuk
-                </button>
-                <button
-                  onClick={() => openAdjustmentModal(p.id, 'out')}
-                  className="flex-1 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-rose-400 text-xs font-bold"
-                >
-                  - Keluar
-                </button>
-                <button
-                  onClick={() => openAdjustmentModal(p.id, 'adjustment')}
-                  className="flex-1 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-bold"
-                >
-                  Audit
-                </button>
+                <div className="flex items-center gap-1.5 pt-3 mt-3 border-t border-stone-800/80">
+                  <button
+                    onClick={() => openAdjustmentModal(p.id, 'in')}
+                    className="flex-1 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-emerald-400 text-xs font-bold cursor-pointer"
+                  >
+                    + Masuk
+                  </button>
+                  <button
+                    onClick={() => openAdjustmentModal(p.id, 'out')}
+                    className="flex-1 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-rose-400 text-xs font-bold cursor-pointer"
+                  >
+                    - Keluar
+                  </button>
+                  <button
+                    onClick={() => openAdjustmentModal(p.id, 'adjustment')}
+                    className="flex-1 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-bold cursor-pointer"
+                  >
+                    Audit
+                  </button>
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Stock Mutation Log History */}
       <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5 space-y-4 shadow-xl">
@@ -298,20 +488,47 @@ export const StockView: React.FC<StockViewProps> = ({
             </div>
 
             <form onSubmit={handleSaveMutation} className="space-y-3">
-              <div>
-                <label className="text-xs font-bold text-stone-300 mb-1 block">Pilih Menu / Produk</label>
-                <select
-                  value={selectedProductId}
-                  onChange={(e) => setSelectedProductId(e.target.value)}
-                  className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
-                >
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.nama} (Stok saat ini: {p.stok} {p.satuan})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {modalTargetMode === 'variant' ? (
+                <div>
+                  <label className="text-xs font-bold text-stone-300 mb-1 block">
+                    Pilih Varian Rasa
+                  </label>
+                  <select
+                    value={selectedVariantId}
+                    onChange={(e) => setSelectedVariantId(e.target.value)}
+                    className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
+                  >
+                    {variants.map((v) => {
+                      const pName =
+                        v.productName ||
+                        products.find((p) => p.id === v.productId)?.nama ||
+                        'Produk';
+                      return (
+                        <option key={v.variantId} value={v.variantId}>
+                          {pName} - {v.variantName} (Stok: {v.stock} {v.unit || 'Cup'})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="text-xs font-bold text-stone-300 mb-1 block">
+                    Pilih Menu / Produk
+                  </label>
+                  <select
+                    value={selectedProductId}
+                    onChange={(e) => setSelectedProductId(e.target.value)}
+                    className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
+                  >
+                    {products.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nama} (Stok saat ini: {p.stok} {p.satuan})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className="text-xs font-bold text-stone-300 mb-1 block">Jenis Mutasi</label>

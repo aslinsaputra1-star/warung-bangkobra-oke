@@ -520,3 +520,175 @@ export function buildTakeawayReadyWhatsAppMessage(
   );
 }
 
+/**
+ * Buat URL unik Struk Digital (/receipt/WBK-XXXX)
+ */
+export function buildDigitalReceiptUrl(orderId: string): string {
+  if (typeof window === 'undefined') return `/receipt/${orderId}`;
+  return `${window.location.origin}/receipt/${encodeURIComponent(orderId)}`;
+}
+
+/**
+ * Buat URL unik Bukti Delivery DQM (/delivery-proof/WBK-XXXX)
+ */
+export function buildDigitalDeliveryProofUrl(orderId: string): string {
+  if (typeof window === 'undefined') return `/delivery-proof/${orderId}`;
+  return `${window.location.origin}/delivery-proof/${encodeURIComponent(orderId)}`;
+}
+
+/**
+ * Format Jam pendek (misal: 10:30 WIB)
+ */
+export function formatJamWIB(jamOrIso?: string, fallbackJam?: string): string {
+  if (jamOrIso && jamOrIso.includes('T')) {
+    const d = new Date(jamOrIso);
+    if (!isNaN(d.getTime())) {
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      return `${hh}:${mm} WIB`;
+    }
+  }
+  const raw = jamOrIso || fallbackJam || '10:30';
+  const parts = raw.split(':');
+  if (parts.length >= 2) {
+    return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')} WIB`;
+  }
+  return `${raw} WIB`;
+}
+
+/**
+ * Format Pesan Google Chat (Bagian 6):
+ *
+ * 🧾 BUKTI PESANAN
+ * WARUNG BANG KOBRA
+ *
+ * No: WBK-20260930-0001
+ *
+ * Pelanggan: Ahmad
+ *
+ * Pesanan:
+ * • Mi Aceh x2 — Rp12.000
+ * • Es Teh x2 — Rp10.000
+ *
+ * TOTAL: Rp22.000
+ *
+ * Pembayaran: QRIS
+ * Status: LUNAS
+ *
+ * Tujuan: DQM
+ * Status Delivery: DITERIMA
+ *
+ * Penerima: Ahmad
+ * Waktu: 10:45 WIB
+ *
+ * Terima kasih 🙏
+ *
+ * [LIHAT STRUK LENGKAP]
+ */
+export function buildGoogleChatReceiptMessage(
+  tx: Transaction,
+  storeName = 'WARUNG BANG KOBRA'
+): string {
+  const isDelivery = resolveOrderType(tx) === 'DELIVERY_DQM';
+  const delivStatus = isDelivery ? normalizeDeliveryStatus(tx.deliveryStatus, tx.status) : null;
+  const isCancelled = normalizeOrderStatus(tx.status) === 'DIBATALKAN';
+  const paymentStatus = isCancelled ? 'DIBATALKAN' : 'LUNAS';
+  const receiptUrl = buildDigitalReceiptUrl(tx.id_transaksi);
+  const deliveryProofUrl = buildDigitalDeliveryProofUrl(tx.id_transaksi);
+
+  let msg = `🧾 BUKTI PESANAN\n`;
+  msg += `${storeName.toUpperCase()}\n\n`;
+  msg += `No: ${tx.id_transaksi}\n\n`;
+  msg += `Pelanggan: ${tx.nama_pelanggan || 'Pelanggan'}\n\n`;
+  msg += `Pesanan:\n`;
+
+  tx.items.forEach((item) => {
+    const sub = formatRupiah(item.subtotal || item.harga * item.qty);
+    msg += `• ${item.nama_produk} x${item.qty} — ${sub}\n`;
+  });
+
+  msg += `\nTOTAL: ${formatRupiah(tx.total)}\n\n`;
+  msg += `Pembayaran: ${(tx.metode_pembayaran || 'Cash').toUpperCase()}\n`;
+  msg += `Status: ${paymentStatus}\n\n`;
+  msg += `Tujuan: ${isDelivery ? 'DQM' : 'TAKEAWAY (BUNGKUS)'}\n`;
+
+  if (isDelivery && delivStatus) {
+    msg += `Status Delivery: ${delivStatus}\n\n`;
+    const receiver = tx.receiverName || tx.nama_pelanggan || '-';
+    const waktu = formatJamWIB(tx.deliveredAt || tx.sentAt, tx.jam);
+    msg += `Penerima: ${receiver}\n`;
+    msg += `Waktu: ${waktu}\n\n`;
+  } else {
+    msg += `Waktu: ${formatJamWIB(tx.jam)}\n\n`;
+  }
+
+  msg += `Terima kasih 🙏\n\n`;
+  msg += `[LIHAT STRUK LENGKAP]\n${receiptUrl}`;
+
+  if (isDelivery) {
+    msg += `\n\n[LIHAT BUKTI DELIVERY DQM]\n${deliveryProofUrl}`;
+  }
+
+  return msg;
+}
+
+/**
+ * Format Struk Digital Monospace (Bagian 2 & Bagian 3)
+ */
+export function buildGoogleChatDigitalReceiptText(
+  tx: Transaction,
+  storeName = 'WARUNG BANG KOBRA'
+): string {
+  const isDelivery = resolveOrderType(tx) === 'DELIVERY_DQM';
+  const delivStatus = isDelivery ? normalizeDeliveryStatus(tx.deliveryStatus, tx.status) : null;
+  const isCancelled = normalizeOrderStatus(tx.status) === 'DIBATALKAN';
+  const paymentStatus = isCancelled ? 'DIBATALKAN' : 'LUNAS';
+  const deliveryFee = Number(tx.deliveryFee ?? tx.biaya ?? 0);
+
+  let text = `--------------------------------\n`;
+  text += `        ${storeName.toUpperCase()}\n`;
+  text += `        BUKTI PESANAN\n`;
+  text += `--------------------------------\n\n`;
+  text += `No. Pesanan:\n${tx.id_transaksi}\n\n`;
+  text += `Tanggal:\n${formatDateIndo(tx.tanggal)}\n\n`;
+  text += `Jam:\n${formatJamWIB(tx.jam)}\n\n`;
+  text += `Pelanggan:\n${tx.nama_pelanggan || 'Pelanggan'}\n\n`;
+  text += `--------------------------------\n`;
+  text += `PRODUK\n\n`;
+
+  tx.items.forEach((item) => {
+    const sub = formatRupiah(item.subtotal || item.harga * item.qty);
+    const nameCol = item.nama_produk.slice(0, 15).padEnd(16, ' ');
+    const qtyCol = `x${item.qty}`.padEnd(5, ' ');
+    text += `${nameCol} ${qtyCol} ${sub}\n`;
+  });
+
+  text += `--------------------------------\n\n`;
+  text += `${'Subtotal'.padEnd(23, ' ')} ${formatRupiah(tx.subtotal)}\n`;
+  text += `${'Diskon'.padEnd(23, ' ')} ${formatRupiah(tx.diskon || 0)}\n`;
+  text += `${'Biaya Delivery'.padEnd(23, ' ')} ${formatRupiah(deliveryFee)}\n`;
+  text += `--------------------------------\n`;
+  text += `${'TOTAL'.padEnd(23, ' ')} ${formatRupiah(tx.total)}\n\n`;
+  text += `Pembayaran:\n${(tx.metode_pembayaran || 'Cash').toUpperCase()}\n\n`;
+  text += `Status:\n${paymentStatus}\n\n`;
+  text += `Tujuan:\n${isDelivery ? 'DQM' : 'TAKEAWAY'}\n\n`;
+
+  if (isDelivery && delivStatus) {
+    text += `--------------------------------\n`;
+    text += `STATUS DELIVERY:\n${delivStatus}\n\n`;
+    text += `Penerima:\n${tx.receiverName || tx.nama_pelanggan || '-'}\n\n`;
+    text += `Diantar oleh:\n${tx.courierName || tx.kasir || 'Kurir Warung Bang Kobra'}\n\n`;
+    text += `Tanggal:\n${formatDateIndo(tx.tanggal)}\n\n`;
+    text += `Jam diterima:\n${formatJamWIB(tx.deliveredAt || tx.sentAt, tx.jam)}\n`;
+  }
+
+  text += `--------------------------------\n`;
+  text += `Terima kasih telah\n`;
+  text += `berbelanja di\n`;
+  text += `${storeName.toUpperCase()}\n`;
+  text += `--------------------------------`;
+
+  return text;
+}
+
+

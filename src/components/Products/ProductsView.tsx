@@ -21,10 +21,11 @@ import {
   LayoutGrid,
   List,
   Sparkles,
+  Layers,
 } from 'lucide-react';
-import { Product, ProductCategory } from '../../types';
+import { Product, ProductVariant, ProductCategory, UserRole } from '../../types';
 import { formatRupiah } from '../../utils/formatters';
-import { syncProductsToFirebase } from '../../services/firebase';
+import { syncProductsToFirebase, clearAllProductsFromFirebase } from '../../services/firebase';
 import {
   exportProductsToExcel,
   downloadProductExcelTemplate,
@@ -32,33 +33,90 @@ import {
 } from '../../utils/excelHelper';
 import { ProductImageUploader } from './ProductImageUploader';
 import { ProductImageModal } from './ProductImageModal';
+import { ProductVariantsManager } from './ProductVariantsManager';
 
 interface ProductsViewProps {
   products: Product[];
+  variants?: ProductVariant[];
+  userRole?: UserRole;
   onAddProduct: (prod: Product) => void;
   onUpdateProduct: (prod: Product) => void;
   onDeleteProduct: (id: string) => void;
   onImportProducts: (prods: Product[]) => void;
+  onClearAllProducts?: () => Promise<boolean> | void;
+  onAddVariant?: (v: ProductVariant) => void;
+  onUpdateVariant?: (v: ProductVariant) => void;
+  onDeleteVariant?: (variantId: string) => void;
+  onBulkSaveProductsAndVariants?: (newProducts: Product[], newVariants: ProductVariant[]) => void;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 export const ProductsView: React.FC<ProductsViewProps> = ({
   products,
+  variants = [],
+  userRole = 'Owner',
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
   onImportProducts,
+  onClearAllProducts,
+  onAddVariant,
+  onUpdateVariant,
+  onDeleteVariant,
+  onBulkSaveProductsAndVariants,
   showToast,
 }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'all' | 'variants'>('all');
+  const [selectedVariantProductId, setSelectedVariantProductId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('Semua');
-  const [sortBy, setSortBy] = useState<'nama' | 'harga-asc' | 'harga-desc' | 'stok-asc' | 'stok-desc'>('nama');
+  const [sortBy, setSortBy] = useState<'sku' | 'nama' | 'harga-asc' | 'harga-desc' | 'stok-asc' | 'stok-desc'>('sku');
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [quickImageProduct, setQuickImageProduct] = useState<Product | null>(null);
   const [isQuickImageModalOpen, setIsQuickImageModalOpen] = useState(false);
   const [isSyncingFirebase, setIsSyncingFirebase] = useState(false);
+  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
+  const [isClearingProducts, setIsClearingProducts] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
+
+  const isAdminUser = [
+    'Owner',
+    'OWNER',
+    'owner',
+    'Admin',
+    'ADMIN',
+    'admin',
+    'Staff',
+    'STAFF',
+    'staff',
+  ].includes(String(userRole || 'Owner'));
+
+  const handleConfirmClearAllProducts = async () => {
+    if (!isAdminUser) {
+      showToast('Hanya pengguna dengan hak akses Admin yang dapat mengosongkan seluruh produk.', 'error');
+      return;
+    }
+    setIsClearingProducts(true);
+    try {
+      if (onClearAllProducts) {
+        await onClearAllProducts();
+      } else {
+        await clearAllProductsFromFirebase('Admin');
+        onImportProducts([]);
+      }
+      setIsClearConfirmOpen(false);
+      showToast('Semua produk berhasil dikosongkan.', 'success');
+    } catch (err) {
+      console.error('Error clearing products:', err);
+      showToast('Gagal mengosongkan produk.', 'error');
+    } finally {
+      setIsClearingProducts(false);
+    }
+  };
 
   const openQuickImageModal = (product: Product) => {
     setQuickImageProduct(product);
@@ -103,21 +161,33 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   const categories: Array<ProductCategory> = ['Makanan', 'Minuman', 'Snack', 'Tambahan', 'Lainnya'];
 
   const filteredAndSortedProducts = useMemo(() => {
-    let result = products.filter((p) => {
+    const q = (search || '').toLowerCase();
+    const result = products.filter((p) => {
+      if (!p) return false;
       const matchCategory = filterCategory === 'Semua' || p.kategori === filterCategory;
+      if (!q) return matchCategory;
       const matchSearch =
-        p.nama.toLowerCase().includes(search.toLowerCase()) ||
-        p.sku.toLowerCase().includes(search.toLowerCase()) ||
-        (p.deskripsi && p.deskripsi.toLowerCase().includes(search.toLowerCase()));
+        (p.nama || '').toLowerCase().includes(q) ||
+        (p.sku || '').toLowerCase().includes(q) ||
+        (p.deskripsi && p.deskripsi.toLowerCase().includes(q));
       return matchCategory && matchSearch;
     });
 
     return result.sort((a, b) => {
-      if (sortBy === 'harga-asc') return a.harga_jual - b.harga_jual;
-      if (sortBy === 'harga-desc') return b.harga_jual - a.harga_jual;
-      if (sortBy === 'stok-asc') return a.stok - b.stok;
-      if (sortBy === 'stok-desc') return b.stok - a.stok;
-      return a.nama.localeCompare(b.nama);
+      if (sortBy === 'harga-asc') return Number(a.harga_jual ?? 0) - Number(b.harga_jual ?? 0);
+      if (sortBy === 'harga-desc') return Number(b.harga_jual ?? 0) - Number(a.harga_jual ?? 0);
+      if (sortBy === 'stok-asc') return Number(a.stok ?? 0) - Number(b.stok ?? 0);
+      if (sortBy === 'stok-desc') return Number(b.stok ?? 0) - Number(a.stok ?? 0);
+      if (sortBy === 'nama') return String(a.nama || '').localeCompare(String(b.nama || ''));
+      // Default: preserve exact SKU sequence (SKU-001 .. SKU-0028)
+      const skuA = String(a.sku || a.id || '').trim();
+      const skuB = String(b.sku || b.id || '').trim();
+      const numA = parseInt(skuA.replace(/\D+/g, ''), 10);
+      const numB = parseInt(skuB.replace(/\D+/g, ''), 10);
+      if (!Number.isNaN(numA) && !Number.isNaN(numB) && numA !== numB) {
+        return numA - numB;
+      }
+      return skuA.localeCompare(skuB, undefined, { numeric: true, sensitivity: 'base' });
     });
   }, [products, search, filterCategory, sortBy]);
 
@@ -196,17 +266,83 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   };
 
   const handleDelete = (id: string, nama: string) => {
-    try {
-      if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-        if (!window.confirm(`Yakin ingin menghapus produk "${nama}"?`)) {
-          return;
-        }
-      }
-    } catch {
-      // Continue if window.confirm is restricted
+    const target = products.find((p) => p.id === id) || {
+      id,
+      sku: id,
+      nama,
+      kategori: 'Makanan',
+      harga_modal: 0,
+      harga_jual: 0,
+      satuan: 'Porsi',
+      stok: 0,
+      stok_minimum: 5,
+      foto: '',
+      status: 'Aktif',
+    };
+    setProductToDelete(target);
+  };
+
+  const handleConfirmSingleDelete = () => {
+    if (!productToDelete) return;
+    const { id, nama } = productToDelete;
+    if (selectedVariantProductId === id) {
+      setSelectedVariantProductId(null);
     }
+    setSelectedProductIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     onDeleteProduct(id);
-    showToast(`Produk ${nama} berhasil dihapus.`, 'info');
+    setProductToDelete(null);
+    setIsModalOpen(false);
+    setEditingProduct(null);
+    showToast(`Produk "${nama}" berhasil dihapus dari katalog.`, 'success');
+  };
+
+  const toggleSelectProduct = (id: string) => {
+    setSelectedProductIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAllFiltered = () => {
+    const allFilteredIds = filteredAndSortedProducts.map((p) => p.id);
+    const allSelected =
+      allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedProductIds.has(id));
+    if (allSelected) {
+      setSelectedProductIds((prev) => {
+        const next = new Set(prev);
+        allFilteredIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelectedProductIds((prev) => {
+        const next = new Set(prev);
+        allFilteredIds.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+  };
+
+  const handleConfirmBulkDelete = () => {
+    if (selectedProductIds.size === 0) return;
+    const idsToDelete = Array.from(selectedProductIds);
+    idsToDelete.forEach((id) => {
+      if (selectedVariantProductId === id) {
+        setSelectedVariantProductId(null);
+      }
+      onDeleteProduct(id);
+    });
+    setSelectedProductIds(new Set());
+    setIsBulkDeleteConfirmOpen(false);
+    showToast(`${idsToDelete.length} produk terpilih berhasil dihapus.`, 'success');
   };
 
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
@@ -310,8 +446,96 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     reader.readAsText(file);
   };
 
+  const variantCountByProductId = useMemo(() => {
+    const counts = new Map<string, number>();
+    variants.forEach((v) => {
+      counts.set(v.productId, (counts.get(v.productId) || 0) + 1);
+    });
+    return counts;
+  }, [variants]);
+
+  const totalProductsWithVariants = useMemo(() => {
+    return products.filter(
+      (p) => Boolean(p.hasVariants) || (variantCountByProductId.get(p.id) || 0) > 0
+    ).length;
+  }, [products, variantCountByProductId]);
+
+  const openManageVariantsForProduct = (productId: string) => {
+    setSelectedVariantProductId(productId);
+    setActiveSubTab('variants');
+  };
+
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
+      {/* Sub-Navigation Toggle: Semua Produk vs Produk Varian Rasa */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-stone-900 border border-stone-800 rounded-2xl p-2">
+        <div className="flex items-center gap-1.5">
+          <button
+            id="tab-all-products"
+            type="button"
+            onClick={() => {
+              setSelectedVariantProductId(null);
+              setActiveSubTab('all');
+            }}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition cursor-pointer ${
+              activeSubTab === 'all'
+                ? 'bg-amber-500 text-stone-950 shadow-md'
+                : 'text-stone-300 hover:bg-stone-800 hover:text-white'
+            }`}
+          >
+            <Package className="w-4 h-4" />
+            <span>Semua Menu Produk ({products.length})</span>
+          </button>
+          <button
+            id="tab-product-variants"
+            type="button"
+            onClick={() => setActiveSubTab('variants')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition cursor-pointer ${
+              activeSubTab === 'variants'
+                ? 'bg-amber-500 text-stone-950 shadow-md'
+                : 'text-stone-300 hover:bg-stone-800 hover:text-white'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            <span>
+              Produk Varian Rasa ({totalProductsWithVariants} Produk • {variants.length} Rasa)
+            </span>
+          </button>
+        </div>
+        <div className="px-2 text-[11px] text-stone-400 hidden md:block">
+          Nutrisari, Pop Ice, Hilo, Chocolatos, Good Day &amp; minuman sachet multi-rasa
+        </div>
+      </div>
+
+      {activeSubTab === 'variants' ? (
+        <ProductVariantsManager
+          products={products}
+          variants={variants}
+          userRole={userRole}
+          selectedProductIdFilter={selectedVariantProductId}
+          onClearProductFilter={() => setSelectedVariantProductId(null)}
+          onAddProduct={onAddProduct}
+          onUpdateProduct={onUpdateProduct}
+          onDeleteProduct={(id) => {
+            if (selectedVariantProductId === id) {
+              setSelectedVariantProductId(null);
+            }
+            onDeleteProduct(id);
+          }}
+          onAddVariant={(v) => onAddVariant && onAddVariant(v)}
+          onUpdateVariant={(v) => onUpdateVariant && onUpdateVariant(v)}
+          onDeleteVariant={(id) => onDeleteVariant && onDeleteVariant(id)}
+          onBulkSaveProductsAndVariants={(newProds, newVars) => {
+            if (onBulkSaveProductsAndVariants) {
+              onBulkSaveProductsAndVariants(newProds, newVars);
+            } else {
+              onImportProducts(newProds);
+            }
+          }}
+          showToast={showToast}
+        />
+      ) : (
+        <>
       {/* Top Header & Action Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -390,13 +614,39 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             <span className="hidden xl:inline text-[11px]">Template Excel</span>
           </button>
 
+          {selectedProductIds.size > 0 && (
+            <button
+              id="btn-bulk-delete-selected-products"
+              type="button"
+              onClick={() => setIsBulkDeleteConfirmOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black shadow-lg shadow-rose-950/40 transition active:scale-95 cursor-pointer"
+              title="Hapus produk yang dicentang"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Hapus Terpilih ({selectedProductIds.size})</span>
+            </button>
+          )}
+
+          {isAdminUser && (
+            <button
+              id="btn-clear-all-products"
+              type="button"
+              onClick={() => setIsClearConfirmOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-950/50 border border-rose-700/60 text-rose-300 hover:bg-rose-900/60 hover:text-white text-xs font-extrabold transition cursor-pointer"
+              title="Kosongkan seluruh data produk (Khusus Admin)"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <span>Kosongkan Produk</span>
+            </button>
+          )}
+
           <button
             id="btn-add-product"
             onClick={openAddModal}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-extrabold text-xs shadow-lg shadow-amber-950/30 transition active:scale-95 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>Tambah Produk</span>
+            <span>+ Tambah Produk</span>
           </button>
         </div>
       </div>
@@ -438,6 +688,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             onChange={(e) => setSortBy(e.target.value as any)}
             className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
           >
+            <option value="sku">Urutkan: Urutan SKU (SKU-001 — SKU-0028)</option>
             <option value="nama">Urutkan: Nama (A-Z)</option>
             <option value="harga-asc">Harga Terendah</option>
             <option value="harga-desc">Harga Tertinggi</option>
@@ -477,8 +728,32 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         </div>
       </div>
 
-      {/* Conditional Rendering: Grid Cards vs Table */}
-      {viewMode === 'grid' ? (
+      {/* Conditional Rendering: Empty Product Catalog State (Section 3) vs Grid Cards vs Table */}
+      {products.length === 0 ? (
+        <div className="bg-stone-900 border-2 border-dashed border-stone-800 rounded-3xl p-10 sm:p-16 text-center max-w-xl mx-auto my-4 space-y-4 shadow-2xl">
+          <div className="w-20 h-20 rounded-3xl bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center justify-center mx-auto shadow-inner">
+            <Package className="w-10 h-10" />
+          </div>
+          <div className="space-y-1.5">
+            <h3 className="text-lg sm:text-xl font-black text-stone-100">
+              Belum Ada Produk
+            </h3>
+            <p className="text-xs sm:text-sm text-stone-400 max-w-md mx-auto leading-relaxed">
+              Belum ada produk yang tersedia. Silakan tambahkan produk baru.
+            </p>
+          </div>
+          <div className="pt-2 flex justify-center">
+            <button
+              type="button"
+              onClick={openAddModal}
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-black text-xs sm:text-sm shadow-xl shadow-amber-950/40 transition active:scale-95 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Tambah Produk</span>
+            </button>
+          </div>
+        </div>
+      ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {filteredAndSortedProducts.length === 0 ? (
             <div className="col-span-full bg-stone-900 border border-stone-800 rounded-3xl p-12 text-center text-stone-500">
@@ -583,18 +858,20 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => openEditModal(p)}
-                        className="p-2 rounded-xl bg-stone-800 hover:bg-stone-750 text-stone-300 hover:text-white transition cursor-pointer"
+                        className="px-2.5 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-white text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
                         title="Edit Data Menu"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
+                        <span>Edit</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDelete(p.id, p.nama)}
-                        className="p-2 rounded-xl bg-stone-800 hover:bg-rose-950/40 text-stone-400 hover:text-rose-400 border border-transparent hover:border-rose-900/40 transition cursor-pointer"
+                        className="px-2.5 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-800/50 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
                         title="Hapus Menu"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
+                        <span>Hapus</span>
                       </button>
                     </div>
                   </div>
@@ -610,19 +887,35 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             <table className="w-full text-left text-xs">
               <thead className="bg-stone-950/70 border-b border-stone-800 text-[11px] font-bold uppercase tracking-wider text-stone-400">
                 <tr>
-                  <th className="py-3.5 px-4">Menu</th>
-                  <th className="py-3.5 px-3">Kategori</th>
-                  <th className="py-3.5 px-3">Harga Jual</th>
-                  <th className="py-3.5 px-3">Harga Modal</th>
-                  <th className="py-3.5 px-3">Stok</th>
-                  <th className="py-3.5 px-3">Status</th>
-                  <th className="py-3.5 px-4 text-right">Aksi</th>
+                  <th className="py-3.5 px-3 w-9 text-center">
+                    <input
+                      type="checkbox"
+                      checked={
+                        filteredAndSortedProducts.length > 0 &&
+                        filteredAndSortedProducts.every((p) => selectedProductIds.has(p.id))
+                      }
+                      onChange={toggleSelectAllFiltered}
+                      className="rounded accent-amber-500 cursor-pointer"
+                      title="Pilih semua produk"
+                    />
+                  </th>
+                  <th className="py-3.5 px-3 whitespace-nowrap">SKU</th>
+                  <th className="py-3.5 px-3 whitespace-nowrap">Nama Menu</th>
+                  <th className="py-3.5 px-3 whitespace-nowrap">Kategori</th>
+                  <th className="py-3.5 px-3 whitespace-nowrap">Harga Modal (Rp)</th>
+                  <th className="py-3.5 px-3 whitespace-nowrap">Harga Jual (Rp)</th>
+                  <th className="py-3.5 px-3 whitespace-nowrap">Satuan</th>
+                  <th className="py-3.5 px-3 whitespace-nowrap">Stok Saat Ini</th>
+                  <th className="py-3.5 px-3 whitespace-nowrap">Stok Minimum</th>
+                  <th className="py-3.5 px-3 whitespace-nowrap">Aktif</th>
+                  <th className="py-3.5 px-3">Deskripsi</th>
+                  <th className="py-3.5 px-4 text-right whitespace-nowrap">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-800/60 font-medium">
                 {filteredAndSortedProducts.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-stone-500">
+                    <td colSpan={12} className="py-12 text-center text-stone-500">
                       Tidak ada produk ditemukan.
                     </td>
                   </tr>
@@ -630,14 +923,34 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                   filteredAndSortedProducts.map((p) => {
                     const isLow = p.stok <= p.stok_minimum;
                     const photo = p.foto || p.gambar_url || '';
+                    const isSelected = selectedProductIds.has(p.id);
                     return (
-                      <tr key={p.id} className="hover:bg-stone-800/40 transition">
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-3">
-                            {/* Interactive Thumbnail with Camera Edit Badge */}
+                      <tr
+                        key={p.id}
+                        className={`hover:bg-stone-800/40 transition ${
+                          isSelected ? 'bg-amber-950/20' : ''
+                        }`}
+                      >
+                        {/* Checkbox */}
+                        <td className="py-3 px-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectProduct(p.id)}
+                            className="rounded accent-amber-500 cursor-pointer"
+                          />
+                        </td>
+                        {/* 1. SKU */}
+                        <td className="py-3 px-3 font-mono font-bold text-amber-400 whitespace-nowrap">
+                          {p.sku}
+                        </td>
+
+                        {/* 2. Nama Menu */}
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-2.5">
                             <div
                               onClick={() => openQuickImageModal(p)}
-                              className="relative w-11 h-11 rounded-xl overflow-hidden bg-stone-950 shrink-0 cursor-pointer group border border-stone-800 hover:border-amber-500/80 transition shadow-sm"
+                              className="relative w-9 h-9 rounded-xl overflow-hidden bg-stone-950 shrink-0 cursor-pointer group border border-stone-800 hover:border-amber-500/80 transition shadow-sm"
                               title="Klik untuk ubah foto menu ini"
                             >
                               <img
@@ -650,45 +963,73 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                                 }}
                               />
                               <div className="absolute inset-0 bg-stone-950/70 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-10">
-                                <Camera className="w-4 h-4 text-amber-400" />
-                              </div>
-                              <div className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-tl-md bg-amber-500 text-stone-950 flex items-center justify-center group-hover:hidden">
-                                <Camera className="w-2.5 h-2.5 stroke-[2.5]" />
+                                <Camera className="w-3.5 h-3.5 text-amber-400" />
                               </div>
                             </div>
-
-                            <div className="min-w-0">
-                              <div className="font-bold text-stone-200 truncate flex items-center gap-1.5">
-                                <span>{p.nama}</span>
-                              </div>
-                              <div className="text-[10px] text-stone-400 font-mono">{p.sku}</div>
+                            <div>
+                              <span className="font-bold text-stone-100 whitespace-nowrap block">
+                                {p.nama}
+                              </span>
+                              {(Boolean(p.hasVariants) ||
+                                (variantCountByProductId.get(p.id) || 0) > 0) && (
+                                <button
+                                  type="button"
+                                  onClick={() => openManageVariantsForProduct(p.id)}
+                                  className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 hover:text-amber-300 underline cursor-pointer"
+                                >
+                                  <Layers className="w-3 h-3" />
+                                  <span>
+                                    {variantCountByProductId.get(p.id) || 0} Varian Rasa (Kelola)
+                                  </span>
+                                </button>
+                              )}
                             </div>
                           </div>
                         </td>
-                        <td className="py-3 px-3">
+
+                        {/* 3. Kategori */}
+                        <td className="py-3 px-3 whitespace-nowrap">
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-stone-800 text-stone-300">
                             {p.kategori}
                           </span>
                         </td>
-                        <td className="py-3 px-3 font-mono font-bold text-amber-400">
-                          {formatRupiah(p.harga_jual)}
+
+                        {/* 4. Harga Modal (Rp) */}
+                        <td className="py-3 px-3 font-mono text-stone-300 whitespace-nowrap">
+                          {Number(p.harga_modal).toLocaleString('id-ID')}
                         </td>
-                        <td className="py-3 px-3 font-mono text-stone-400">
-                          {formatRupiah(p.harga_modal)}
+
+                        {/* 5. Harga Jual (Rp) */}
+                        <td className="py-3 px-3 font-mono font-bold text-amber-400 whitespace-nowrap">
+                          {Number(p.harga_jual).toLocaleString('id-ID')}
                         </td>
-                        <td className="py-3 px-3">
-                          <div className="flex items-center gap-2 font-mono">
-                            <span className={isLow ? 'text-rose-400 font-bold' : 'text-stone-300'}>
-                              {p.stok} {p.satuan}
+
+                        {/* 6. Satuan */}
+                        <td className="py-3 px-3 text-stone-300 whitespace-nowrap">
+                          {p.satuan}
+                        </td>
+
+                        {/* 7. Stok Saat Ini */}
+                        <td className="py-3 px-3 font-mono whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <span className={isLow ? 'text-rose-400 font-bold' : 'text-stone-200 font-bold'}>
+                              {p.stok}
                             </span>
                             {isLow && (
                               <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-rose-500/20 text-rose-400 border border-rose-500/30 animate-pulse">
-                                STOK MENIPIS
+                                MENIPIS
                               </span>
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-3">
+
+                        {/* 8. Stok Minimum */}
+                        <td className="py-3 px-3 font-mono text-stone-400 whitespace-nowrap">
+                          {p.stok_minimum}
+                        </td>
+
+                        {/* 9. Aktif */}
+                        <td className="py-3 px-3 whitespace-nowrap">
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                               p.status === 'Aktif'
@@ -699,8 +1040,24 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                             {p.status}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-right">
+
+                        {/* 10. Deskripsi */}
+                        <td className="py-3 px-3 text-stone-400 max-w-xs">
+                          <span className="line-clamp-2 leading-relaxed">{p.deskripsi || '-'}</span>
+                        </td>
+
+                        {/* Aksi */}
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => openManageVariantsForProduct(p.id)}
+                              className="px-2 py-1.5 rounded-lg bg-stone-800 hover:bg-amber-950/50 text-amber-400 border border-stone-700 hover:border-amber-500/40 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                              title="Kelola Varian Rasa untuk Produk Ini"
+                            >
+                              <Layers className="w-3 h-3" />
+                              <span className="hidden xl:inline">Varian</span>
+                            </button>
                             <button
                               type="button"
                               onClick={() => openQuickImageModal(p)}
@@ -712,18 +1069,20 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                             <button
                               type="button"
                               onClick={() => openEditModal(p)}
-                              className="p-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white transition cursor-pointer"
+                              className="px-2 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-white text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
                               title="Edit Produk"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
+                              <span className="hidden xl:inline">Edit</span>
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDelete(p.id, p.nama)}
-                              className="p-1.5 rounded-lg bg-stone-800 hover:bg-rose-900/60 text-stone-400 hover:text-rose-300 transition cursor-pointer"
+                              className="px-2.5 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-800/50 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
                               title="Hapus Produk"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
+                              <span>Hapus</span>
                             </button>
                           </div>
                         </td>
@@ -912,22 +1271,129 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                 />
               </div>
 
-              <div className="flex justify-end gap-2.5 pt-3 border-t border-stone-800">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-xs"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs shadow-lg shadow-amber-950/40"
-                >
-                  Simpan Produk
-                </button>
+              <div className="flex items-center justify-between gap-2.5 pt-3 border-t border-stone-800">
+                <div>
+                  {editingProduct && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsModalOpen(false);
+                        setProductToDelete(editingProduct);
+                      }}
+                      className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-rose-950/70 hover:bg-rose-600 border border-rose-800/60 text-rose-300 hover:text-white font-bold text-xs transition cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>Hapus Produk</span>
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-xs cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs shadow-lg shadow-amber-950/40 cursor-pointer"
+                  >
+                    Simpan Produk
+                  </button>
+                </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Single Product Delete Confirmation Modal (Replaces blocked window.confirm) */}
+      {productToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-stone-900 border-2 border-rose-500/40 rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-400 flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div className="space-y-1 min-w-0">
+                <h3 className="text-base font-black text-white">
+                  Hapus Produk dari Katalog?
+                </h3>
+                <p className="text-xs sm:text-sm text-stone-300 leading-relaxed font-medium">
+                  Anda akan menghapus menu{' '}
+                  <strong className="text-amber-400">&ldquo;{productToDelete.nama}&rdquo;</strong>{' '}
+                  (<span className="font-mono">{productToDelete.sku}</span>).
+                </p>
+              </div>
+            </div>
+
+            {(variantCountByProductId.get(productToDelete.id) || 0) > 0 && (
+              <div className="p-3 rounded-2xl bg-amber-950/40 border border-amber-700/50 text-xs text-amber-200">
+                Produk ini memiliki{' '}
+                <strong>{variantCountByProductId.get(productToDelete.id)} varian rasa</strong> yang
+                juga akan ikut dihapus dari katalog kasir.
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-800">
+              <button
+                type="button"
+                onClick={() => setProductToDelete(null)}
+                className="px-4 py-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 font-bold text-xs transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                id="btn-confirm-delete-single-product"
+                type="button"
+                onClick={handleConfirmSingleDelete}
+                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-black text-xs shadow-lg shadow-rose-950/50 transition active:scale-95 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Ya, Hapus Produk</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Selected Products Delete Confirmation Modal */}
+      {isBulkDeleteConfirmOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-stone-900 border-2 border-rose-500/40 rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-400 flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-black text-white">
+                  Hapus {selectedProductIds.size} Produk Terpilih?
+                </h3>
+                <p className="text-xs sm:text-sm text-stone-300 leading-relaxed font-medium">
+                  Seluruh {selectedProductIds.size} produk yang Anda centang beserta varian rasanya
+                  akan dihapus dari katalog kasir dan Firebase Firestore.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-800">
+              <button
+                type="button"
+                onClick={() => setIsBulkDeleteConfirmOpen(false)}
+                className="px-4 py-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 font-bold text-xs transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmBulkDelete}
+                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-black text-xs shadow-lg shadow-rose-950/50 transition active:scale-95 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Ya, Hapus {selectedProductIds.size} Produk</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -943,6 +1409,52 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         onSaveProduct={onUpdateProduct}
         showToast={showToast}
       />
+
+      {/* Admin Confirmation Modal: Kosongkan Seluruh Produk (Section 5) */}
+      {isClearConfirmOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-stone-900 border-2 border-rose-500/40 rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-400 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-black text-white">
+                  Konfirmasi Kosongkan Produk
+                </h3>
+                <p className="text-xs sm:text-sm text-stone-300 leading-relaxed font-medium">
+                  Apakah Anda yakin ingin menghapus seluruh produk? Tindakan ini tidak dapat dibatalkan.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-stone-950 border border-stone-800 text-[11px] text-stone-400 leading-relaxed">
+              Catatan: Data transaksi lama, laporan penjualan, pelanggan, pengguna, dan pengaturan toko <strong className="text-stone-200">tidak akan dihapus</strong>.
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-800">
+              <button
+                type="button"
+                disabled={isClearingProducts}
+                onClick={() => setIsClearConfirmOpen(false)}
+                className="px-4 py-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 font-bold text-xs transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isClearingProducts}
+                onClick={handleConfirmClearAllProducts}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-black text-xs shadow-lg shadow-rose-950/50 transition active:scale-95 cursor-pointer"
+              >
+                {isClearingProducts ? 'Mengosongkan...' : 'Ya, Kosongkan Produk'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+        </>
+      )}
     </div>
   );
 };

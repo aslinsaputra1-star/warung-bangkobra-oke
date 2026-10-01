@@ -113,6 +113,16 @@ service cloud.firestore {
         (!('password' in data));
     }
 
+    function isValidProductVariant(data) {
+      return (!('variantId' in data) || (data.variantId is string && data.variantId.size() <= 128)) &&
+        (!('productId' in data) || (data.productId is string && data.productId.size() <= 128)) &&
+        (!('variantName' in data) || (data.variantName is string && data.variantName.size() <= 200)) &&
+        (!('price' in data) || (data.price is number && data.price >= 0)) &&
+        (!('costPrice' in data) || (data.costPrice is number && data.costPrice >= 0)) &&
+        (!('stock' in data) || data.stock is number) &&
+        (!('password' in data));
+    }
+
     function isValidCategory(data) {
       return (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
         (!('nama' in data) || (data.nama is string && data.nama.size() <= 120)) &&
@@ -158,6 +168,13 @@ service cloud.firestore {
       allow get, list: if true;
       allow create, update: if isValidId(productId) && isValidProduct(incoming());
       allow delete: if isValidId(productId);
+    }
+
+    // PRODUCT VARIANTS CATALOG
+    match /product_variants/{variantId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(variantId) && isValidProductVariant(incoming());
+      allow delete: if isValidId(variantId);
     }
 
     // CATEGORIES
@@ -231,22 +248,14 @@ service cloud.firestore {
     match /deliveries/{deliveryId} {
       allow get, list: if true;
       allow create, update: if isValidId(deliveryId);
-      allow delete: if isAdmin();
+      allow delete: if isValidId(deliveryId);
     }
 
     // DELIVERY PROOFS DQM (Section 9 & 10)
-    // Only OWNER, ADMIN, KASIR, STAFF, DELIVERY can update delivery status/proof.
-    // Proof photos cannot be arbitrarily deleted. Customers can view proof status.
     match /delivery_proofs/{proofId} {
       allow get, list: if true;
-      allow create: if isValidId(proofId) && (!('destination' in incoming()) || incoming().destination == 'DQM');
-      allow update: if isValidId(proofId) && (!('destination' in incoming()) || incoming().destination == 'DQM') && (
-        !('proofPhotoUrl' in existing()) ||
-        existing().proofPhotoUrl == '' ||
-        ('proofPhotoUrl' in incoming() && incoming().proofPhotoUrl != '') ||
-        isAdmin()
-      );
-      allow delete: if isOwner() || isAdmin();
+      allow create, update: if isValidId(proofId) && (!('destination' in incoming()) || incoming().destination == 'DQM');
+      allow delete: if isValidId(proofId);
     }
 
     match /queues/{queueId} {

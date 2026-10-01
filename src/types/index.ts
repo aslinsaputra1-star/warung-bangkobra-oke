@@ -46,6 +46,9 @@ export interface DeliveryProof {
   deliveredAt?: string;
   createdAt: string;
   updatedAt: string;
+  receiptSharedAt?: string;
+  receiptSharedBy?: string;
+  receiptShareMethod?: 'GOOGLE_CHAT' | 'WHATSAPP' | 'PRINT' | 'PDF' | string;
 }
 
 export type OrderQueueStatus =
@@ -54,6 +57,23 @@ export type OrderQueueStatus =
   | 'SIAP'
   | 'SELESAI'
   | 'DIBATALKAN';
+
+export interface ProductVariant {
+  variantId: string;
+  productId: string;
+  productName?: string;
+  variantName: string;
+  sku: string;
+  price: number;
+  costPrice: number;
+  stock: number;
+  minStock: number;
+  unit: string;
+  imageUrl: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface Product {
   id: string;
@@ -69,12 +89,14 @@ export interface Product {
   gambar_url?: string;
   status: 'Aktif' | 'Nonaktif';
   deskripsi?: string;
+  hasVariants?: boolean;
   created_at: string;
   updated_at: string;
 }
 
 export interface CartItem {
   product: Product;
+  variant?: ProductVariant;
   qty: number;
   subtotal: number;
   catatan?: string;
@@ -85,6 +107,10 @@ export interface TransactionDetail {
   id_transaksi: string;
   id_produk: string;
   nama_produk: string;
+  productName?: string;
+  variantId?: string;
+  variantName?: string;
+  harga_modal?: number;
   harga: number;
   qty: number;
   subtotal: number;
@@ -138,12 +164,18 @@ export interface Transaction {
   tipe_pesanan?: 'BUNGKUS' | 'DELIVERY_DQM' | 'Takeaway' | 'Delivery';
   alamat_pengantaran?: string;
   catatan_pesanan?: string;
+  receiptSharedAt?: string;
+  receiptSharedBy?: string;
+  receiptShareMethod?: 'GOOGLE_CHAT' | 'WHATSAPP' | 'PRINT' | 'PDF' | string;
+  stockRestored?: boolean;
 }
 
 export interface StockMutation {
   id: string;
   tanggal: string;
   id_produk: string;
+  variantId?: string;
+  variantName?: string;
   nama_produk: string;
   jenis: 'in' | 'out' | 'adjustment';
   qty: number;
@@ -200,6 +232,7 @@ export interface StoreSettings {
   defaultDiscount: number;
   googleAppsScriptUrl?: string;
   googleSheetsUrl?: string;
+  googleChatWebhookUrl?: string;
   isGoogleSheetsConnected?: boolean;
   lastSyncTime?: string;
   autoSync: boolean;

@@ -11,6 +11,7 @@ import {
   writeBatch,
   deleteDoc,
   serverTimestamp,
+  runTransaction,
 } from 'firebase/firestore';
 import {
   GoogleAuthProvider,
@@ -39,6 +40,7 @@ import {
 import {
   Transaction,
   Product,
+  ProductVariant,
   CategoryItem,
   Expense,
   Customer,
@@ -596,11 +598,16 @@ export async function saveOrderToFirebase(order: Transaction): Promise<{ success
         : '',
       catatan_pesanan: order.catatan_pesanan || order.deliveryNote || '',
       created_at: order.created_at || new Date().toISOString(),
+      ...(order.stockRestored ? { stockRestored: true } : {}),
       items: (order.items || []).map((item) => ({
         id_detail: item.id_detail || '',
         id_transaksi: item.id_transaksi || order.id_transaksi,
         id_produk: item.id_produk || '',
         nama_produk: item.nama_produk || '',
+        ...(item.productName ? { productName: item.productName } : {}),
+        ...(item.variantId ? { variantId: item.variantId } : {}),
+        ...(item.variantName ? { variantName: item.variantName } : {}),
+        ...(item.harga_modal !== undefined ? { harga_modal: Number(item.harga_modal) } : {}),
         harga: Number(item.harga || 0),
         qty: Number(item.qty || 0),
         subtotal: Number(item.subtotal || 0),
@@ -689,7 +696,6 @@ export function subscribeToFirebaseOrders(
   onOrdersReceived: (orders: Transaction[]) => void,
   onError?: (err: Error) => void
 ): () => void {
-  const path = 'orders';
   try {
     const ordersCol = collection(db, 'orders');
 
@@ -698,9 +704,53 @@ export function subscribeToFirebaseOrders(
       (snapshot) => {
         const list: Transaction[] = [];
         snapshot.forEach((docSnap) => {
-          const data = docSnap.data() as Transaction;
-          if (data && data.id_transaksi) {
-            list.push(data);
+          const data = docSnap.data() as Record<string, any>;
+          if (data && (data.id_transaksi || docSnap.id)) {
+            const txId = String(data.id_transaksi || docSnap.id);
+            const ordType = resolveOrderType(data as Partial<Transaction>);
+            const isDelivery = ordType === 'DELIVERY_DQM';
+            const rawItems = Array.isArray(data.items) ? data.items : [];
+            const normalizedTx: Transaction = {
+              ...(data as unknown as Transaction),
+              id_transaksi: txId,
+              tanggal: String(data.tanggal || new Date().toISOString().split('T')[0]),
+              jam: String(data.jam || '10:00'),
+              kasir: String(data.kasir || 'Kasir'),
+              nama_pelanggan: String(data.nama_pelanggan || data.customerName || 'Pelanggan Umum'),
+              no_whatsapp: String(data.no_whatsapp || data.customerPhone || '-'),
+              subtotal: Number(data.subtotal ?? data.total ?? 0) || 0,
+              diskon: Number(data.diskon ?? 0) || 0,
+              biaya: Number(data.biaya ?? data.deliveryFee ?? 0) || 0,
+              total: Number(data.total ?? data.subtotal ?? 0) || 0,
+              metode_pembayaran: (data.metode_pembayaran || data.paymentMethod || 'Cash') as Transaction['metode_pembayaran'],
+              uang_diterima: Number(data.uang_diterima ?? 0) || 0,
+              kembalian: Number(data.kembalian ?? 0) || 0,
+              status: normalizeOrderStatus(data.status),
+              orderType: ordType,
+              tipe_pesanan: ordType,
+              deliveryArea: isDelivery ? 'DQM' : null,
+              deliveryLocation: isDelivery ? String(data.deliveryLocation || '') : null,
+              deliveryDetail: isDelivery ? String(data.deliveryDetail || '') : null,
+              deliveryFee: isDelivery ? Number(data.deliveryFee ?? data.biaya ?? 0) : 0,
+              deliveryStatus: isDelivery ? normalizeDeliveryStatus(data as Partial<Transaction>) : null,
+              created_at: String(data.created_at || new Date().toISOString()),
+              stockRestored: Boolean(data.stockRestored),
+              items: rawItems.map((item: any) => ({
+                id_detail: String(item?.id_detail || ''),
+                id_transaksi: String(item?.id_transaksi || txId),
+                id_produk: String(item?.id_produk || ''),
+                nama_produk: String(item?.nama_produk || item?.name || 'Menu'),
+                productName: item?.productName ? String(item.productName) : undefined,
+                variantId: item?.variantId ? String(item.variantId) : undefined,
+                variantName: item?.variantName ? String(item.variantName) : undefined,
+                harga_modal: item?.harga_modal !== undefined ? Number(item.harga_modal) : undefined,
+                harga: Number(item?.harga ?? item?.price ?? 0) || 0,
+                qty: Number(item?.qty ?? 1) || 1,
+                subtotal: Number(item?.subtotal ?? (Number(item?.harga ?? 0) * Number(item?.qty ?? 1))) || 0,
+                catatan: String(item?.catatan || ''),
+              })),
+            };
+            list.push(normalizedTx);
           }
         });
         // Sort descending by created_at in-memory (fast & resilient without composite index requirements)
@@ -775,7 +825,10 @@ export async function updateFirebaseOrderStatus(
  * SYNC PRODUCTS TO FIREBASE (Menu Warung Bang Kobra)
  * Syncs menu products and stock levels to Firestore
  */
-export async function syncProductsToFirebase(products: Product[]): Promise<boolean> {
+export async function syncProductsToFirebase(
+  products: Product[],
+  removeExtraneous = false
+): Promise<boolean> {
   if (!products || products.length === 0) {
     return false;
   }
@@ -784,6 +837,34 @@ export async function syncProductsToFirebase(products: Product[]): Promise<boole
     // Ensure Firebase Auth session is active
     if (!auth.currentUser) {
       await ensureFirebaseAuth();
+    }
+
+    if (removeExtraneous) {
+      try {
+        const productsCol = collection(db, 'products');
+        const existingSnap = await getDocs(productsCol);
+        const validIds = new Set(products.map((p) => String(p.id)));
+        const validSkus = new Set(products.map((p) => String(p.sku || p.id).trim()));
+        const seenRemoveSkus = new Set<string>();
+        const docsToDelete: any[] = [];
+        existingSnap.forEach((docSnap) => {
+          const d = docSnap.data();
+          const docId = docSnap.id;
+          const docSku = String(d?.sku || d?.id || docId).trim();
+          if (!validIds.has(docId) || !validSkus.has(docSku) || seenRemoveSkus.has(docSku)) {
+            docsToDelete.push(docSnap.ref);
+          } else {
+            seenRemoveSkus.add(docSku);
+          }
+        });
+        if (docsToDelete.length > 0) {
+          const delBatch = writeBatch(db);
+          docsToDelete.slice(0, 400).forEach((ref) => delBatch.delete(ref));
+          await delBatch.commit();
+        }
+      } catch (cleanupErr) {
+        console.warn('Cleanup extraneous products notice:', cleanupErr);
+      }
     }
 
     // Chunk in batches of 300 (Firestore maximum is 500 per batch)
@@ -824,6 +905,7 @@ export async function syncProductsToFirebase(products: Product[]): Promise<boole
           imageUrl: String(prod.foto || prod.gambar_url || ''),
           status: String(prod.status || 'Aktif'),
           productStatus: standardizedStatus,
+          hasVariants: Boolean(prod.hasVariants),
           deskripsi: String(prod.deskripsi || ''),
           created_at: String(prod.created_at || new Date().toISOString()),
           updated_at: new Date().toISOString(),
@@ -862,14 +944,61 @@ export function subscribeToFirebaseProducts(
       productsCol,
       (snapshot) => {
         const list: Product[] = [];
+        const seenSkus = new Set<string>();
         if (!snapshot.empty) {
           snapshot.forEach((docSnap) => {
-            const data = docSnap.data() as Product;
-            if (data && data.id) {
-              list.push(data);
+            const raw = docSnap.data() as Record<string, any>;
+            if (raw && (raw.id || docSnap.id)) {
+              const id = String(raw.id || docSnap.id).trim();
+              const sku = String(raw.sku || id).trim();
+              if (!seenSkus.has(sku)) {
+                seenSkus.add(sku);
+                const rawKat = String(raw.kategori || raw.categoryId || raw.category || 'Makanan').trim();
+                const validCategories = ['Makanan', 'Minuman', 'Snack', 'Tambahan', 'Lainnya'];
+                const kategori = (
+                  validCategories.includes(rawKat) ? rawKat : 'Makanan'
+                ) as Product['kategori'];
+                const modalNum = Number(raw.harga_modal ?? raw.costPrice ?? 0);
+                const jualNum = Number(raw.harga_jual ?? raw.price ?? 0);
+                const stokNum = Number(raw.stok ?? raw.stock ?? 0);
+                const stokMinNum = Number(raw.stok_minimum ?? raw.minimumStock ?? 5);
+                const foto = String(raw.foto || raw.gambar_url || raw.imageUrl || '');
+                const normalizedProd: Product = {
+                  id,
+                  sku,
+                  nama: String(raw.nama || raw.name || 'Menu').trim(),
+                  kategori,
+                  harga_modal: Number.isNaN(modalNum) ? 0 : modalNum,
+                  harga_jual: Number.isNaN(jualNum) ? 0 : jualNum,
+                  satuan: String(raw.satuan || raw.unit || 'Porsi').trim(),
+                  stok: Number.isNaN(stokNum) ? 0 : stokNum,
+                  stok_minimum: Number.isNaN(stokMinNum) ? 5 : stokMinNum,
+                  foto,
+                  gambar_url: foto,
+                  status:
+                    raw.status === 'Nonaktif' || raw.productStatus === 'INACTIVE'
+                      ? 'Nonaktif'
+                      : 'Aktif',
+                  deskripsi: String(raw.deskripsi || raw.description || ''),
+                  hasVariants: Boolean(raw.hasVariants),
+                  created_at: String(raw.created_at || new Date().toISOString()),
+                  updated_at: String(raw.updated_at || raw.created_at || new Date().toISOString()),
+                };
+                list.push(normalizedProd);
+              }
             }
           });
         }
+        list.sort((a, b) => {
+          const skuA = String(a.sku || a.id || '').trim();
+          const skuB = String(b.sku || b.id || '').trim();
+          const numA = parseInt(skuA.replace(/\D+/g, ''), 10);
+          const numB = parseInt(skuB.replace(/\D+/g, ''), 10);
+          if (!Number.isNaN(numA) && !Number.isNaN(numB) && numA !== numB) {
+            return numA - numB;
+          }
+          return skuA.localeCompare(skuB, undefined, { numeric: true, sensitivity: 'base' });
+        });
         onProductsReceived(list);
       },
       (error) => {
@@ -890,18 +1019,466 @@ export function subscribeToFirebaseProducts(
 
 /**
  * DELETE PRODUCT FROM FIREBASE
+ * Deletes the product document (by ID and SKU) and any associated product_variants documents
  */
-export async function deleteProductFromFirebase(productId: string): Promise<boolean> {
+export async function deleteProductFromFirebase(
+  productId: string,
+  productSku?: string
+): Promise<boolean> {
   if (!productId) return false;
   try {
     if (!auth.currentUser) {
       await ensureFirebaseAuth();
     }
-    const docRef = doc(db, 'products', String(productId));
-    await deleteDoc(docRef);
+    const cleanId = String(productId).trim();
+    const cleanSku = productSku ? String(productSku).trim() : '';
+
+    // 1. Direct delete by document ID
+    await deleteDoc(doc(db, 'products', cleanId));
+    if (cleanSku && cleanSku !== cleanId) {
+      await deleteDoc(doc(db, 'products', cleanSku)).catch(() => {});
+    }
+
+    // 2. Also remove any duplicate/legacy product documents matching id or sku
+    try {
+      const productsSnap = await getDocs(collection(db, 'products'));
+      const batch = writeBatch(db);
+      let count = 0;
+      productsSnap.forEach((docSnap) => {
+        const d = docSnap.data();
+        const docIdVal = String(d?.id || docSnap.id).trim();
+        const docSkuVal = String(d?.sku || '').trim();
+        if (
+          docSnap.id === cleanId ||
+          docIdVal === cleanId ||
+          docSkuVal === cleanId ||
+          (cleanSku && (docSnap.id === cleanSku || docIdVal === cleanSku || docSkuVal === cleanSku))
+        ) {
+          batch.delete(docSnap.ref);
+          count += 1;
+        }
+      });
+      if (count > 0) {
+        await batch.commit();
+      }
+    } catch (scanErr) {
+      console.warn('Cleanup matching product docs notice:', scanErr);
+    }
+
+    // 3. Cascade delete any variants in product_variants belonging to this product
+    try {
+      const variantsSnap = await getDocs(collection(db, 'product_variants'));
+      const varBatch = writeBatch(db);
+      let varCount = 0;
+      variantsSnap.forEach((docSnap) => {
+        const d = docSnap.data();
+        const pId = String(d?.productId || d?.id_produk || '').trim();
+        if (pId === cleanId || (cleanSku && pId === cleanSku)) {
+          varBatch.delete(docSnap.ref);
+          varCount += 1;
+        }
+      });
+      if (varCount > 0) {
+        await varBatch.commit();
+      }
+    } catch (varErr) {
+      console.warn('Cascade delete product variants notice:', varErr);
+    }
+
+    logAuditActivity(
+      'HAPUS_PRODUK',
+      `Menghapus produk ID: ${cleanId}${cleanSku ? ` (SKU: ${cleanSku})` : ''} dari katalog.`,
+      'Admin',
+      'PRODUCTS'
+    ).catch(() => {});
+
     return true;
   } catch (err) {
     console.error(`Gagal menghapus produk ${productId} dari Firebase:`, err);
+    return false;
+  }
+}
+
+/**
+ * CLEAR ALL PRODUCTS FROM FIREBASE FIRESTORE (`products` and `product_variants` collections)
+ * Menghapus seluruh dokumen produk & varian dari Firestore tanpa mengganggu collection lainnya.
+ */
+export async function clearAllProductsFromFirebase(actorName = 'Admin'): Promise<boolean> {
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const productsCol = collection(db, 'products');
+    const snapshot = await getDocs(productsCol);
+
+    if (!snapshot.empty) {
+      const docs = snapshot.docs;
+      const BATCH_SIZE = 300;
+      for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+        const chunk = docs.slice(i, i + BATCH_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach((docSnap) => {
+          batch.delete(docSnap.ref);
+        });
+        await batch.commit();
+      }
+    }
+
+    // Also clear product_variants collection
+    try {
+      const variantsCol = collection(db, 'product_variants');
+      const varSnap = await getDocs(variantsCol);
+      if (!varSnap.empty) {
+        const vDocs = varSnap.docs;
+        const BATCH_SIZE = 300;
+        for (let i = 0; i < vDocs.length; i += BATCH_SIZE) {
+          const chunk = vDocs.slice(i, i + BATCH_SIZE);
+          const batch = writeBatch(db);
+          chunk.forEach((docSnap) => {
+            batch.delete(docSnap.ref);
+          });
+          await batch.commit();
+        }
+      }
+    } catch (vErr) {
+      console.warn('Clear all product_variants notice:', vErr);
+    }
+
+    logAuditActivity(
+      'KOSONGKAN_PRODUK',
+      'Semua produk dan varian berhasil dikosongkan dari collection products & product_variants.',
+      actorName,
+      'PRODUCTS'
+    ).catch(() => {});
+
+    return true;
+  } catch (err) {
+    console.error('Gagal mengosongkan produk dari Firebase Firestore:', err);
+    return false;
+  }
+}
+
+/**
+ * SYNC PRODUCT VARIANTS TO FIREBASE FIRESTORE (`product_variants` collection)
+ */
+export async function syncProductVariantsToFirebase(
+  variants: ProductVariant[],
+  removeExtraneous = false
+): Promise<boolean> {
+  if (!Array.isArray(variants) || variants.length === 0) return false;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    if (removeExtraneous) {
+      try {
+        const variantsCol = collection(db, 'product_variants');
+        const snap = await getDocs(variantsCol);
+        const validIds = new Set(variants.map((v) => String(v.variantId)));
+        const toDel: any[] = [];
+        snap.forEach((d) => {
+          if (!validIds.has(d.id)) {
+            toDel.push(d.ref);
+          }
+        });
+        if (toDel.length > 0) {
+          const delBatch = writeBatch(db);
+          toDel.slice(0, 400).forEach((ref) => delBatch.delete(ref));
+          await delBatch.commit();
+        }
+      } catch (e) {
+        console.warn('Cleanup extraneous variants notice:', e);
+      }
+    }
+
+    const BATCH_SIZE = 300;
+    for (let i = 0; i < variants.length; i += BATCH_SIZE) {
+      const chunk = variants.slice(i, i + BATCH_SIZE);
+      const batch = writeBatch(db);
+      for (const v of chunk) {
+        if (!v || !v.variantId) continue;
+        const ref = doc(db, 'product_variants', String(v.variantId));
+        batch.set(
+          ref,
+          {
+            variantId: String(v.variantId),
+            productId: String(v.productId || ''),
+            productName: String(v.productName || ''),
+            variantName: String(v.variantName || 'Original'),
+            sku: String(v.sku || v.variantId),
+            price: Number(v.price ?? 0),
+            costPrice: Number(v.costPrice ?? 0),
+            stock: Number(v.stock ?? 0),
+            minStock: Number(v.minStock ?? 5),
+            unit: String(v.unit || 'Cup'),
+            imageUrl: String(v.imageUrl || ''),
+            isActive: Boolean(v.isActive),
+            createdAt: String(v.createdAt || new Date().toISOString()),
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      }
+      await batch.commit();
+    }
+    return true;
+  } catch (err) {
+    console.error('Error syncing product variants to Firebase:', err);
+    return false;
+  }
+}
+
+export async function saveProductVariantToFirebase(variant: ProductVariant): Promise<boolean> {
+  if (!variant || !variant.variantId) return false;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const ref = doc(db, 'product_variants', String(variant.variantId));
+    await setDoc(
+      ref,
+      {
+        variantId: String(variant.variantId),
+        productId: String(variant.productId || ''),
+        productName: String(variant.productName || ''),
+        variantName: String(variant.variantName || 'Original'),
+        sku: String(variant.sku || variant.variantId),
+        price: Number(variant.price ?? 0),
+        costPrice: Number(variant.costPrice ?? 0),
+        stock: Number(variant.stock ?? 0),
+        minStock: Number(variant.minStock ?? 5),
+        unit: String(variant.unit || 'Cup'),
+        imageUrl: String(variant.imageUrl || ''),
+        isActive: Boolean(variant.isActive),
+        createdAt: String(variant.createdAt || new Date().toISOString()),
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    return true;
+  } catch (err) {
+    console.error('Error saving variant to Firebase:', err);
+    return false;
+  }
+}
+
+export async function deleteProductVariantFromFirebase(
+  variantId: string,
+  variantSku?: string
+): Promise<boolean> {
+  if (!variantId) return false;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const cleanVarId = String(variantId).trim();
+    const cleanSku = variantSku ? String(variantSku).trim() : '';
+    await deleteDoc(doc(db, 'product_variants', cleanVarId));
+    if (cleanSku && cleanSku !== cleanVarId) {
+      await deleteDoc(doc(db, 'product_variants', cleanSku)).catch(() => {});
+    }
+
+    try {
+      const snap = await getDocs(collection(db, 'product_variants'));
+      const batch = writeBatch(db);
+      let count = 0;
+      snap.forEach((docSnap) => {
+        const d = docSnap.data();
+        const vId = String(d?.variantId || docSnap.id).trim();
+        const vSku = String(d?.sku || '').trim();
+        if (
+          docSnap.id === cleanVarId ||
+          vId === cleanVarId ||
+          (cleanSku && (docSnap.id === cleanSku || vSku === cleanSku))
+        ) {
+          batch.delete(docSnap.ref);
+          count += 1;
+        }
+      });
+      if (count > 0) {
+        await batch.commit();
+      }
+    } catch (scanErr) {
+      console.warn('Cleanup variant docs notice:', scanErr);
+    }
+
+    return true;
+  } catch (err) {
+    console.error('Error deleting variant from Firebase:', err);
+    return false;
+  }
+}
+
+export function subscribeToFirebaseProductVariants(
+  onVariantsReceived: (variants: ProductVariant[]) => void
+): () => void {
+  try {
+    const colRef = collection(db, 'product_variants');
+    const unsubscribe = onSnapshot(
+      colRef,
+      (snapshot) => {
+        const list: ProductVariant[] = [];
+        if (!snapshot.empty) {
+          snapshot.forEach((docSnap) => {
+            const raw = docSnap.data() as Record<string, any>;
+            if (raw && (raw.variantId || docSnap.id)) {
+              const variantId = String(raw.variantId || docSnap.id).trim();
+              const priceNum = Number(raw.price ?? raw.harga_jual ?? 5000);
+              const costNum = Number(raw.costPrice ?? raw.harga_modal ?? 3000);
+              const stockNum = Number(raw.stock ?? raw.stok ?? 0);
+              const minStockNum = Number(raw.minStock ?? raw.stok_minimum ?? 5);
+              list.push({
+                variantId,
+                productId: String(raw.productId || raw.id_produk || '').trim(),
+                productName: String(raw.productName || raw.nama_produk || '').trim(),
+                variantName: String(raw.variantName || raw.nama_varian || 'Original').trim(),
+                sku: String(raw.sku || variantId).trim(),
+                price: Number.isNaN(priceNum) ? 0 : priceNum,
+                costPrice: Number.isNaN(costNum) ? 0 : costNum,
+                stock: Number.isNaN(stockNum) ? 0 : stockNum,
+                minStock: Number.isNaN(minStockNum) ? 5 : minStockNum,
+                unit: String(raw.unit || raw.satuan || 'Cup').trim(),
+                imageUrl: String(raw.imageUrl || raw.foto || ''),
+                isActive: raw.isActive !== undefined ? Boolean(raw.isActive) : true,
+                createdAt: String(raw.createdAt || new Date().toISOString()),
+                updatedAt: String(raw.updatedAt || new Date().toISOString()),
+              });
+            }
+          });
+        }
+        list.sort((a, b) =>
+          String(a.sku || a.variantId).localeCompare(String(b.sku || b.variantId), undefined, {
+            numeric: true,
+            sensitivity: 'base',
+          })
+        );
+        onVariantsReceived(list);
+      },
+      (err) => {
+        console.warn('Firebase product_variants subscription warning:', err);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.error('Failed to subscribe to product_variants:', err);
+    return () => {};
+  }
+}
+
+/**
+ * ATOMIC FIRESTORE TRANSACTION FOR STOCK DEDUCTION & RESTORATION (Section 6)
+ * Prevents double deduction or negative stock during concurrent transactions.
+ */
+export async function deductStockWithFirestoreTransaction(tx: Transaction): Promise<boolean> {
+  if (!tx || !Array.isArray(tx.items) || tx.items.length === 0) return false;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    await runTransaction(db, async (firestoreTx) => {
+      const variantReads: Array<{ ref: any; snap: any; qty: number }> = [];
+      const productReads: Array<{ ref: any; snap: any; qty: number }> = [];
+
+      for (const item of tx.items) {
+        const qty = Number(item.qty || 0);
+        if (qty <= 0) continue;
+        if (item.variantId) {
+          const vRef = doc(db, 'product_variants', String(item.variantId));
+          const vSnap = await firestoreTx.get(vRef);
+          if (vSnap.exists()) {
+            variantReads.push({ ref: vRef, snap: vSnap, qty });
+          }
+        }
+        if (item.id_produk) {
+          const pRef = doc(db, 'products', String(item.id_produk));
+          const pSnap = await firestoreTx.get(pRef);
+          if (pSnap.exists()) {
+            productReads.push({ ref: pRef, snap: pSnap, qty });
+          }
+        }
+      }
+
+      for (const vr of variantReads) {
+        const data = vr.snap.data() || {};
+        const currentStock = Number(data.stock ?? 0);
+        const nextStock = Math.max(0, currentStock - vr.qty);
+        firestoreTx.update(vr.ref, {
+          stock: nextStock,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      for (const pr of productReads) {
+        const data = pr.snap.data() || {};
+        const currentStock = Number(data.stok ?? data.stock ?? 0);
+        const nextStock = Math.max(0, currentStock - pr.qty);
+        firestoreTx.update(pr.ref, {
+          stok: nextStock,
+          stock: nextStock,
+          updated_at: new Date().toISOString(),
+        });
+      }
+    });
+    return true;
+  } catch (err) {
+    console.warn('Firestore transaction stock deduction fallback:', err);
+    return false;
+  }
+}
+
+export async function restoreStockWithFirestoreTransaction(tx: Transaction): Promise<boolean> {
+  if (!tx || !Array.isArray(tx.items) || tx.items.length === 0) return false;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    await runTransaction(db, async (firestoreTx) => {
+      const variantReads: Array<{ ref: any; snap: any; qty: number }> = [];
+      const productReads: Array<{ ref: any; snap: any; qty: number }> = [];
+
+      for (const item of tx.items) {
+        const qty = Number(item.qty || 0);
+        if (qty <= 0) continue;
+        if (item.variantId) {
+          const vRef = doc(db, 'product_variants', String(item.variantId));
+          const vSnap = await firestoreTx.get(vRef);
+          if (vSnap.exists()) {
+            variantReads.push({ ref: vRef, snap: vSnap, qty });
+          }
+        }
+        if (item.id_produk) {
+          const pRef = doc(db, 'products', String(item.id_produk));
+          const pSnap = await firestoreTx.get(pRef);
+          if (pSnap.exists()) {
+            productReads.push({ ref: pRef, snap: pSnap, qty });
+          }
+        }
+      }
+
+      for (const vr of variantReads) {
+        const data = vr.snap.data() || {};
+        const currentStock = Number(data.stock ?? 0);
+        const nextStock = currentStock + vr.qty;
+        firestoreTx.update(vr.ref, {
+          stock: nextStock,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      for (const pr of productReads) {
+        const data = pr.snap.data() || {};
+        const currentStock = Number(data.stok ?? data.stock ?? 0);
+        const nextStock = currentStock + pr.qty;
+        firestoreTx.update(pr.ref, {
+          stok: nextStock,
+          stock: nextStock,
+          updated_at: new Date().toISOString(),
+        });
+      }
+    });
+    return true;
+  } catch (err) {
+    console.warn('Firestore transaction stock restoration fallback:', err);
     return false;
   }
 }
@@ -1597,3 +2174,216 @@ export function subscribeToFirebaseDeliveryProofs(
     return () => {};
   }
 }
+
+/**
+ * RECORD RECEIPT SHARE METADATA TO FIREBASE (`orders` & `delivery_proofs`)
+ * Menyimpan receiptSharedAt, receiptSharedBy, receiptShareMethod (contoh: GOOGLE_CHAT)
+ */
+export async function recordReceiptShareToFirebase(
+  orderId: string,
+  sharedBy = 'Kasir',
+  method: 'GOOGLE_CHAT' | 'WHATSAPP' | 'PRINT' | 'PDF' = 'GOOGLE_CHAT',
+  isDeliveryOrder = false
+): Promise<boolean> {
+  if (!orderId) return false;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const cleanId = String(orderId).trim();
+    const nowIso = new Date().toISOString();
+    const shareMeta = {
+      receiptSharedAt: nowIso,
+      receiptSharedBy: String(sharedBy || 'Kasir'),
+      receiptShareMethod: method,
+      updated_at: nowIso,
+      updatedAt: serverTimestamp(),
+    };
+
+    const orderDocRef = doc(db, 'orders', cleanId);
+    await setDoc(orderDocRef, { id_transaksi: cleanId, ...shareMeta }, { merge: true });
+
+    if (isDeliveryOrder) {
+      const proofDocRef = doc(db, 'delivery_proofs', cleanId);
+      await setDoc(
+        proofDocRef,
+        {
+          orderId: cleanId,
+          receiptSharedAt: nowIso,
+          receiptSharedBy: String(sharedBy || 'Kasir'),
+          receiptShareMethod: method,
+          updatedAt: nowIso,
+        },
+        { merge: true }
+      );
+    }
+
+    logAuditActivity(
+      'SHARE_STRUK_PESANAN',
+      `Struk pesanan ${cleanId} dibagikan via ${method} oleh ${sharedBy}`,
+      sharedBy,
+      method
+    ).catch(() => {});
+
+    return true;
+  } catch (err) {
+    console.warn('Failed to record receipt share metadata to Firebase:', err);
+    return false;
+  }
+}
+
+/**
+ * FETCH SANITIZED ORDER FOR PUBLIC DIGITAL RECEIPT (`/receipt/:orderId` & `/delivery-proof/:orderId`)
+ * Hanya mengambil data yang diperlukan pelanggan tanpa mengekspos data internal/sensitif.
+ */
+export async function fetchPublicOrderReceiptFromFirebase(
+  orderId: string
+): Promise<Transaction | null> {
+  if (!orderId) return null;
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const cleanId = decodeURIComponent(String(orderId).trim());
+    const orderSnap = await getDoc(doc(db, 'orders', cleanId));
+    const proofSnap = await getDoc(doc(db, 'delivery_proofs', cleanId));
+
+    if (!orderSnap.exists() && !proofSnap.exists()) {
+      return null;
+    }
+
+    const orderData = orderSnap.exists() ? (orderSnap.data() as Record<string, unknown>) : {};
+    const proofData = proofSnap.exists() ? (proofSnap.data() as Record<string, unknown>) : {};
+
+    const rawItems = Array.isArray(orderData.items) ? orderData.items : [];
+    const safeItems = rawItems.map((it: Record<string, unknown>, idx: number) => ({
+      id_detail: String(it.id_detail || `ITEM-${idx + 1}`),
+      id_transaksi: cleanId,
+      id_produk: String(it.id_produk || ''),
+      nama_produk: String(it.nama_produk || 'Menu'),
+      harga: Number(it.harga || 0),
+      qty: Number(it.qty || 1),
+      subtotal: Number(it.subtotal || Number(it.harga || 0) * Number(it.qty || 1)),
+      catatan: it.catatan ? String(it.catatan) : undefined,
+    }));
+
+    const isDelivery =
+      orderData.orderType === 'DELIVERY_DQM' ||
+      orderData.tipe_pesanan === 'DELIVERY_DQM' ||
+      Boolean(proofSnap.exists());
+
+    const safeTx: Transaction = {
+      id_transaksi: cleanId,
+      tanggal: String(orderData.tanggal || (proofData.createdAt ? String(proofData.createdAt).split('T')[0] : new Date().toISOString().split('T')[0])),
+      jam: String(orderData.jam || '10:30:00'),
+      kasir: String(orderData.kasir || 'Kasir Warung Bang Kobra'),
+      nama_pelanggan: String(orderData.nama_pelanggan || proofData.customerName || 'Pelanggan'),
+      no_whatsapp: String(orderData.no_whatsapp || proofData.customerPhone || '-'),
+      subtotal: Number(orderData.subtotal || 0),
+      diskon: Number(orderData.diskon || 0),
+      biaya: Number(orderData.biaya ?? orderData.deliveryFee ?? 0),
+      total: Number(orderData.total || 0),
+      metode_pembayaran: (orderData.metode_pembayaran as Transaction['metode_pembayaran']) || 'QRIS',
+      uang_diterima: Number(orderData.uang_diterima || orderData.total || 0),
+      kembalian: Number(orderData.kembalian || 0),
+      status: (orderData.status as Transaction['status']) || 'SELESAI',
+      items: safeItems,
+      created_at: String(orderData.created_at || proofData.createdAt || new Date().toISOString()),
+      orderType: isDelivery ? 'DELIVERY_DQM' : 'BUNGKUS',
+      tipe_pesanan: isDelivery ? 'DELIVERY_DQM' : 'BUNGKUS',
+      deliveryArea: isDelivery ? 'DQM' : null,
+      deliveryLocation: String(orderData.deliveryLocation || proofData.detailLocation || (isDelivery ? 'Pesantren DQM' : '')),
+      deliveryDetail: String(orderData.deliveryDetail || ''),
+      deliveryNote: String(proofData.deliveryNote || orderData.deliveryNote || ''),
+      deliveryFee: Number(orderData.deliveryFee ?? orderData.biaya ?? 0),
+      deliveryStatus: isDelivery
+        ? normalizeDeliveryStatus(
+            String(proofData.status || proofData.deliveryStatus || orderData.deliveryStatus || ''),
+            String(orderData.status || '')
+          )
+        : null,
+      deliveryId: String(proofData.deliveryId || orderData.deliveryId || `DLV-${cleanId}`),
+      courierName: String(proofData.courierName || orderData.courierName || ''),
+      receiverName: String(proofData.receiverName || orderData.receiverName || ''),
+      receiverPhone: String(proofData.receiverPhone || orderData.receiverPhone || ''),
+      proofPhotoUrl: String(proofData.proofPhotoUrl || orderData.proofPhotoUrl || ''),
+      sentAt: String(proofData.sentAt || orderData.sentAt || ''),
+      deliveredAt: String(proofData.deliveredAt || orderData.deliveredAt || ''),
+      queueNumber: String(orderData.queueNumber || ''),
+      receiptSharedAt: String(orderData.receiptSharedAt || proofData.receiptSharedAt || ''),
+      receiptSharedBy: String(orderData.receiptSharedBy || proofData.receiptSharedBy || ''),
+      receiptShareMethod: String(orderData.receiptShareMethod || proofData.receiptShareMethod || ''),
+    };
+
+    return safeTx;
+  } catch (err) {
+    console.warn('Error fetching public order receipt:', err);
+    return null;
+  }
+}
+
+/**
+ * COMPRESS AND UPLOAD PRODUCT/VARIANT IMAGE TO FIREBASE STORAGE (With Canvas compression fallback)
+ */
+export async function compressAndUploadProductImage(
+  file: File,
+  skuOrId = 'PROD'
+): Promise<string> {
+  // 1. Compress to clean JPEG dataUrl via Canvas first
+  const compressedDataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_DIM = 720;
+        let width = img.width;
+        let height = img.height;
+        if (width > height && width > MAX_DIM) {
+          height = Math.round((height * MAX_DIM) / width);
+          width = MAX_DIM;
+        } else if (height > MAX_DIM) {
+          width = Math.round((width * MAX_DIM) / height);
+          height = MAX_DIM;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(String(ev.target?.result || ''));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = () => resolve(String(ev.target?.result || ''));
+      img.src = String(ev.target?.result || '');
+    };
+    reader.onerror = () => reject(new Error('Gagal membaca file gambar'));
+    reader.readAsDataURL(file);
+  });
+
+  // 2. Upload to Firebase Storage with fast timeout fallback
+  try {
+    await ensureFirebaseAuth();
+    const safeSku = String(skuOrId || 'PROD').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const path = `product_images/${safeSku}_${Date.now()}.jpg`;
+    const fileRef = storageRef(storage, path);
+
+    const uploadTask = async (): Promise<string> => {
+      await uploadString(fileRef, compressedDataUrl, 'data_url');
+      return await getDownloadURL(fileRef);
+    };
+
+    const timeoutPromise = new Promise<string>((resolve) => {
+      setTimeout(() => resolve(compressedDataUrl), 2200);
+    });
+
+    const finalUrl = await Promise.race([uploadTask(), timeoutPromise]);
+    return finalUrl || compressedDataUrl;
+  } catch {
+    return compressedDataUrl;
+  }
+}
+
+

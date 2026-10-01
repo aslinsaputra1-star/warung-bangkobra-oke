@@ -49,6 +49,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({
   const [viewTab, setViewTab] = useState<'users' | 'matrix'>('users');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<WarungUser | null>(null);
+  const [userToDelete, setUserToDelete] = useState<WarungUser | null>(null);
 
   // Form State
   const [formName, setFormName] = useState('');
@@ -149,20 +150,17 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({
       return;
     }
 
-    try {
-      if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-        if (!window.confirm(`Hapus pengguna "${user.nama}"?`)) {
-          return;
-        }
-      }
-    } catch {
-      // Continue if window.confirm is restricted
-    }
+    setUserToDelete(user);
+  };
 
+  const confirmDeleteUser = () => {
+    if (!userToDelete) return;
+    const user = userToDelete;
     const updated = StorageService.deleteUser(user.id);
     setUsers(updated);
     deleteUserFromFirebase(user.id).catch(() => {});
     showToast(`Pengguna "${user.nama}" dihapus`, 'info');
+    setUserToDelete(null);
   };
 
   return (
@@ -754,6 +752,36 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Delete User Modal */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-stone-900 border-2 border-red-600/40 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl p-6 space-y-4">
+            <h3 className="text-base font-black text-white">
+              Hapus Pengguna "{userToDelete.nama}"?
+            </h3>
+            <p className="text-xs text-stone-300 leading-relaxed">
+              Apakah Anda yakin ingin menghapus akun <strong>{userToDelete.nama}</strong> (@{userToDelete.username})?
+            </p>
+            <div className="pt-2 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setUserToDelete(null)}
+                className="min-h-[42px] px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-bold cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteUser}
+                className="min-h-[42px] px-5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-black shadow-lg shadow-red-950/50 cursor-pointer"
+              >
+                Ya, Hapus Pengguna
+              </button>
+            </div>
           </div>
         </div>
       )}

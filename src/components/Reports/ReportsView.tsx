@@ -12,8 +12,9 @@ import {
   CreditCard,
   Eye,
   FileSpreadsheet,
+  Layers,
 } from 'lucide-react';
-import { Transaction, Product, Expense } from '../../types';
+import { Transaction, Product, ProductVariant, Expense } from '../../types';
 import {
   formatRupiah,
   formatDateIndo,
@@ -21,11 +22,16 @@ import {
   resolveOrderType,
   getOrderStatusLabel,
 } from '../../utils/formatters';
-import { exportTransactionsToExcel } from '../../utils/excelHelper';
+import {
+  exportTransactionsToExcel,
+  exportVariantSalesReportToExcel,
+  VariantSalesReportRow,
+} from '../../utils/excelHelper';
 
 interface ReportsViewProps {
   transactions: Transaction[];
   products: Product[];
+  variants?: ProductVariant[];
   expenses: Expense[];
   onSelectTransaction: (tx: Transaction) => void;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
@@ -34,13 +40,15 @@ interface ReportsViewProps {
 export const ReportsView: React.FC<ReportsViewProps> = ({
   transactions,
   products,
+  variants = [],
   expenses,
   onSelectTransaction,
   showToast,
 }) => {
-  const [dateFilter, setDateFilter] = useState<'today' | '7days' | 'month' | 'all'>('today');
+  const [dateFilter, setDateFilter] = useState<'today' | '7days' | 'month' | 'custom' | 'all'>('today');
   const [customStart, setCustomStart] = useState<string>('');
   const [customEnd, setCustomEnd] = useState<string>('');
+  const [variantReportFilterOnlyVariants, setVariantReportFilterOnlyVariants] = useState<boolean>(false);
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -48,21 +56,21 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
       if (normalizeOrderStatus(tx.status) === 'DIBATALKAN') return false;
-
+      const tgl = String(tx.tanggal || '');
       if (dateFilter === 'today') {
-        return tx.tanggal === todayStr;
+        return tgl === todayStr;
       }
       if (dateFilter === '7days') {
         const d = new Date();
         d.setDate(d.getDate() - 7);
-        return tx.tanggal >= d.toISOString().split('T')[0];
+        return tgl >= d.toISOString().split('T')[0];
       }
       if (dateFilter === 'month') {
         const currentMonth = todayStr.substring(0, 7);
-        return tx.tanggal.startsWith(currentMonth);
+        return tgl.startsWith(currentMonth);
       }
       if (customStart && customEnd) {
-        return tx.tanggal >= customStart && tx.tanggal <= customEnd;
+        return tgl >= customStart && tgl <= customEnd;
       }
       return true;
     });
@@ -71,20 +79,21 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   // Filtered Expenses
   const filteredExpenses = useMemo(() => {
     return expenses.filter((ex) => {
+      const tgl = String(ex.tanggal || '');
       if (dateFilter === 'today') {
-        return ex.tanggal === todayStr;
+        return tgl === todayStr;
       }
       if (dateFilter === '7days') {
         const d = new Date();
         d.setDate(d.getDate() - 7);
-        return ex.tanggal >= d.toISOString().split('T')[0];
+        return tgl >= d.toISOString().split('T')[0];
       }
       if (dateFilter === 'month') {
         const currentMonth = todayStr.substring(0, 7);
-        return ex.tanggal.startsWith(currentMonth);
+        return tgl.startsWith(currentMonth);
       }
       if (customStart && customEnd) {
-        return ex.tanggal >= customStart && ex.tanggal <= customEnd;
+        return tgl >= customStart && tgl <= customEnd;
       }
       return true;
     });
@@ -92,25 +101,36 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
   // Financial calculations
   const totalOmzet = useMemo(() => {
-    return filteredTransactions.reduce((s, tx) => s + tx.total, 0);
+    return filteredTransactions.reduce((s, tx) => s + Number(tx.total || 0), 0);
   }, [filteredTransactions]);
 
   const totalModal = useMemo(() => {
     let modalSum = 0;
     filteredTransactions.forEach((tx) => {
-      tx.items.forEach((item) => {
+      (tx.items || []).forEach((item) => {
+        if (item.harga_modal !== undefined) {
+          modalSum += Number(item.harga_modal) * Number(item.qty || 1);
+          return;
+        }
+        if (item.variantId) {
+          const matchedVar = variants.find((v) => v.variantId === item.variantId);
+          if (matchedVar) {
+            modalSum += Number(matchedVar.costPrice || 0) * Number(item.qty || 1);
+            return;
+          }
+        }
         const prod = products.find((p) => p.id === item.id_produk || p.nama === item.nama_produk);
         const cost = prod ? prod.harga_modal : item.harga * 0.5;
         modalSum += cost * item.qty;
       });
     });
     return modalSum;
-  }, [filteredTransactions, products]);
+  }, [filteredTransactions, products, variants]);
 
   const labaKotor = Math.max(0, totalOmzet - totalModal);
 
   const totalBiayaOperasional = useMemo(() => {
-    return filteredExpenses.reduce((s, ex) => s + ex.jumlah, 0);
+    return filteredExpenses.reduce((s, ex) => s + Number(ex.jumlah || 0), 0);
   }, [filteredExpenses]);
 
   const labaBersih = labaKotor - totalBiayaOperasional;
@@ -119,10 +139,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const paymentBreakdown = useMemo(() => {
     const counts: Record<string, { count: number; total: number }> = {};
     filteredTransactions.forEach((tx) => {
-      const m = tx.metode_pembayaran;
+      const m = tx.metode_pembayaran || 'Cash';
       if (!counts[m]) counts[m] = { count: 0, total: 0 };
       counts[m].count += 1;
-      counts[m].total += tx.total;
+      counts[m].total += Number(tx.total || 0);
     });
     return counts;
   }, [filteredTransactions]);
@@ -131,7 +151,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const bestSellers = useMemo(() => {
     const counts: Record<string, { name: string; qty: number; total: number }> = {};
     filteredTransactions.forEach((tx) => {
-      tx.items.forEach((item) => {
+      (tx.items || []).forEach((item) => {
         if (!counts[item.nama_produk]) {
           counts[item.nama_produk] = { name: item.nama_produk, qty: 0, total: 0 };
         }
@@ -143,6 +163,154 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 8);
   }, [filteredTransactions]);
+
+  // Section 8: Variant & Product Sales Report (Nama Produk, Varian Rasa, Jumlah Terjual, Harga Jual, Total Omzet, Modal, Keuntungan, Stok Tersisa)
+  const variantSalesReportRows = useMemo<VariantSalesReportRow[]>(() => {
+    const map = new Map<string, VariantSalesReportRow>();
+
+    // Seed with all active variants so admin can also see stock & 0-sold variants if desired, or aggregate sold items
+    filteredTransactions.forEach((tx) => {
+      (tx.items || []).forEach((item) => {
+        const qty = Number(item.qty || 0);
+        if (qty <= 0) return;
+
+        const matchedVar = item.variantId
+          ? variants.find((v) => v.variantId === item.variantId)
+          : variants.find(
+              (v) =>
+                item.nama_produk &&
+                item.nama_produk.toLowerCase() ===
+                  `${(v.productName || '').toLowerCase()} - ${v.variantName.toLowerCase()}`
+            );
+        const matchedProd = products.find(
+          (p) =>
+            p.id === item.id_produk ||
+            p.nama === item.productName ||
+            p.nama === item.nama_produk
+        );
+
+        let productName = item.productName || matchedProd?.nama || item.nama_produk || 'Menu';
+        let variantName = item.variantName || matchedVar?.variantName || '-';
+        if (variantName === '-' && item.nama_produk?.includes(' - ')) {
+          const parts = item.nama_produk.split(' - ');
+          productName = parts[0].trim();
+          variantName = parts.slice(1).join(' - ').trim();
+        }
+
+        if (variantReportFilterOnlyVariants && variantName === '-') {
+          return;
+        }
+
+        const key = `${productName.toLowerCase()}::${variantName.toLowerCase()}`;
+        const unitSelling = Number(item.harga || matchedVar?.price || matchedProd?.harga_jual || 0);
+        const unitCost =
+          item.harga_modal !== undefined
+            ? Number(item.harga_modal)
+            : matchedVar
+            ? Number(matchedVar.costPrice || 0)
+            : matchedProd
+            ? Number(matchedProd.harga_modal || 0)
+            : Math.round(unitSelling * 0.6);
+
+        const omzet = Number(item.subtotal || unitSelling * qty);
+        const modal = unitCost * qty;
+        const remainingStock = matchedVar
+          ? matchedVar.stock
+          : matchedProd
+          ? matchedProd.stok
+          : 0;
+        const unit = matchedVar?.unit || matchedProd?.satuan || 'Cup';
+
+        const existing = map.get(key);
+        if (existing) {
+          existing.qtySold += qty;
+          existing.totalOmzet += omzet;
+          existing.totalModal += modal;
+          existing.profit = existing.totalOmzet - existing.totalModal;
+          existing.remainingStock = remainingStock;
+        } else {
+          map.set(key, {
+            productName,
+            variantName,
+            qtySold: qty,
+            sellingPrice: unitSelling,
+            totalOmzet: omzet,
+            totalModal: modal,
+            profit: omzet - modal,
+            remainingStock,
+            unit,
+          });
+        }
+      });
+    });
+
+    // If no transactions yet in current filter, still show the top variants with 0 sold so the report table is informative
+    if (map.size === 0 && variants.length > 0) {
+      variants.slice(0, 15).forEach((v) => {
+        const pName =
+          v.productName || products.find((p) => p.id === v.productId)?.nama || 'Produk';
+        map.set(`${pName.toLowerCase()}::${v.variantName.toLowerCase()}`, {
+          productName: pName,
+          variantName: v.variantName,
+          qtySold: 0,
+          sellingPrice: v.price,
+          totalOmzet: 0,
+          totalModal: 0,
+          profit: 0,
+          remainingStock: v.stock,
+          unit: v.unit || 'Cup',
+        });
+      });
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.qtySold - a.qtySold);
+  }, [filteredTransactions, variants, products, variantReportFilterOnlyVariants]);
+
+  const handleExportVariantReportExcel = () => {
+    exportVariantSalesReportToExcel(
+      variantSalesReportRows,
+      `Laporan_Penjualan_Varian_WarungBangKobra_${dateFilter}_${todayStr}.xlsx`
+    );
+    showToast('Laporan Penjualan Varian berhasil diekspor ke Excel (.xlsx)!', 'success');
+  };
+
+  const handleExportVariantReportCSV = () => {
+    const headers = [
+      'Nama Produk',
+      'Varian Rasa',
+      'Jumlah Terjual',
+      'Harga Jual',
+      'Total Omzet',
+      'Modal',
+      'Keuntungan',
+      'Stok Tersisa',
+    ];
+    const rows = variantSalesReportRows.map((r) => [
+      `"${r.productName}"`,
+      `"${r.variantName}"`,
+      r.qtySold,
+      r.sellingPrice,
+      r.totalOmzet,
+      r.totalModal,
+      r.profit,
+      `"${r.remainingStock} ${r.unit}"`,
+    ]);
+    const csvContent =
+      'data:text/csv;charset=utf-8,' +
+      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Laporan_Penjualan_Varian_${todayStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    showToast('Laporan Penjualan Varian berhasil diunduh dalam format CSV!', 'success');
+  };
+
+  const handlePrintVariantReportPDF = () => {
+    window.print();
+  };
 
   // Export CSV
   const handleExportExcel = () => {
@@ -263,6 +431,32 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             >
               Semua
             </button>
+          </div>
+
+          {/* Custom Date Range Picker (Section 8) */}
+          <div className="flex items-center gap-1.5 bg-stone-900 px-2.5 py-1.5 rounded-2xl border border-stone-800 text-xs">
+            <Calendar className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+            <input
+              type="date"
+              value={customStart}
+              onChange={(e) => {
+                setCustomStart(e.target.value);
+                if (e.target.value && customEnd) setDateFilter('custom');
+              }}
+              className="bg-transparent text-stone-200 text-[11px] focus:outline-none"
+              title="Dari Tanggal"
+            />
+            <span className="text-stone-500">-</span>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={(e) => {
+                setCustomEnd(e.target.value);
+                if (customStart && e.target.value) setDateFilter('custom');
+              }}
+              className="bg-transparent text-stone-200 text-[11px] focus:outline-none"
+              title="Sampai Tanggal"
+            />
           </div>
 
           <button
@@ -427,6 +621,112 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
       </div>
 
+      {/* LAPORAN PENJUALAN PRODUK & VARIAN RASA (Section 8) */}
+      <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5 space-y-4 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="font-extrabold text-stone-100 text-base flex items-center gap-2">
+              <Layers className="w-5 h-5 text-amber-500" />
+              <span>Laporan Penjualan Berdasarkan Produk &amp; Varian Rasa</span>
+            </h3>
+            <p className="text-xs text-stone-400">
+              Rincian jumlah terjual, harga jual, omzet, modal, keuntungan, dan sisa stok setiap varian rasa.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setVariantReportFilterOnlyVariants(!variantReportFilterOnlyVariants)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                variantReportFilterOnlyVariants
+                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                  : 'bg-stone-950 border-stone-800 text-stone-300 hover:bg-stone-800'
+              }`}
+            >
+              {variantReportFilterOnlyVariants ? 'Hanya Varian Rasa' : 'Semua Produk & Varian'}
+            </button>
+            <button
+              type="button"
+              onClick={handleExportVariantReportExcel}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/30 text-xs font-bold transition cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Excel Varian</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleExportVariantReportCSV}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-950 border border-stone-800 text-stone-300 hover:bg-stone-800 text-xs font-bold transition cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>CSV Varian</span>
+            </button>
+            <button
+              type="button"
+              onClick={handlePrintVariantReportPDF}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-950 border border-stone-800 text-stone-300 hover:bg-stone-800 text-xs font-bold transition cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5 text-amber-400" />
+              <span>PDF / Cetak</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-stone-950/70 border-b border-stone-800 text-[10px] font-bold uppercase tracking-wider text-stone-400">
+              <tr>
+                <th className="py-3 px-3">Produk</th>
+                <th className="py-3 px-3">Varian Rasa</th>
+                <th className="py-3 px-3 text-right">Terjual</th>
+                <th className="py-3 px-3 text-right">Harga Jual</th>
+                <th className="py-3 px-3 text-right">Total Omzet</th>
+                <th className="py-3 px-3 text-right">Modal</th>
+                <th className="py-3 px-3 text-right">Keuntungan</th>
+                <th className="py-3 px-3 text-right">Stok Tersisa</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-800/60 font-medium">
+              {variantSalesReportRows.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-8 text-center text-stone-500">
+                    Belum ada data penjualan produk atau varian pada periode ini.
+                  </td>
+                </tr>
+              ) : (
+                variantSalesReportRows.map((row, idx) => (
+                  <tr key={idx} className="hover:bg-stone-800/30">
+                    <td className="py-2.5 px-3 font-bold text-stone-100">{row.productName}</td>
+                    <td className="py-2.5 px-3 text-amber-400 font-semibold">
+                      {row.variantName}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-stone-100">
+                      {row.qtySold}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono text-stone-300">
+                      {formatRupiah(row.sellingPrice)}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-400">
+                      {formatRupiah(row.totalOmzet)}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono text-stone-400">
+                      {formatRupiah(row.totalModal)}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-400">
+                      {formatRupiah(row.profit)}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono text-stone-200">
+                      {row.remainingStock} {row.unit}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Transaction History Log Table */}
       <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5 space-y-4 shadow-xl">
         <div className="flex items-center justify-between">
@@ -496,7 +796,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                     <td className="py-3 px-3 text-center">
                       <button
                         onClick={() => onSelectTransaction(tx)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-amber-400 text-[11px] font-semibold transition"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-amber-400 text-[11px] font-semibold transition cursor-pointer"
                       >
                         <Eye className="w-3 h-3" />
                         <span>Lihat</span>

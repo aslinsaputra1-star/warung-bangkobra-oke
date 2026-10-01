@@ -3,6 +3,7 @@ import {
   StoreSettings,
   ActiveTab,
   Product,
+  ProductVariant,
   Transaction,
   Customer,
   Expense,
@@ -13,6 +14,12 @@ import {
   CategoryItem,
 } from './types';
 import { StorageService } from './services/storage';
+import {
+  INITIAL_PRODUCTS,
+  INITIAL_PRODUCT_VARIANTS,
+  INDOMIE_PARENT_PRODUCT,
+  INDOMIE_INITIAL_VARIANTS,
+} from './data/initialData';
 import { GoogleSheetsSyncService } from './services/googleSheetsSync';
 import { Header } from './components/Header';
 import { Navigation } from './components/Navigation';
@@ -51,7 +58,14 @@ import {
   deleteOrderFromFirebase,
   syncProductsToFirebase,
   deleteProductFromFirebase,
+  clearAllProductsFromFirebase,
   subscribeToFirebaseProducts,
+  syncProductVariantsToFirebase,
+  saveProductVariantToFirebase,
+  deleteProductVariantFromFirebase,
+  subscribeToFirebaseProductVariants,
+  deductStockWithFirestoreTransaction,
+  restoreStockWithFirestoreTransaction,
   syncCategoriesToFirebase,
   deleteCategoryFromFirebase,
   subscribeToFirebaseCategories,
@@ -71,6 +85,7 @@ import {
   FIREBASE_CONFIG_ERROR_MESSAGE,
   syncAllDataToFirebase,
   testFirestoreConnection,
+  fetchPublicOrderReceiptFromFirebase,
 } from './services/firebase';
 import { formatRupiah } from './utils/formatters';
 
@@ -162,6 +177,9 @@ export default function App() {
 
   // Core Data States
   const [products, setProducts] = useState<Product[]>(() => StorageService.getProducts());
+  const [productVariants, setProductVariants] = useState<ProductVariant[]>(() =>
+    StorageService.getProductVariants()
+  );
   const [categories, setCategories] = useState<CategoryItem[]>(() => StorageService.getCategories());
   const [transactions, setTransactions] = useState<Transaction[]>(() =>
     StorageService.getTransactions()
@@ -220,17 +238,50 @@ export default function App() {
   // Global Receipt Modal (e.g. from Dashboard / Reports)
   const [receiptTx, setReceiptTx] = useState<Transaction | null>(null);
 
-  // Shared Delivery Proof Link Viewer (?proof=WBK-XXXX)
-  const [sharedProofOrderId, setSharedProofOrderId] = useState<string | null>(() => {
+  // Shared Digital Receipt / Delivery Proof Link Viewer (/receipt/:id, /delivery-proof/:id, ?receipt=..., ?proof=...)
+  const [sharedReceiptRoute, setSharedReceiptRoute] = useState<{
+    orderId: string;
+    mode: 'receipt' | 'delivery-proof';
+  } | null>(() => {
     if (typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      const receiptMatch = path.match(/^\/receipt\/([^/]+)/i);
+      if (receiptMatch && receiptMatch[1]) {
+        return { orderId: decodeURIComponent(receiptMatch[1].trim()), mode: 'receipt' };
+      }
+      const deliveryProofMatch = path.match(/^\/delivery-proof\/([^/]+)/i);
+      if (deliveryProofMatch && deliveryProofMatch[1]) {
+        return {
+          orderId: decodeURIComponent(deliveryProofMatch[1].trim()),
+          mode: 'delivery-proof',
+        };
+      }
       const params = new URLSearchParams(window.location.search);
+      const receiptParam = params.get('receipt');
+      if (receiptParam && receiptParam.trim() !== '') {
+        return { orderId: receiptParam.trim(), mode: 'receipt' };
+      }
       const proofParam = params.get('proof');
       if (proofParam && proofParam.trim() !== '') {
-        return proofParam.trim();
+        return { orderId: proofParam.trim(), mode: 'delivery-proof' };
       }
     }
     return null;
   });
+  const [fetchedPublicReceiptTx, setFetchedPublicReceiptTx] = useState<Transaction | null>(null);
+
+  useEffect(() => {
+    if (!sharedReceiptRoute?.orderId) return;
+    let active = true;
+    fetchPublicOrderReceiptFromFirebase(sharedReceiptRoute.orderId).then((tx) => {
+      if (active && tx) {
+        setFetchedPublicReceiptTx(tx);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [sharedReceiptRoute]);
 
   // Incoming QR Order Alert Banner for Cashier
   const [newOrderAlert, setNewOrderAlert] = useState<Transaction | null>(null);
@@ -255,17 +306,127 @@ export default function App() {
 
   // Real-time Cloud Database Synchronization across all devices (Firebase Firestore)
   useEffect(() => {
-    // 1. Subscribe to Products Catalog in real-time
+    // Seed the 33 official Warung Bang Kobra products (SKU-001..SKU-0028 + 5 Variant Parent Products) & 43 initial variants into local state & Firebase Firestore
+    const FIREBASE_PRODUCTS_SEEDED_KEY = 'wkb_firebase_products_seeded_33_v3';
+    const FIREBASE_VARIANTS_SEEDED_KEY = 'wkb_firebase_variants_seeded_v1';
+    let isSeedingProducts = false;
+    let isSeedingVariants = false;
+    try {
+      if (localStorage.getItem(FIREBASE_PRODUCTS_SEEDED_KEY) !== 'true') {
+        isSeedingProducts = true;
+        localStorage.setItem(FIREBASE_PRODUCTS_SEEDED_KEY, 'true');
+        localStorage.removeItem('wkb_pos_products_admin_cleared_v2');
+        StorageService.saveProducts(INITIAL_PRODUCTS);
+        setProducts(INITIAL_PRODUCTS);
+        syncProductsToFirebase(INITIAL_PRODUCTS, true)
+          .catch(() => {})
+          .finally(() => {
+            isSeedingProducts = false;
+          });
+      }
+      if (localStorage.getItem(FIREBASE_VARIANTS_SEEDED_KEY) !== 'true') {
+        isSeedingVariants = true;
+        localStorage.setItem(FIREBASE_VARIANTS_SEEDED_KEY, 'true');
+        StorageService.saveProductVariants(INITIAL_PRODUCT_VARIANTS);
+        setProductVariants(INITIAL_PRODUCT_VARIANTS);
+        syncProductVariantsToFirebase(INITIAL_PRODUCT_VARIANTS, true)
+          .catch(() => {})
+          .finally(() => {
+            isSeedingVariants = false;
+          });
+      }
+    } catch {
+      isSeedingProducts = false;
+      isSeedingVariants = false;
+    }
+
+    // 1. Subscribe to Products Catalog in real-time (preserve SKU order and respect explicit admin empty action)
     const unsubscribeProducts = subscribeToFirebaseProducts((remoteProducts) => {
-      if (remoteProducts && remoteProducts.length > 0) {
-        setProducts(remoteProducts);
-        StorageService.saveProducts(remoteProducts);
-      } else {
-        const local = StorageService.getProducts();
-        if (local.length > 0) {
-          syncProductsToFirebase(local).catch(() => {});
+      if (isSeedingProducts) return;
+      const deletedProdIds = StorageService.getDeletedProductIds();
+      let list = (Array.isArray(remoteProducts) ? remoteProducts : []).filter(
+        (p) =>
+          p &&
+          !deletedProdIds.has(String(p.id).trim()) &&
+          !deletedProdIds.has(String(p.sku || '').trim())
+      );
+      const isAdminCleared =
+        typeof window !== 'undefined' &&
+        localStorage.getItem('wkb_pos_products_admin_cleared_v2') === 'true';
+
+      if (list.length === 0 && !isAdminCleared && deletedProdIds.size === 0) {
+        const localSeeded = StorageService.getProducts();
+        if (localSeeded.length > 0) {
+          setProducts(localSeeded);
+          syncProductsToFirebase(localSeeded, true).catch(() => {});
+          return;
         }
       }
+
+      if (!isAdminCleared) {
+        try {
+          if (localStorage.getItem('wkb_firebase_indomie_prod_v1') !== 'true') {
+            localStorage.setItem('wkb_firebase_indomie_prod_v1', 'true');
+            const hasIndomie = list.some(
+              (p) => p.id === INDOMIE_PARENT_PRODUCT.id || p.nama.toUpperCase() === 'INDOMIE'
+            );
+            if (!hasIndomie && !deletedProdIds.has(INDOMIE_PARENT_PRODUCT.id)) {
+              list = [...list, INDOMIE_PARENT_PRODUCT];
+              syncProductsToFirebase([INDOMIE_PARENT_PRODUCT], false).catch(() => {});
+            }
+          }
+        } catch {}
+      }
+
+      setProducts(list);
+      StorageService.saveProducts(list);
+    });
+
+    // 1b. Subscribe to Product Variants (`product_variants` collection) in real-time
+    const unsubscribeVariants = subscribeToFirebaseProductVariants((remoteVariants) => {
+      if (isSeedingVariants) return;
+      const deletedVarIds = StorageService.getDeletedVariantIds();
+      const deletedProdIds = StorageService.getDeletedProductIds();
+      let list = (Array.isArray(remoteVariants) ? remoteVariants : []).filter(
+        (v) =>
+          v &&
+          !deletedVarIds.has(String(v.variantId).trim()) &&
+          !deletedVarIds.has(String(v.sku || '').trim()) &&
+          !deletedProdIds.has(String(v.productId || '').trim())
+      );
+      const isAdminCleared =
+        typeof window !== 'undefined' &&
+        localStorage.getItem('wkb_pos_products_admin_cleared_v2') === 'true';
+
+      if (list.length === 0 && !isAdminCleared && deletedVarIds.size === 0 && deletedProdIds.size === 0) {
+        const localVars = StorageService.getProductVariants();
+        if (localVars.length > 0) {
+          setProductVariants(localVars);
+          syncProductVariantsToFirebase(localVars, true).catch(() => {});
+          return;
+        }
+      }
+
+      if (!isAdminCleared) {
+        try {
+          if (localStorage.getItem('wkb_firebase_indomie_vars_v1') !== 'true') {
+            localStorage.setItem('wkb_firebase_indomie_vars_v1', 'true');
+            const existingVarIds = new Set(list.map((v) => v.variantId));
+            const missingIndomieVars = INDOMIE_INITIAL_VARIANTS.filter(
+              (iv) => !existingVarIds.has(iv.variantId) && !deletedVarIds.has(iv.variantId)
+            );
+            if (missingIndomieVars.length > 0 && !deletedProdIds.has(INDOMIE_PARENT_PRODUCT.id)) {
+              list = [...missingIndomieVars, ...list];
+              missingIndomieVars.forEach((mv) => {
+                saveProductVariantToFirebase(mv).catch(() => {});
+              });
+            }
+          }
+        } catch {}
+      }
+
+      setProductVariants(list);
+      StorageService.saveProductVariants(list);
     });
 
     // 2. Subscribe to Categories in real-time
@@ -431,6 +592,7 @@ export default function App() {
 
     return () => {
       unsubscribeProducts();
+      unsubscribeVariants();
       unsubscribeCategories();
       unsubscribeOrders();
       unsubscribeExpenses();
@@ -637,16 +799,28 @@ export default function App() {
       console.warn('Firebase save warning:', err);
     });
 
-    // Re-read products and mutations as they were modified by completeTransaction
+    // Re-read products, variants, and mutations as they were modified by completeTransaction
     const updatedProds = StorageService.getProducts();
+    const updatedVars = StorageService.getProductVariants();
     const updatedCusts = StorageService.getCustomers();
     setProducts(updatedProds);
+    setProductVariants(updatedVars);
     setMutations(StorageService.getStockMutations());
     setTransactions(StorageService.getTransactions());
     setCustomers(updatedCusts);
 
-    // Sync updated stock to Firebase so other devices immediately reflect decreased stock
-    syncProductsToFirebase(updatedProds).catch(() => {});
+    // Atomic Firestore transaction for stock deduction (prevents negative or double deduction on concurrent sales)
+    deductStockWithFirestoreTransaction(newTx)
+      .then((txOk) => {
+        if (!txOk) {
+          syncProductsToFirebase(updatedProds).catch(() => {});
+          syncProductVariantsToFirebase(updatedVars).catch(() => {});
+        }
+      })
+      .catch(() => {
+        syncProductsToFirebase(updatedProds).catch(() => {});
+        syncProductVariantsToFirebase(updatedVars).catch(() => {});
+      });
 
     // Sync latest stock mutation to Firebase
     const latestMutations = StorageService.getStockMutations();
@@ -669,19 +843,46 @@ export default function App() {
     }
   };
 
-  // Transaction Update (Status, details, etc.)
+  // Transaction Update (Status, details, etc. + Automatic Stock Restoration on Cancel)
   const handleUpdateTransaction = (updatedTx: Transaction) => {
+    const isCancelled =
+      updatedTx.status === 'DIBATALKAN' || updatedTx.status === 'Dibatalkan';
+
+    let finalTx = { ...updatedTx };
+    if (isCancelled && !updatedTx.stockRestored) {
+      const restored = StorageService.restoreStockOnCancel(updatedTx);
+      finalTx = { ...updatedTx, stockRestored: true };
+      setProducts(restored.products);
+      setProductVariants(restored.variants);
+      setMutations(restored.mutations);
+      restoreStockWithFirestoreTransaction(finalTx)
+        .then((ok) => {
+          if (!ok) {
+            syncProductsToFirebase(restored.products).catch(() => {});
+            syncProductVariantsToFirebase(restored.variants).catch(() => {});
+          }
+        })
+        .catch(() => {});
+      if (restored.mutations.length > 0) {
+        saveStockMutationToFirebase(restored.mutations[0]).catch(() => {});
+      }
+      showToast(
+        `Stok produk & varian untuk pesanan ${updatedTx.id_transaksi} telah dikembalikan.`,
+        'info'
+      );
+    }
+
     const current = StorageService.getTransactions();
-    const updated = current.map((t) => (t.id_transaksi === updatedTx.id_transaksi ? updatedTx : t));
+    const updated = current.map((t) => (t.id_transaksi === finalTx.id_transaksi ? finalTx : t));
     StorageService.saveTransactions(updated);
     setTransactions(updated);
 
     // Sync status change to Firebase Firestore (KASIR / DELIVERY UPDATE STATUS -> FIREBASE -> CUSTOMER LIVE)
     updateFirebaseOrderStatus(
-      updatedTx.id_transaksi,
-      updatedTx.status,
-      updatedTx,
-      updatedTx.deliveryStatus
+      finalTx.id_transaksi,
+      finalTx.status,
+      finalTx,
+      finalTx.deliveryStatus
     ).catch((err) => {
       console.warn('Firebase status update error:', err);
     });
@@ -722,22 +923,97 @@ export default function App() {
   };
 
   const handleDeleteProduct = (id: string) => {
-    const updated = StorageService.deleteProduct(id);
+    const cleanId = String(id || '').trim();
+    const targetProd = products.find(
+      (p) => String(p.id).trim() === cleanId || String(p.sku || '').trim() === cleanId
+    );
+    const targetSku = targetProd?.sku ? String(targetProd.sku).trim() : '';
+    const varsToRemove = productVariants.filter(
+      (v) =>
+        String(v.productId).trim() === cleanId ||
+        (targetSku && String(v.productId).trim() === targetSku)
+    );
+    const updated = StorageService.deleteProduct(cleanId);
+    const updatedVars = StorageService.getProductVariants();
     setProducts(updated);
-    deleteProductFromFirebase(id).catch(() => {});
-    syncProductsToFirebase(updated).catch(() => {});
+    setProductVariants(updatedVars);
+
+    deleteProductFromFirebase(cleanId, targetSku).catch(() => {});
+    varsToRemove.forEach((v) => deleteProductVariantFromFirebase(v.variantId, v.sku).catch(() => {}));
+  };
+
+  const handleAddVariant = (variant: ProductVariant) => {
+    const res = StorageService.addProductVariant(variant);
+    setProductVariants(res.variants);
+    setProducts(res.products);
+    saveProductVariantToFirebase(variant).catch(() => {});
+    syncProductsToFirebase(res.products).catch(() => {});
+  };
+
+  const handleUpdateVariant = (variant: ProductVariant) => {
+    const res = StorageService.updateProductVariant(variant);
+    setProductVariants(res.variants);
+    setProducts(res.products);
+    saveProductVariantToFirebase(variant).catch(() => {});
+    syncProductsToFirebase(res.products).catch(() => {});
+  };
+
+  const handleDeleteVariant = (variantId: string) => {
+    const cleanVarId = String(variantId || '').trim();
+    const targetVar = productVariants.find(
+      (v) => String(v.variantId).trim() === cleanVarId || String(v.sku || '').trim() === cleanVarId
+    );
+    const res = StorageService.deleteProductVariant(cleanVarId);
+    setProductVariants(res.variants);
+    setProducts(res.products);
+    deleteProductVariantFromFirebase(cleanVarId, targetVar?.sku).catch(() => {});
+    syncProductsToFirebase(res.products).catch(() => {});
+  };
+
+  const handleBulkSaveProductsAndVariants = (
+    newProducts: Product[],
+    newVariants: ProductVariant[]
+  ) => {
+    StorageService.saveProductVariants(newVariants);
+    StorageService.saveProducts(newProducts);
+    const normProds = StorageService.getProducts();
+    const normVars = StorageService.getProductVariants();
+    setProducts(normProds);
+    setProductVariants(normVars);
+    syncProductsToFirebase(normProds).catch(() => {});
+    syncProductVariantsToFirebase(normVars).catch(() => {});
   };
 
   const handleImportProducts = (prods: Product[]) => {
     StorageService.saveProducts(prods);
-    setProducts(prods);
-    syncProductsToFirebase(prods).catch(() => {});
+    const normalized = StorageService.getProducts();
+    setProducts(normalized);
+    if (prods.length > 0) {
+      syncProductsToFirebase(normalized, true).catch(() => {});
+    }
+  };
+
+  const handleClearAllProducts = async (): Promise<boolean> => {
+    StorageService.clearAllProducts();
+    StorageService.saveProductVariants([]);
+    setProducts([]);
+    setProductVariants([]);
+    const ok = await clearAllProductsFromFirebase(currentUser?.nama || 'Admin');
+    return ok;
   };
 
   // Stock Updated
-  const handleStockUpdated = (prods: Product[], muts: StockMutation[]) => {
+  const handleStockUpdated = (
+    prods: Product[],
+    muts: StockMutation[],
+    vars?: ProductVariant[]
+  ) => {
     setProducts(prods);
     setMutations(muts);
+    if (vars) {
+      setProductVariants(vars);
+      syncProductVariantsToFirebase(vars).catch(() => {});
+    }
     syncProductsToFirebase(prods).catch(() => {});
     if (muts && muts.length > 0) {
       saveStockMutationToFirebase(muts[0]).catch(() => {});
@@ -865,60 +1141,104 @@ export default function App() {
     );
   }
 
-  // 0. Direct Shared Delivery Proof Viewer (when customer opens WhatsApp link ?proof=WBK-XXXX)
-  if (sharedProofOrderId) {
-    const matchedTx =
-      transactions.find(
-        (t) => t.id_transaksi.toLowerCase() === sharedProofOrderId.toLowerCase()
-      ) ||
-      ({
-        id_transaksi: sharedProofOrderId,
-        tanggal: new Date().toISOString().split('T')[0],
-        jam: '10:30:00',
-        kasir: 'Warung Bang Kobra',
-        nama_pelanggan: 'Pelanggan DQM',
-        no_whatsapp: '',
-        subtotal: 0,
-        diskon: 0,
-        biaya: 0,
-        total: 0,
-        metode_pembayaran: 'QRIS',
-        uang_diterima: 0,
-        kembalian: 0,
-        status: 'SELESAI',
-        orderType: 'DELIVERY_DQM',
-        tipe_pesanan: 'DELIVERY_DQM',
-        deliveryArea: 'DQM',
-        deliveryStatus: 'DITERIMA',
-        items: [],
-        created_at: new Date().toISOString(),
-      } as Transaction);
-
+  // 0. Direct Shared Digital Receipt & Delivery Proof Viewer (/receipt/:orderId, /delivery-proof/:orderId, ?proof=WBK-XXXX)
+  if (sharedReceiptRoute) {
+    const targetId = sharedReceiptRoute.orderId;
+    const localTx = transactions.find(
+      (t) => t.id_transaksi.toLowerCase() === targetId.toLowerCase()
+    );
     const matchedProof =
       StorageService.getDeliveryProofs().find(
-        (p) => p.orderId.toLowerCase() === sharedProofOrderId.toLowerCase()
+        (p) => p.orderId.toLowerCase() === targetId.toLowerCase()
       ) || null;
 
-    return (
-      <div className="min-h-screen bg-stone-950 text-stone-100">
+    const matchedTx: Transaction =
+      fetchedPublicReceiptTx ||
+      (localTx
+        ? {
+            ...localTx,
+            ...(matchedProof
+              ? {
+                  deliveryStatus: matchedProof.status,
+                  courierName: matchedProof.courierName || localTx.courierName,
+                  receiverName: matchedProof.receiverName || localTx.receiverName,
+                  receiverPhone: matchedProof.receiverPhone || localTx.receiverPhone,
+                  proofPhotoUrl: matchedProof.proofPhotoUrl || localTx.proofPhotoUrl,
+                  deliveryNote: matchedProof.deliveryNote || localTx.deliveryNote,
+                  deliveredAt: matchedProof.deliveredAt || localTx.deliveredAt,
+                }
+              : {}),
+          }
+        : ({
+            id_transaksi: targetId,
+            tanggal: new Date().toISOString().split('T')[0],
+            jam: '10:30:00',
+            kasir: 'Warung Bang Kobra',
+            nama_pelanggan: matchedProof?.customerName || 'Pelanggan Warung Bang Kobra',
+            no_whatsapp: matchedProof?.customerPhone || '',
+            subtotal: 0,
+            diskon: 0,
+            biaya: 0,
+            total: 0,
+            metode_pembayaran: 'QRIS',
+            uang_diterima: 0,
+            kembalian: 0,
+            status: 'SELESAI',
+            orderType:
+              sharedReceiptRoute.mode === 'delivery-proof' ? 'DELIVERY_DQM' : 'BUNGKUS',
+            tipe_pesanan:
+              sharedReceiptRoute.mode === 'delivery-proof' ? 'DELIVERY_DQM' : 'BUNGKUS',
+            deliveryArea: sharedReceiptRoute.mode === 'delivery-proof' ? 'DQM' : null,
+            deliveryStatus:
+              sharedReceiptRoute.mode === 'delivery-proof'
+                ? matchedProof?.status || 'DITERIMA'
+                : null,
+            courierName: matchedProof?.courierName || 'Kurir Warung Bang Kobra',
+            receiverName: matchedProof?.receiverName || '',
+            proofPhotoUrl: matchedProof?.proofPhotoUrl || '',
+            deliveryNote: matchedProof?.deliveryNote || '',
+            deliveredAt: matchedProof?.deliveredAt || '',
+            items: [],
+            created_at: new Date().toISOString(),
+          } as Transaction));
+
+    if (sharedReceiptRoute.mode === 'delivery-proof') {
+      return (
         <DeliveryProofModal
           isOpen={true}
-          onClose={() => {
-            setSharedProofOrderId(null);
-            if (typeof window !== 'undefined' && window.history.replaceState) {
-              window.history.replaceState({}, document.title, window.location.pathname);
-            }
-          }}
           transaction={matchedTx}
-          existingProof={matchedProof}
+          existingProof={matchedProof || null}
           settings={settings}
-          currentUserRole={currentUser?.role || 'Customer'}
-          currentUserName={currentUser?.nama || 'Pelanggan DQM'}
           initialMode="view"
           readOnlyCustomerView={!isStaffAuthenticated}
+          onClose={() => {
+            setSharedReceiptRoute(null);
+            if (typeof window !== 'undefined' && window.history.replaceState) {
+              window.history.replaceState({}, document.title, '/');
+            }
+          }}
           showToast={showToast}
         />
-      </div>
+      );
+    }
+
+    return (
+      <ReceiptModal
+        transaction={matchedTx}
+        settings={settings}
+        onClose={() => {
+          setSharedReceiptRoute(null);
+          if (typeof window !== 'undefined' && window.history.replaceState) {
+            window.history.replaceState({}, document.title, '/');
+          }
+        }}
+        onNewTransaction={() => {
+          setSharedReceiptRoute(null);
+          if (typeof window !== 'undefined' && window.history.replaceState) {
+            window.history.replaceState({}, document.title, '/');
+          }
+        }}
+      />
     );
   }
 
@@ -1115,6 +1435,7 @@ export default function App() {
               {activeTab === 'pos' && (
                 <POSView
                   products={products}
+                  variants={productVariants}
                   settings={settings}
                   onTransactionCompleted={handleTransactionCompleted}
                   showToast={showToast}
@@ -1166,7 +1487,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'public_menu' && (
+          {(activeTab === 'public_menu' || activeTab === 'menu_ads') && (
             <PublicMenuManagerView
               products={products}
               settings={settings}
@@ -1181,10 +1502,17 @@ export default function App() {
           {activeTab === 'products' && (
             <ProductsView
               products={products}
+              variants={productVariants}
+              userRole={effectiveRole}
               onAddProduct={handleAddProduct}
               onUpdateProduct={handleUpdateProduct}
               onDeleteProduct={handleDeleteProduct}
               onImportProducts={handleImportProducts}
+              onClearAllProducts={handleClearAllProducts}
+              onAddVariant={handleAddVariant}
+              onUpdateVariant={handleUpdateVariant}
+              onDeleteVariant={handleDeleteVariant}
+              onBulkSaveProductsAndVariants={handleBulkSaveProductsAndVariants}
               showToast={showToast}
             />
           )}
@@ -1204,6 +1532,7 @@ export default function App() {
           {activeTab === 'stock' && (
             <StockView
               products={products}
+              variants={productVariants}
               mutations={mutations}
               settings={settings}
               onStockUpdated={handleStockUpdated}
@@ -1215,6 +1544,7 @@ export default function App() {
             <ReportsView
               transactions={transactions}
               products={products}
+              variants={productVariants}
               expenses={expenses}
               onSelectTransaction={setReceiptTx}
               showToast={showToast}

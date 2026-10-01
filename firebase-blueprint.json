@@ -281,6 +281,21 @@
         "items": {
           "type": "array",
           "description": "List of ordered items"
+        },
+        "receiptSharedAt": {
+          "type": "string",
+          "description": "Timestamp when receipt was shared via Google Chat or WhatsApp",
+          "maxLength": 64
+        },
+        "receiptSharedBy": {
+          "type": "string",
+          "description": "Cashier/Staff who shared the receipt",
+          "maxLength": 120
+        },
+        "receiptShareMethod": {
+          "type": "string",
+          "description": "Receipt sharing medium (e.g. GOOGLE_CHAT, WHATSAPP)",
+          "maxLength": 32
         }
       },
       "required": ["id_transaksi", "tanggal", "jam", "nama_pelanggan", "total", "metode_pembayaran", "status", "created_at"]
@@ -540,9 +555,34 @@
         "sentAt": { "type": "string", "maxLength": 64 },
         "deliveredAt": { "type": "string", "maxLength": 64 },
         "createdAt": { "type": "string", "maxLength": 64 },
-        "updatedAt": { "type": "string", "maxLength": 64 }
+        "updatedAt": { "type": "string", "maxLength": 64 },
+        "receiptSharedAt": { "type": "string", "maxLength": 64 },
+        "receiptSharedBy": { "type": "string", "maxLength": 120 },
+        "receiptShareMethod": { "type": "string", "maxLength": 32 }
       },
       "required": ["deliveryId", "orderId", "orderNumber", "customerName", "destination", "status"]
+    },
+    "ProductVariant": {
+      "title": "ProductVariant",
+      "description": "Product flavor/variant linked to a main product via productId",
+      "type": "object",
+      "properties": {
+        "variantId": { "type": "string", "maxLength": 128 },
+        "productId": { "type": "string", "maxLength": 128 },
+        "productName": { "type": "string", "maxLength": 150 },
+        "variantName": { "type": "string", "maxLength": 150 },
+        "sku": { "type": "string", "maxLength": 64 },
+        "price": { "type": "number" },
+        "costPrice": { "type": "number" },
+        "stock": { "type": "number" },
+        "minStock": { "type": "number" },
+        "unit": { "type": "string", "maxLength": 32 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["variantId", "productId", "variantName", "price", "stock", "isActive"]
     }
   },
   "firestore": {
@@ -553,6 +593,10 @@
     "/products/{productId}": {
       "schema": "Product",
       "description": "Product menu readable by customers. Creation and sync allowed for valid product schemas with ID matching; deletion restricted to Admin and Owner."
+    },
+    "/product_variants/{variantId}": {
+      "schema": "ProductVariant",
+      "description": "Product flavor variants linked to main products via productId."
     },
     "/categories/{categoryId}": {
       "schema": "Category",

@@ -1,5 +1,6 @@
 import {
   Product,
+  ProductVariant,
   Transaction,
   Customer,
   Expense,
@@ -17,6 +18,9 @@ import {
 } from '../utils/formatters';
 import {
   INITIAL_PRODUCTS,
+  INITIAL_PRODUCT_VARIANTS,
+  INDOMIE_PARENT_PRODUCT,
+  INDOMIE_INITIAL_VARIANTS,
   INITIAL_SETTINGS,
   INITIAL_CUSTOMERS,
   INITIAL_EXPENSES,
@@ -28,6 +32,12 @@ import {
 
 const STORAGE_KEYS = {
   PRODUCTS: 'wkb_pos_products',
+  PRODUCTS_SEEDED_V2: 'wkb_pos_products_seeded_33_v3',
+  INDOMIE_PRODUCT_SEEDED: 'wkb_pos_indomie_product_seeded_v1',
+  PRODUCTS_ADMIN_CLEARED: 'wkb_pos_products_admin_cleared_v2',
+  PRODUCT_VARIANTS: 'wkb_pos_product_variants',
+  PRODUCT_VARIANTS_SEEDED: 'wkb_pos_product_variants_seeded_v1',
+  INDOMIE_VARIANTS_SEEDED: 'wkb_pos_indomie_variants_seeded_v1',
   CATEGORIES: 'wkb_pos_categories',
   USERS: 'wkb_pos_users',
   AUTH_USER: 'wkb_pos_auth_user',
@@ -39,7 +49,119 @@ const STORAGE_KEYS = {
   SYNC_STATE: 'wkb_pos_sync_state',
   OFFLINE_QUEUE: 'wkb_pos_offline_queue',
   DELIVERY_PROOFS: 'wkb_pos_delivery_proofs',
+  DELETED_PRODUCT_IDS: 'wkb_pos_deleted_product_ids_v1',
+  DELETED_VARIANT_IDS: 'wkb_pos_deleted_variant_ids_v1',
 };
+
+export function normalizeProductVariant(raw: any, fallbackId?: string): ProductVariant {
+  const variantId = String(raw?.variantId || raw?.id || fallbackId || `VAR-${Date.now()}`).trim();
+  const productId = String(raw?.productId || raw?.id_produk || '').trim();
+  const productName = String(raw?.productName || raw?.nama_produk || '').trim();
+  const variantName = String(raw?.variantName || raw?.nama_varian || 'Original').trim();
+  const sku = String(raw?.sku || variantId).trim();
+  const priceNum = Number(raw?.price ?? raw?.harga_jual ?? 5000);
+  const costNum = Number(raw?.costPrice ?? raw?.harga_modal ?? 3000);
+  const stockNum = Number(raw?.stock ?? raw?.stok ?? 0);
+  const minStockNum = Number(raw?.minStock ?? raw?.stok_minimum ?? 5);
+  const unit = String(raw?.unit || raw?.satuan || 'Cup').trim();
+  const imageUrl = String(raw?.imageUrl || raw?.foto || '');
+  const isActive =
+    raw?.isActive !== undefined
+      ? Boolean(raw.isActive)
+      : raw?.status === 'Nonaktif'
+      ? false
+      : true;
+  const createdAt = String(raw?.createdAt || raw?.created_at || new Date().toISOString());
+  const updatedAt = String(raw?.updatedAt || raw?.updated_at || createdAt);
+
+  return {
+    variantId,
+    productId,
+    productName,
+    variantName,
+    sku,
+    price: Number.isNaN(priceNum) ? 0 : priceNum,
+    costPrice: Number.isNaN(costNum) ? 0 : costNum,
+    stock: Number.isNaN(stockNum) ? 0 : stockNum,
+    minStock: Number.isNaN(minStockNum) ? 5 : minStockNum,
+    unit,
+    imageUrl,
+    isActive,
+    createdAt,
+    updatedAt,
+  };
+}
+
+export function normalizeProduct(raw: any, fallbackId?: string): Product {
+  const id = String(raw?.id || fallbackId || raw?.sku || `PROD-${Date.now()}`).trim();
+  const sku = String(raw?.sku || id).trim();
+  const nama = String(raw?.nama || raw?.name || 'Menu').trim();
+  const rawKat = String(raw?.kategori || raw?.categoryId || raw?.category || 'Makanan').trim();
+  const validCategories = ['Makanan', 'Minuman', 'Snack', 'Tambahan', 'Lainnya'];
+  const kategori = (validCategories.includes(rawKat) ? rawKat : 'Makanan') as Product['kategori'];
+  const modalNum = Number(raw?.harga_modal ?? raw?.costPrice ?? 0);
+  const harga_modal = Number.isNaN(modalNum) ? 0 : modalNum;
+  const jualNum = Number(raw?.harga_jual ?? raw?.price ?? 0);
+  const harga_jual = Number.isNaN(jualNum) ? 0 : jualNum;
+  const satuan = String(raw?.satuan || raw?.unit || 'Porsi').trim();
+  const stokNum = Number(raw?.stok ?? raw?.stock ?? 0);
+  const stok = Number.isNaN(stokNum) ? 0 : stokNum;
+  const stokMinNum = Number(raw?.stok_minimum ?? raw?.minimumStock ?? 5);
+  const stok_minimum = Number.isNaN(stokMinNum) ? 5 : stokMinNum;
+  const foto = String(raw?.foto || raw?.gambar_url || raw?.imageUrl || '');
+  const status: Product['status'] =
+    raw?.status === 'Nonaktif' || raw?.productStatus === 'INACTIVE' ? 'Nonaktif' : 'Aktif';
+  const deskripsi = String(raw?.deskripsi || raw?.description || '');
+  const created_at = String(raw?.created_at || new Date().toISOString());
+  const updated_at = String(raw?.updated_at || created_at);
+
+  return {
+    id,
+    sku,
+    nama,
+    kategori,
+    harga_modal,
+    harga_jual,
+    satuan,
+    stok,
+    stok_minimum,
+    foto,
+    gambar_url: foto,
+    status,
+    deskripsi,
+    hasVariants: Boolean(raw?.hasVariants),
+    created_at,
+    updated_at,
+  };
+}
+
+export function compareProductBySkuOrder(a: Product, b: Product): number {
+  const skuA = String(a?.sku || a?.id || '').trim();
+  const skuB = String(b?.sku || b?.id || '').trim();
+  const numA = parseInt(skuA.replace(/\D+/g, ''), 10);
+  const numB = parseInt(skuB.replace(/\D+/g, ''), 10);
+  if (!Number.isNaN(numA) && !Number.isNaN(numB) && numA !== numB) {
+    return numA - numB;
+  }
+  return skuA.localeCompare(skuB, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+export function sortProductsBySkuOrder(products: Product[]): Product[] {
+  if (!Array.isArray(products)) return [];
+  const normalized = products
+    .filter((p) => p && typeof p === 'object')
+    .map((p, idx) => normalizeProduct(p, `PROD-${String(idx + 1).padStart(3, '0')}`));
+  const seenSkus = new Set<string>();
+  const deduped: Product[] = [];
+  for (const prod of normalized) {
+    const key = String(prod.sku || prod.id).trim();
+    if (!seenSkus.has(key)) {
+      seenSkus.add(key);
+      deduped.push(prod);
+    }
+  }
+  return deduped.sort(compareProductBySkuOrder);
+}
 
 function safeGetItem<T>(key: string, fallback: T): T {
   try {
@@ -61,34 +183,326 @@ function safeSetItem<T>(key: string, value: T): void {
 }
 
 export class StorageService {
+  // DELETED PRODUCT & VARIANT TRACKING (Prevents cloud/local re-seeding of explicitly deleted items)
+  static getDeletedProductIds(): Set<string> {
+    const arr = safeGetItem<string[]>(STORAGE_KEYS.DELETED_PRODUCT_IDS, []);
+    return new Set(Array.isArray(arr) ? arr.map((s) => String(s).trim()).filter(Boolean) : []);
+  }
+
+  static addDeletedProductId(id: string, sku?: string): void {
+    const set = this.getDeletedProductIds();
+    if (id) set.add(String(id).trim());
+    if (sku) set.add(String(sku).trim());
+    safeSetItem(STORAGE_KEYS.DELETED_PRODUCT_IDS, Array.from(set));
+  }
+
+  static removeDeletedProductId(id: string, sku?: string): void {
+    const set = this.getDeletedProductIds();
+    if (id) set.delete(String(id).trim());
+    if (sku) set.delete(String(sku).trim());
+    safeSetItem(STORAGE_KEYS.DELETED_PRODUCT_IDS, Array.from(set));
+  }
+
+  static getDeletedVariantIds(): Set<string> {
+    const arr = safeGetItem<string[]>(STORAGE_KEYS.DELETED_VARIANT_IDS, []);
+    return new Set(Array.isArray(arr) ? arr.map((s) => String(s).trim()).filter(Boolean) : []);
+  }
+
+  static addDeletedVariantId(variantId: string, sku?: string): void {
+    const set = this.getDeletedVariantIds();
+    if (variantId) set.add(String(variantId).trim());
+    if (sku) set.add(String(sku).trim());
+    safeSetItem(STORAGE_KEYS.DELETED_VARIANT_IDS, Array.from(set));
+  }
+
+  static removeDeletedVariantId(variantId: string, sku?: string): void {
+    const set = this.getDeletedVariantIds();
+    if (variantId) set.delete(String(variantId).trim());
+    if (sku) set.delete(String(sku).trim());
+    safeSetItem(STORAGE_KEYS.DELETED_VARIANT_IDS, Array.from(set));
+  }
+
   // PRODUCTS
   static getProducts(): Product[] {
-    return safeGetItem<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
+    const deletedIds = this.getDeletedProductIds();
+    try {
+      if (localStorage.getItem(STORAGE_KEYS.PRODUCTS_SEEDED_V2) !== 'true') {
+        localStorage.setItem(STORAGE_KEYS.PRODUCTS_SEEDED_V2, 'true');
+        localStorage.setItem(STORAGE_KEYS.INDOMIE_PRODUCT_SEEDED, 'true');
+        localStorage.removeItem(STORAGE_KEYS.PRODUCTS_ADMIN_CLEARED);
+        const seeded = sortProductsBySkuOrder(
+          INITIAL_PRODUCTS.filter((p) => !deletedIds.has(p.id) && !deletedIds.has(p.sku))
+        );
+        safeSetItem(STORAGE_KEYS.PRODUCTS, seeded);
+        return seeded;
+      }
+      if (localStorage.getItem(STORAGE_KEYS.PRODUCTS_ADMIN_CLEARED) === 'true') {
+        return safeGetItem<Product[]>(STORAGE_KEYS.PRODUCTS, []);
+      }
+    } catch {
+      // ignore storage errors
+    }
+    let stored = safeGetItem<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
+    if (!Array.isArray(stored) || stored.length === 0) {
+      if (deletedIds.size > 0) {
+        return [];
+      }
+      const seeded = sortProductsBySkuOrder(INITIAL_PRODUCTS);
+      safeSetItem(STORAGE_KEYS.PRODUCTS, seeded);
+      return seeded;
+    }
+    try {
+      if (localStorage.getItem(STORAGE_KEYS.INDOMIE_PRODUCT_SEEDED) !== 'true') {
+        localStorage.setItem(STORAGE_KEYS.INDOMIE_PRODUCT_SEEDED, 'true');
+        const hasIndomie = stored.some(
+          (p) => p.id === INDOMIE_PARENT_PRODUCT.id || p.nama.toUpperCase() === 'INDOMIE'
+        );
+        if (!hasIndomie && !deletedIds.has(INDOMIE_PARENT_PRODUCT.id)) {
+          stored = [...stored, INDOMIE_PARENT_PRODUCT];
+          safeSetItem(STORAGE_KEYS.PRODUCTS, sortProductsBySkuOrder(stored));
+        }
+      }
+    } catch {
+      // ignore
+    }
+    const filtered = stored.filter(
+      (p) => p && !deletedIds.has(String(p.id).trim()) && !deletedIds.has(String(p.sku || '').trim())
+    );
+    return sortProductsBySkuOrder(filtered);
   }
 
   static saveProducts(products: Product[]): void {
-    safeSetItem(STORAGE_KEYS.PRODUCTS, products);
+    const list = Array.isArray(products) ? products : [];
+    if (list.length > 0) {
+      try {
+        localStorage.removeItem(STORAGE_KEYS.PRODUCTS_ADMIN_CLEARED);
+      } catch {
+        // ignore
+      }
+      safeSetItem(STORAGE_KEYS.PRODUCTS, sortProductsBySkuOrder(list));
+    } else {
+      try {
+        localStorage.setItem(STORAGE_KEYS.PRODUCTS_ADMIN_CLEARED, 'true');
+      } catch {
+        // ignore
+      }
+      safeSetItem(STORAGE_KEYS.PRODUCTS, []);
+    }
+  }
+
+  static clearAllProducts(): Product[] {
+    try {
+      localStorage.setItem(STORAGE_KEYS.PRODUCTS_SEEDED_V2, 'true');
+      localStorage.setItem(STORAGE_KEYS.PRODUCTS_ADMIN_CLEARED, 'true');
+    } catch {
+      // ignore
+    }
+    safeSetItem(STORAGE_KEYS.PRODUCTS, []);
+    return [];
   }
 
   static addProduct(product: Product): Product[] {
+    this.removeDeletedProductId(product.id, product.sku);
     const products = this.getProducts();
-    const updated = [product, ...products];
-    this.saveProducts(updated);
-    return updated;
+    const existingIndex = products.findIndex(
+      (p) => p.id === product.id || (product.sku && p.sku === product.sku)
+    );
+    let updated: Product[];
+    if (existingIndex >= 0) {
+      updated = products.map((p, idx) => (idx === existingIndex ? product : p));
+    } else {
+      updated = [...products, product];
+    }
+    const sorted = sortProductsBySkuOrder(updated);
+    this.saveProducts(sorted);
+    return sorted;
   }
 
   static updateProduct(product: Product): Product[] {
+    this.removeDeletedProductId(product.id, product.sku);
     const products = this.getProducts();
-    const updated = products.map((p) => (p.id === product.id ? product : p));
+    const updated = sortProductsBySkuOrder(
+      products.map((p) => (p.id === product.id ? product : p))
+    );
     this.saveProducts(updated);
     return updated;
   }
 
   static deleteProduct(productId: string): Product[] {
+    const cleanTargetId = String(productId || '').trim();
     const products = this.getProducts();
-    const updated = products.filter((p) => p.id !== productId);
+    const matchedProducts = products.filter(
+      (p) => String(p.id).trim() === cleanTargetId || String(p.sku || '').trim() === cleanTargetId
+    );
+    this.addDeletedProductId(cleanTargetId);
+    matchedProducts.forEach((mp) => {
+      this.addDeletedProductId(mp.id, mp.sku);
+    });
+
+    const targetIds = new Set<string>([cleanTargetId]);
+    matchedProducts.forEach((mp) => {
+      if (mp.id) targetIds.add(String(mp.id).trim());
+      if (mp.sku) targetIds.add(String(mp.sku).trim());
+    });
+
+    const updated = sortProductsBySkuOrder(
+      products.filter(
+        (p) => !targetIds.has(String(p.id).trim()) && !targetIds.has(String(p.sku || '').trim())
+      )
+    );
     this.saveProducts(updated);
+
+    // Also remove variants belonging to this product
+    const allVariants = this.getProductVariants();
+    const variantsToRemove = allVariants.filter((v) => targetIds.has(String(v.productId).trim()));
+    variantsToRemove.forEach((v) => this.addDeletedVariantId(v.variantId, v.sku));
+    const remainingVariants = allVariants.filter((v) => !targetIds.has(String(v.productId).trim()));
+    this.saveProductVariants(remainingVariants);
     return updated;
+  }
+
+  // PRODUCT VARIANTS
+  static getProductVariants(): ProductVariant[] {
+    const deletedVarIds = this.getDeletedVariantIds();
+    const deletedProdIds = this.getDeletedProductIds();
+    try {
+      if (localStorage.getItem(STORAGE_KEYS.PRODUCT_VARIANTS_SEEDED) !== 'true') {
+        localStorage.setItem(STORAGE_KEYS.PRODUCT_VARIANTS_SEEDED, 'true');
+        localStorage.setItem(STORAGE_KEYS.INDOMIE_VARIANTS_SEEDED, 'true');
+        const normalizedInit = INITIAL_PRODUCT_VARIANTS.map((v, i) =>
+          normalizeProductVariant(v, `VAR-${i + 1}`)
+        ).filter(
+          (v) =>
+            !deletedVarIds.has(v.variantId) &&
+            !deletedVarIds.has(v.sku) &&
+            !deletedProdIds.has(v.productId)
+        );
+        safeSetItem(STORAGE_KEYS.PRODUCT_VARIANTS, normalizedInit);
+        return normalizedInit;
+      }
+      if (localStorage.getItem(STORAGE_KEYS.PRODUCTS_ADMIN_CLEARED) === 'true') {
+        return safeGetItem<ProductVariant[]>(STORAGE_KEYS.PRODUCT_VARIANTS, []);
+      }
+    } catch {
+      // ignore
+    }
+    let stored = safeGetItem<ProductVariant[]>(
+      STORAGE_KEYS.PRODUCT_VARIANTS,
+      INITIAL_PRODUCT_VARIANTS
+    );
+    if (!Array.isArray(stored)) return INITIAL_PRODUCT_VARIANTS;
+    try {
+      if (localStorage.getItem(STORAGE_KEYS.INDOMIE_VARIANTS_SEEDED) !== 'true') {
+        localStorage.setItem(STORAGE_KEYS.INDOMIE_VARIANTS_SEEDED, 'true');
+        const existingIds = new Set(stored.map((v) => v?.variantId));
+        const missingIndomieVars = INDOMIE_INITIAL_VARIANTS.filter(
+          (iv) => !existingIds.has(iv.variantId) && !deletedVarIds.has(iv.variantId)
+        );
+        if (missingIndomieVars.length > 0 && !deletedProdIds.has(INDOMIE_PARENT_PRODUCT.id)) {
+          stored = [...missingIndomieVars, ...stored];
+          safeSetItem(STORAGE_KEYS.PRODUCT_VARIANTS, stored);
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return stored
+      .filter((v) => v && typeof v === 'object')
+      .map((v, idx) => normalizeProductVariant(v, `VAR-${idx + 1}`))
+      .filter(
+        (v) =>
+          !deletedVarIds.has(v.variantId) &&
+          !deletedVarIds.has(v.sku) &&
+          !deletedProdIds.has(v.productId)
+      );
+  }
+
+  static saveProductVariants(variants: ProductVariant[]): void {
+    const list = Array.isArray(variants)
+      ? variants.filter((v) => v && typeof v === 'object').map((v, i) => normalizeProductVariant(v, `VAR-${i + 1}`))
+      : [];
+    safeSetItem(STORAGE_KEYS.PRODUCT_VARIANTS, list);
+  }
+
+  static syncParentProductFromVariants(productId: string, currentVariants?: ProductVariant[]): Product[] {
+    const variants = currentVariants ?? this.getProductVariants();
+    const prodVariants = variants.filter((v) => v.productId === productId);
+    const products = this.getProducts();
+    const updatedProducts = products.map((p) => {
+      if (p.id !== productId) return p;
+      if (prodVariants.length === 0) {
+        return { ...p, hasVariants: false, updated_at: new Date().toISOString() };
+      }
+      const activeVars = prodVariants.filter((v) => v.isActive);
+      const totalStock = (activeVars.length > 0 ? activeVars : prodVariants).reduce(
+        (sum, v) => sum + Math.max(0, Number(v.stock || 0)),
+        0
+      );
+      return {
+        ...p,
+        hasVariants: true,
+        stok: totalStock,
+        updated_at: new Date().toISOString(),
+      };
+    });
+    this.saveProducts(updatedProducts);
+    return updatedProducts;
+  }
+
+  static addProductVariant(variant: ProductVariant): {
+    variants: ProductVariant[];
+    products: Product[];
+  } {
+    const norm = normalizeProductVariant(variant);
+    this.removeDeletedVariantId(norm.variantId, norm.sku);
+    const variants = this.getProductVariants();
+    const existingIdx = variants.findIndex(
+      (v) =>
+        v.variantId === norm.variantId ||
+        (v.productId === norm.productId &&
+          v.variantName.toLowerCase() === norm.variantName.toLowerCase())
+    );
+    let updated: ProductVariant[];
+    if (existingIdx >= 0) {
+      updated = variants.map((v, i) => (i === existingIdx ? norm : v));
+    } else {
+      updated = [...variants, norm];
+    }
+    this.saveProductVariants(updated);
+    const products = this.syncParentProductFromVariants(norm.productId, updated);
+    return { variants: updated, products };
+  }
+
+  static updateProductVariant(variant: ProductVariant): {
+    variants: ProductVariant[];
+    products: Product[];
+  } {
+    const norm = normalizeProductVariant(variant);
+    this.removeDeletedVariantId(norm.variantId, norm.sku);
+    const variants = this.getProductVariants();
+    const updated = variants.map((v) => (v.variantId === norm.variantId ? norm : v));
+    this.saveProductVariants(updated);
+    const products = this.syncParentProductFromVariants(norm.productId, updated);
+    return { variants: updated, products };
+  }
+
+  static deleteProductVariant(variantId: string): {
+    variants: ProductVariant[];
+    products: Product[];
+  } {
+    const cleanId = String(variantId || '').trim();
+    const variants = this.getProductVariants();
+    const target = variants.find((v) => v.variantId === cleanId || v.sku === cleanId);
+    this.addDeletedVariantId(cleanId, target?.sku);
+    if (target) {
+      this.addDeletedVariantId(target.variantId, target.sku);
+    }
+    const updated = variants.filter((v) => v.variantId !== cleanId && v.sku !== cleanId);
+    this.saveProductVariants(updated);
+    const products = target
+      ? this.syncParentProductFromVariants(target.productId, updated)
+      : this.getProducts();
+    return { variants: updated, products };
   }
 
   // CATEGORIES
@@ -200,22 +614,52 @@ export class StorageService {
   static getTransactions(): Transaction[] {
     const raw = safeGetItem<Transaction[]>(STORAGE_KEYS.TRANSACTIONS, INITIAL_TRANSACTIONS);
     if (!Array.isArray(raw)) return INITIAL_TRANSACTIONS;
-    return raw.map((tx) => {
-      const ordType = resolveOrderType(tx);
-      const isDelivery = ordType === 'DELIVERY_DQM';
-      return {
-        ...tx,
-        status: normalizeOrderStatus(tx.status),
-        orderType: ordType,
-        tipe_pesanan: ordType,
-        deliveryArea: isDelivery ? 'DQM' : null,
-        deliveryLocation: isDelivery ? (tx.deliveryLocation ?? '') : null,
-        deliveryDetail: isDelivery ? (tx.deliveryDetail ?? '') : null,
-        deliveryFee: isDelivery ? Number(tx.deliveryFee ?? tx.biaya ?? 0) : 0,
-        deliveryStatus: isDelivery ? normalizeDeliveryStatus(tx) : null,
-        items: Array.isArray(tx.items) ? tx.items : [],
-      };
-    });
+    return raw
+      .filter((tx) => tx && typeof tx === 'object')
+      .map((tx) => {
+        const ordType = resolveOrderType(tx);
+        const isDelivery = ordType === 'DELIVERY_DQM';
+        const rawItems = Array.isArray(tx.items) ? tx.items : [];
+        return {
+          ...tx,
+          id_transaksi: String(tx.id_transaksi || `WBK-${Date.now()}`),
+          tanggal: String(tx.tanggal || new Date().toISOString().split('T')[0]),
+          jam: String(tx.jam || '10:00'),
+          kasir: String(tx.kasir || 'Kasir'),
+          nama_pelanggan: String(tx.nama_pelanggan || 'Pelanggan Umum'),
+          no_whatsapp: String(tx.no_whatsapp || '-'),
+          subtotal: Number(tx.subtotal || 0) || 0,
+          diskon: Number(tx.diskon || 0) || 0,
+          biaya: Number(tx.biaya || 0) || 0,
+          total: Number(tx.total || 0) || 0,
+          metode_pembayaran: (tx.metode_pembayaran || 'Cash') as Transaction['metode_pembayaran'],
+          uang_diterima: Number(tx.uang_diterima || 0) || 0,
+          kembalian: Number(tx.kembalian || 0) || 0,
+          status: normalizeOrderStatus(tx.status),
+          orderType: ordType,
+          tipe_pesanan: ordType,
+          deliveryArea: isDelivery ? 'DQM' : null,
+          deliveryLocation: isDelivery ? (tx.deliveryLocation ?? '') : null,
+          deliveryDetail: isDelivery ? (tx.deliveryDetail ?? '') : null,
+          deliveryFee: isDelivery ? Number(tx.deliveryFee ?? tx.biaya ?? 0) : 0,
+          deliveryStatus: isDelivery ? normalizeDeliveryStatus(tx) : null,
+          created_at: String(tx.created_at || new Date().toISOString()),
+          items: rawItems.map((item: any) => ({
+            id_detail: String(item?.id_detail || ''),
+            id_transaksi: String(item?.id_transaksi || tx.id_transaksi || ''),
+            id_produk: String(item?.id_produk || ''),
+            nama_produk: String(item?.nama_produk || item?.name || 'Menu'),
+            productName: item?.productName ? String(item.productName) : undefined,
+            variantId: item?.variantId ? String(item.variantId) : undefined,
+            variantName: item?.variantName ? String(item.variantName) : undefined,
+            harga_modal: item?.harga_modal !== undefined ? Number(item.harga_modal) : undefined,
+            harga: Number(item?.harga ?? item?.price ?? 0) || 0,
+            qty: Number(item?.qty ?? 1) || 1,
+            subtotal: Number(item?.subtotal ?? (Number(item?.harga ?? 0) * Number(item?.qty ?? 1))) || 0,
+            catatan: String(item?.catatan || ''),
+          })),
+        };
+      });
   }
 
   static saveTransactions(transactions: Transaction[]): void {
@@ -253,40 +697,98 @@ export class StorageService {
   static completeTransaction(transaction: Transaction): {
     transactions: Transaction[];
     products: Product[];
+    variants: ProductVariant[];
     customers: Customer[];
   } {
     // 1. Save Transaction
     const transactions = [transaction, ...this.getTransactions()];
     this.saveTransactions(transactions);
 
-    // 2. Reduce Stock & Record Mutations
+    // 2. Reduce Stock (for both Product Variants and Main Products) & Record Mutations
     const products = this.getProducts();
+    let variants = this.getProductVariants();
     const mutations = this.getStockMutations();
     const nowStr = `${transaction.tanggal} ${transaction.jam}`;
 
-    const updatedProducts = products.map((prod) => {
-      const purchased = transaction.items.find(
-        (item) => item.id_produk === prod.id || item.nama_produk === prod.nama
-      );
-      if (purchased) {
-        const qty = purchased.qty;
-        const newStock = Math.max(0, prod.stok - qty);
+    // Track total qty deducted per main product
+    const qtyByProductId = new Map<string, number>();
 
+    transaction.items.forEach((item) => {
+      const qty = Number(item.qty || 0);
+      if (qty <= 0) return;
+
+      if (item.variantId) {
+        const varIdx = variants.findIndex((v) => v.variantId === item.variantId);
+        if (varIdx >= 0) {
+          const v = variants[varIdx];
+          const oldStock = Number(v.stock || 0);
+          const newStock = Math.max(0, oldStock - qty);
+          variants[varIdx] = {
+            ...v,
+            stock: newStock,
+            updatedAt: new Date().toISOString(),
+          };
+          mutations.unshift({
+            id: 'STK-' + Math.random().toString(36).substring(2, 9),
+            tanggal: nowStr,
+            id_produk: v.productId || item.id_produk,
+            variantId: v.variantId,
+            variantName: v.variantName,
+            nama_produk: item.nama_produk || `${v.productName || ''} - ${v.variantName}`,
+            jenis: 'out',
+            qty,
+            stok_sebelum: oldStock,
+            stok_sesudah: newStock,
+            keterangan: `Penjualan kasir invoice ${transaction.id_transaksi}`,
+          });
+          const pId = v.productId || item.id_produk;
+          qtyByProductId.set(pId, (qtyByProductId.get(pId) || 0) + qty);
+          return;
+        }
+      }
+
+      // Regular product (or fallback if variantId not matched)
+      const prod = products.find(
+        (p) => p.id === item.id_produk || p.nama === item.nama_produk
+      );
+      if (prod) {
+        qtyByProductId.set(prod.id, (qtyByProductId.get(prod.id) || 0) + qty);
         mutations.unshift({
           id: 'STK-' + Math.random().toString(36).substring(2, 9),
           tanggal: nowStr,
           id_produk: prod.id,
-          nama_produk: prod.nama,
+          nama_produk: item.nama_produk || prod.nama,
           jenis: 'out',
-          qty: qty,
+          qty,
           stok_sebelum: prod.stok,
-          stok_sesudah: newStock,
+          stok_sesudah: Math.max(0, prod.stok - qty),
           keterangan: `Penjualan kasir invoice ${transaction.id_transaksi}`,
         });
+      }
+    });
 
+    this.saveProductVariants(variants);
+
+    const updatedProducts = products.map((prod) => {
+      const prodVars = variants.filter((v) => v.productId === prod.id);
+      if (prodVars.length > 0) {
+        const activeVars = prodVars.filter((v) => v.isActive);
+        const sumStock = (activeVars.length > 0 ? activeVars : prodVars).reduce(
+          (s, v) => s + Math.max(0, Number(v.stock || 0)),
+          0
+        );
         return {
           ...prod,
-          stok: newStock,
+          hasVariants: true,
+          stok: sumStock,
+          updated_at: new Date().toISOString(),
+        };
+      }
+      const deducted = qtyByProductId.get(prod.id) || 0;
+      if (deducted > 0) {
+        return {
+          ...prod,
+          stok: Math.max(0, prod.stok - deducted),
           updated_at: new Date().toISOString(),
         };
       }
@@ -331,7 +833,178 @@ export class StorageService {
     // 4. Queue for offline sync
     this.addToOfflineQueue({ type: 'transaction', data: transaction });
 
-    return { transactions, products: updatedProducts, customers: updatedCustomers };
+    return { transactions, products: updatedProducts, variants, customers: updatedCustomers };
+  }
+
+  static restoreStockOnCancel(transaction: Transaction): {
+    products: Product[];
+    variants: ProductVariant[];
+    mutations: StockMutation[];
+  } {
+    const products = this.getProducts();
+    const variants = this.getProductVariants();
+    const mutations = this.getStockMutations();
+    if (transaction.stockRestored) {
+      return { products, variants, mutations };
+    }
+    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const restoredByProdId = new Map<string, number>();
+
+    (transaction.items || []).forEach((item) => {
+      const qty = Number(item.qty || 0);
+      if (qty <= 0) return;
+
+      if (item.variantId) {
+        const varIdx = variants.findIndex((v) => v.variantId === item.variantId);
+        if (varIdx >= 0) {
+          const v = variants[varIdx];
+          const oldStock = Number(v.stock || 0);
+          const newStock = oldStock + qty;
+          variants[varIdx] = {
+            ...v,
+            stock: newStock,
+            updatedAt: new Date().toISOString(),
+          };
+          mutations.unshift({
+            id: 'STK-' + Math.random().toString(36).substring(2, 9),
+            tanggal: nowStr,
+            id_produk: v.productId || item.id_produk,
+            variantId: v.variantId,
+            variantName: v.variantName,
+            nama_produk: item.nama_produk || `${v.productName || ''} - ${v.variantName}`,
+            jenis: 'in',
+            qty,
+            stok_sebelum: oldStock,
+            stok_sesudah: newStock,
+            keterangan: `Pengembalian stok pembatalan transaksi ${transaction.id_transaksi}`,
+          });
+          const pId = v.productId || item.id_produk;
+          restoredByProdId.set(pId, (restoredByProdId.get(pId) || 0) + qty);
+          return;
+        }
+      }
+
+      const prod = products.find(
+        (p) => p.id === item.id_produk || p.nama === item.nama_produk
+      );
+      if (prod) {
+        restoredByProdId.set(prod.id, (restoredByProdId.get(prod.id) || 0) + qty);
+        mutations.unshift({
+          id: 'STK-' + Math.random().toString(36).substring(2, 9),
+          tanggal: nowStr,
+          id_produk: prod.id,
+          nama_produk: item.nama_produk || prod.nama,
+          jenis: 'in',
+          qty,
+          stok_sebelum: prod.stok,
+          stok_sesudah: prod.stok + qty,
+          keterangan: `Pengembalian stok pembatalan transaksi ${transaction.id_transaksi}`,
+        });
+      }
+    });
+
+    this.saveProductVariants(variants);
+
+    const updatedProducts = products.map((prod) => {
+      const prodVars = variants.filter((v) => v.productId === prod.id);
+      if (prodVars.length > 0) {
+        const activeVars = prodVars.filter((v) => v.isActive);
+        const sumStock = (activeVars.length > 0 ? activeVars : prodVars).reduce(
+          (s, v) => s + Math.max(0, Number(v.stock || 0)),
+          0
+        );
+        return {
+          ...prod,
+          hasVariants: true,
+          stok: sumStock,
+          updated_at: new Date().toISOString(),
+        };
+      }
+      const added = restoredByProdId.get(prod.id) || 0;
+      if (added > 0) {
+        return {
+          ...prod,
+          stok: prod.stok + added,
+          updated_at: new Date().toISOString(),
+        };
+      }
+      return prod;
+    });
+
+    this.saveProducts(updatedProducts);
+    this.saveStockMutations(mutations);
+    return { products: updatedProducts, variants, mutations };
+  }
+
+  static recordVariantStockAdjustment(
+    variantId: string,
+    jenis: 'in' | 'out' | 'adjustment',
+    qty: number,
+    keterangan: string
+  ): {
+    products: Product[];
+    variants: ProductVariant[];
+    mutations: StockMutation[];
+  } {
+    const variants = this.getProductVariants();
+    const mutations = this.getStockMutations();
+    const target = variants.find((v) => v.variantId === variantId);
+    if (!target) {
+      return { products: this.getProducts(), variants, mutations };
+    }
+
+    let newStock = target.stock;
+    if (jenis === 'in') {
+      newStock += qty;
+    } else if (jenis === 'out') {
+      newStock = Math.max(0, newStock - qty);
+    } else if (jenis === 'adjustment') {
+      newStock = Math.max(0, qty);
+    }
+
+    const updatedVariant: ProductVariant = {
+      ...target,
+      stock: newStock,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const newMutation: StockMutation = {
+      id: 'STK-' + Math.random().toString(36).substring(2, 9),
+      tanggal: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      id_produk: target.productId,
+      variantId: target.variantId,
+      variantName: target.variantName,
+      nama_produk: `${target.productName || 'Produk'} - ${target.variantName}`,
+      jenis,
+      qty: jenis === 'adjustment' ? Math.abs(newStock - target.stock) : qty,
+      stok_sebelum: target.stock,
+      stok_sesudah: newStock,
+      keterangan:
+        keterangan ||
+        (jenis === 'in'
+          ? 'Stok Varian Masuk'
+          : jenis === 'out'
+          ? 'Stok Varian Keluar'
+          : 'Penyesuaian Stok Fisik Varian'),
+    };
+
+    const updatedVariants = variants.map((v) =>
+      v.variantId === variantId ? updatedVariant : v
+    );
+    const updatedMutations = [newMutation, ...mutations];
+
+    this.saveProductVariants(updatedVariants);
+    this.saveStockMutations(updatedMutations);
+    const updatedProducts = this.syncParentProductFromVariants(
+      target.productId,
+      updatedVariants
+    );
+
+    return {
+      products: updatedProducts,
+      variants: updatedVariants,
+      mutations: updatedMutations,
+    };
   }
 
   // STOCK MUTATIONS
@@ -521,6 +1194,14 @@ export class StorageService {
 
   static resetToDefault(): void {
     localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
+    localStorage.removeItem(STORAGE_KEYS.PRODUCTS_SEEDED_V2);
+    localStorage.removeItem(STORAGE_KEYS.INDOMIE_PRODUCT_SEEDED);
+    localStorage.removeItem(STORAGE_KEYS.PRODUCTS_ADMIN_CLEARED);
+    localStorage.removeItem(STORAGE_KEYS.PRODUCT_VARIANTS);
+    localStorage.removeItem(STORAGE_KEYS.PRODUCT_VARIANTS_SEEDED);
+    localStorage.removeItem(STORAGE_KEYS.INDOMIE_VARIANTS_SEEDED);
+    localStorage.removeItem(STORAGE_KEYS.DELETED_PRODUCT_IDS);
+    localStorage.removeItem(STORAGE_KEYS.DELETED_VARIANT_IDS);
     localStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
     localStorage.removeItem(STORAGE_KEYS.CUSTOMERS);
     localStorage.removeItem(STORAGE_KEYS.EXPENSES);
