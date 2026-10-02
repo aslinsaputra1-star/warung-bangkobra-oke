@@ -20,6 +20,7 @@ import {
   INITIAL_PRODUCTS,
   INITIAL_PRODUCT_VARIANTS,
   INDOMIE_PARENT_PRODUCT,
+  VARIANT_PARENT_PRODUCTS,
   INDOMIE_INITIAL_VARIANTS,
   INITIAL_SETTINGS,
   INITIAL_CUSTOMERS,
@@ -252,13 +253,25 @@ export class StorageService {
       return seeded;
     }
     try {
-      if (localStorage.getItem(STORAGE_KEYS.INDOMIE_PRODUCT_SEEDED) !== 'true') {
+      const VAR_PARENTS_SEED_KEY = 'wkb_pos_variant_parents_seeded_v2';
+      if (localStorage.getItem(VAR_PARENTS_SEED_KEY) !== 'true') {
+        localStorage.setItem(VAR_PARENTS_SEED_KEY, 'true');
         localStorage.setItem(STORAGE_KEYS.INDOMIE_PRODUCT_SEEDED, 'true');
-        const hasIndomie = stored.some(
-          (p) => p.id === INDOMIE_PARENT_PRODUCT.id || p.nama.toUpperCase() === 'INDOMIE'
-        );
-        if (!hasIndomie && !deletedIds.has(INDOMIE_PARENT_PRODUCT.id)) {
-          stored = [...stored, INDOMIE_PARENT_PRODUCT];
+        let addedAny = false;
+        VARIANT_PARENT_PRODUCTS.forEach((vp) => {
+          const exists = stored.some(
+            (p) =>
+              p &&
+              (p.id === vp.id ||
+                p.sku === vp.sku ||
+                String(p.nama || '').toLowerCase() === vp.nama.toLowerCase())
+          );
+          if (!exists && !deletedIds.has(vp.id) && !deletedIds.has(vp.sku)) {
+            stored = [...stored, vp];
+            addedAny = true;
+          }
+        });
+        if (addedAny) {
           safeSetItem(STORAGE_KEYS.PRODUCTS, sortProductsBySkuOrder(stored));
         }
       }
@@ -271,8 +284,22 @@ export class StorageService {
     return sortProductsBySkuOrder(filtered);
   }
 
-  static saveProducts(products: Product[]): void {
+  static saveProducts(products: Product[], unmarkDeleted = false): void {
     const list = Array.isArray(products) ? products : [];
+    if (unmarkDeleted && list.length > 0) {
+      const deletedSet = this.getDeletedProductIds();
+      let changed = false;
+      list.forEach((p) => {
+        if (!p) return;
+        const pid = String(p.id || '').trim();
+        const psku = String(p.sku || '').trim();
+        if (pid && deletedSet.delete(pid)) changed = true;
+        if (psku && deletedSet.delete(psku)) changed = true;
+      });
+      if (changed) {
+        safeSetItem(STORAGE_KEYS.DELETED_PRODUCT_IDS, Array.from(deletedSet));
+      }
+    }
     if (list.length > 0) {
       try {
         localStorage.removeItem(STORAGE_KEYS.PRODUCTS_ADMIN_CLEARED);
@@ -302,16 +329,20 @@ export class StorageService {
   }
 
   static addProduct(product: Product): Product[] {
-    this.removeDeletedProductId(product.id, product.sku);
+    const stamped: Product = {
+      ...product,
+      updated_at: product.updated_at || new Date().toISOString(),
+    };
+    this.removeDeletedProductId(stamped.id, stamped.sku);
     const products = this.getProducts();
     const existingIndex = products.findIndex(
-      (p) => p.id === product.id || (product.sku && p.sku === product.sku)
+      (p) => p.id === stamped.id || (stamped.sku && p.sku === stamped.sku)
     );
     let updated: Product[];
     if (existingIndex >= 0) {
-      updated = products.map((p, idx) => (idx === existingIndex ? product : p));
+      updated = products.map((p, idx) => (idx === existingIndex ? stamped : p));
     } else {
-      updated = [...products, product];
+      updated = [...products, stamped];
     }
     const sorted = sortProductsBySkuOrder(updated);
     this.saveProducts(sorted);
@@ -319,13 +350,84 @@ export class StorageService {
   }
 
   static updateProduct(product: Product): Product[] {
-    this.removeDeletedProductId(product.id, product.sku);
+    const stamped: Product = {
+      ...product,
+      updated_at: new Date().toISOString(),
+    };
+    this.removeDeletedProductId(stamped.id, stamped.sku);
     const products = this.getProducts();
-    const updated = sortProductsBySkuOrder(
-      products.map((p) => (p.id === product.id ? product : p))
+    const exists = products.some(
+      (p) => p.id === stamped.id || (stamped.sku && p.sku === stamped.sku)
     );
+    const nextList = exists
+      ? products.map((p) =>
+          p.id === stamped.id || (stamped.sku && p.sku === stamped.sku) ? stamped : p
+        )
+      : [...products, stamped];
+    const updated = sortProductsBySkuOrder(nextList);
     this.saveProducts(updated);
     return updated;
+  }
+
+  static deleteProductsBulk(productIds: string[]): {
+    products: Product[];
+    variants: ProductVariant[];
+    removedProducts: Product[];
+    removedVariants: ProductVariant[];
+  } {
+    const cleanInputIds = new Set(
+      (Array.isArray(productIds) ? productIds : [])
+        .map((id) => String(id || '').trim())
+        .filter(Boolean)
+    );
+    const products = this.getProducts();
+    const allVariants = this.getProductVariants();
+    if (cleanInputIds.size === 0) {
+      return {
+        products,
+        variants: allVariants,
+        removedProducts: [],
+        removedVariants: [],
+      };
+    }
+
+    const matchedProducts = products.filter(
+      (p) =>
+        cleanInputIds.has(String(p.id).trim()) ||
+        cleanInputIds.has(String(p.sku || '').trim())
+    );
+
+    const targetIds = new Set<string>(cleanInputIds);
+    matchedProducts.forEach((mp) => {
+      if (mp.id) targetIds.add(String(mp.id).trim());
+      if (mp.sku) targetIds.add(String(mp.sku).trim());
+    });
+
+    targetIds.forEach((tid) => this.addDeletedProductId(tid));
+    matchedProducts.forEach((mp) => this.addDeletedProductId(mp.id, mp.sku));
+
+    const updatedProducts = sortProductsBySkuOrder(
+      products.filter(
+        (p) => !targetIds.has(String(p.id).trim()) && !targetIds.has(String(p.sku || '').trim())
+      )
+    );
+    this.saveProducts(updatedProducts);
+
+    const variantsToRemove = allVariants.filter((v) =>
+      targetIds.has(String(v.productId).trim())
+    );
+    variantsToRemove.forEach((v) => this.addDeletedVariantId(v.variantId, v.sku));
+    const remainingVariants = allVariants.filter(
+      (v) => !targetIds.has(String(v.productId).trim())
+    );
+    this.saveProductVariants(remainingVariants);
+
+    return {
+      products: updatedProducts,
+      variants: remainingVariants,
+      removedProducts: matchedProducts,
+      removedVariants: variantsToRemove,
+    };
   }
 
   static deleteProduct(productId: string): Product[] {
@@ -417,10 +519,23 @@ export class StorageService {
       );
   }
 
-  static saveProductVariants(variants: ProductVariant[]): void {
+  static saveProductVariants(variants: ProductVariant[], unmarkDeleted = false): void {
     const list = Array.isArray(variants)
       ? variants.filter((v) => v && typeof v === 'object').map((v, i) => normalizeProductVariant(v, `VAR-${i + 1}`))
       : [];
+    if (unmarkDeleted && list.length > 0) {
+      const deletedVarSet = this.getDeletedVariantIds();
+      let changed = false;
+      list.forEach((v) => {
+        const vid = String(v.variantId || '').trim();
+        const vsku = String(v.sku || '').trim();
+        if (vid && deletedVarSet.delete(vid)) changed = true;
+        if (vsku && deletedVarSet.delete(vsku)) changed = true;
+      });
+      if (changed) {
+        safeSetItem(STORAGE_KEYS.DELETED_VARIANT_IDS, Array.from(deletedVarSet));
+      }
+    }
     safeSetItem(STORAGE_KEYS.PRODUCT_VARIANTS, list);
   }
 
@@ -477,10 +592,16 @@ export class StorageService {
     variants: ProductVariant[];
     products: Product[];
   } {
-    const norm = normalizeProductVariant(variant);
+    const norm = normalizeProductVariant({
+      ...variant,
+      updatedAt: new Date().toISOString(),
+    });
     this.removeDeletedVariantId(norm.variantId, norm.sku);
     const variants = this.getProductVariants();
-    const updated = variants.map((v) => (v.variantId === norm.variantId ? norm : v));
+    const exists = variants.some((v) => v.variantId === norm.variantId);
+    const updated = exists
+      ? variants.map((v) => (v.variantId === norm.variantId ? norm : v))
+      : [...variants, norm];
     this.saveProductVariants(updated);
     const products = this.syncParentProductFromVariants(norm.productId, updated);
     return { variants: updated, products };

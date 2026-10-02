@@ -563,6 +563,8 @@ export const INITIAL_PRODUCTS: Product[] = [
 
 export const INDOMIE_PARENT_PRODUCT: Product = INITIAL_PRODUCTS.find((p) => p.id === 'SKU-0034')!;
 
+export const VARIANT_PARENT_PRODUCTS: Product[] = INITIAL_PRODUCTS.filter((p) => Boolean(p.hasVariants));
+
 export const INDOMIE_INITIAL_VARIANTS: ProductVariant[] = [
   {
     variantId: 'VAR-IND-01',

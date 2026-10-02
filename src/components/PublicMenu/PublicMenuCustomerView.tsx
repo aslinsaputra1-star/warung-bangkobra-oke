@@ -32,8 +32,19 @@ import {
   Utensils,
   ReceiptText,
   Lock,
+  Layers,
+  RefreshCw,
 } from 'lucide-react';
-import { Product, StoreSettings, Transaction, OrderType, OrderQueueStatus, DeliveryStatus } from '../../types';
+import {
+  Product,
+  ProductVariant,
+  StoreSettings,
+  Transaction,
+  OrderType,
+  OrderQueueStatus,
+  DeliveryStatus,
+} from '../../types';
+import { VARIANT_PARENT_PRODUCTS } from '../../data/initialData';
 import {
   formatRupiah,
   sanitizeWhatsAppNumber,
@@ -55,6 +66,7 @@ import { DeliveryProofModal } from '../Orders/DeliveryProofModal';
 
 interface PublicMenuCustomerViewProps {
   products: Product[];
+  variants?: ProductVariant[];
   settings: StoreSettings;
   onOpenStaffLogin?: () => void;
   onOrderCreated?: (transaction: Transaction) => void;
@@ -62,13 +74,16 @@ interface PublicMenuCustomerViewProps {
 }
 
 export interface CartEntry {
+  cartKey: string;
   product: Product;
+  variant?: ProductVariant;
   qty: number;
   notes: string;
 }
 
 export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
   products,
+  variants,
   settings,
   onOpenStaffLogin,
   onOrderCreated,
@@ -94,7 +109,12 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProductDetail, setSelectedProductDetail] = useState<Product | null>(null);
 
-  // Cart State: productId -> CartEntry
+  // Variant Selector Modal States
+  const [variantModalProduct, setVariantModalProduct] = useState<Product | null>(null);
+  const [variantSearchQuery, setVariantSearchQuery] = useState('');
+  const [editingCartKey, setEditingCartKey] = useState<string | null>(null);
+
+  // Cart State: cartKey -> CartEntry
   const [cart, setCart] = useState<Record<string, CartEntry>>({});
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -151,10 +171,56 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
     }
   }, [completedOrder?.orderId]);
 
-  // Active Products List
+  // Resolved Product Variants (from props or fallback to StorageService)
+  const resolvedVariants = useMemo(() => {
+    const list =
+      Array.isArray(variants) && variants.length > 0
+        ? variants
+        : StorageService.getProductVariants();
+    return list.filter((v) => v && v.isActive !== false);
+  }, [variants]);
+
+  // Active Products List (ensuring non-deleted variant parent products are always present)
   const activeProducts = useMemo(() => {
-    return products.filter((p) => p.status === 'Aktif');
+    const deletedProdIds = StorageService.getDeletedProductIds();
+    const baseList = [...products];
+    VARIANT_PARENT_PRODUCTS.forEach((vp) => {
+      if (deletedProdIds.has(vp.id) || deletedProdIds.has(vp.sku)) return;
+      const exists = baseList.some(
+        (p) => p.id === vp.id || p.sku === vp.sku || p.nama.toUpperCase() === vp.nama.toUpperCase()
+      );
+      if (!exists) {
+        baseList.push(vp);
+      }
+    });
+    return baseList.filter((p) => p && p.status === 'Aktif');
   }, [products]);
+
+  // Map active variants by product.id
+  const variantsByProduct = useMemo(() => {
+    const map = new Map<string, ProductVariant[]>();
+    activeProducts.forEach((prod) => {
+      const matched = resolvedVariants.filter(
+        (v) =>
+          v.productId === prod.id ||
+          (v.productName && v.productName.toUpperCase() === prod.nama.toUpperCase())
+      );
+      if (matched.length > 0) {
+        map.set(prod.id, matched);
+      }
+    });
+    return map;
+  }, [activeProducts, resolvedVariants]);
+
+  const formatVariantDisplayName = (productName: string, variantName: string): string => {
+    const pName = String(productName || '').trim();
+    const vName = String(variantName || '').trim();
+    if (!vName) return pName;
+    if (vName.toLowerCase().startsWith(pName.toLowerCase())) {
+      return vName;
+    }
+    return `${pName} - ${vName}`;
+  };
 
   // Categories with counts
   const categories = useMemo(() => {
@@ -162,55 +228,175 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
     return ['Semua', ...Array.from(set)];
   }, [activeProducts]);
 
-  // Filtered Products
+  // Filtered Products (also matches variant flavor names!)
   const filteredProducts = useMemo(() => {
     return activeProducts.filter((p) => {
+      const prodVars = variantsByProduct.get(p.id) || [];
+      const hasVars = prodVars.length > 0;
+      const effectiveStock = hasVars
+        ? prodVars.reduce((sum, v) => sum + Math.max(0, Number(v.stock || 0)), 0)
+        : p.stok;
+      const minPrice = hasVars
+        ? Math.min(...prodVars.map((v) => Number(v.price || p.harga_jual)))
+        : p.harga_jual;
+
       // Category match
       const matchCategory = selectedCategory === 'Semua' || p.kategori === selectedCategory;
 
-      // Query match
+      // Query match (including variant flavor names & SKUs)
       const q = searchQuery.toLowerCase().trim();
+      const matchVariant =
+        hasVars &&
+        prodVars.some(
+          (v) =>
+            (v.variantName || '').toLowerCase().includes(q) ||
+            (v.sku || '').toLowerCase().includes(q)
+        );
       const matchQuery =
         q === '' ||
         p.nama.toLowerCase().includes(q) ||
         (p.deskripsi && p.deskripsi.toLowerCase().includes(q)) ||
-        p.kategori.toLowerCase().includes(q);
+        p.kategori.toLowerCase().includes(q) ||
+        matchVariant;
 
       // Quick filter
       let matchQuick = true;
       if (quickFilter === 'popular') {
-        matchQuick = p.stok > 10;
+        matchQuick = effectiveStock > 10;
       } else if (quickFilter === 'spicy') {
+        const hasSpicyVar =
+          hasVars &&
+          prodVars.some(
+            (v) =>
+              v.variantName.toLowerCase().includes('pedas') ||
+              v.variantName.toLowerCase().includes('geprek') ||
+              v.variantName.toLowerCase().includes('rendang') ||
+              v.variantName.toLowerCase().includes('rica') ||
+              v.variantName.toLowerCase().includes('seblak')
+          );
         matchQuick =
           p.nama.toLowerCase().includes('pedas') ||
           p.nama.toLowerCase().includes('kobra') ||
           p.nama.toLowerCase().includes('rendang') ||
-          (p.deskripsi && p.deskripsi.toLowerCase().includes('pedas'));
+          (p.deskripsi && p.deskripsi.toLowerCase().includes('pedas')) ||
+          hasSpicyVar;
       } else if (quickFilter === 'under15k') {
-        matchQuick = p.harga_jual <= 15000;
+        matchQuick = minPrice <= 15000;
       }
 
       return matchCategory && matchQuery && matchQuick;
     });
-  }, [activeProducts, selectedCategory, searchQuery, quickFilter]);
+  }, [activeProducts, variantsByProduct, selectedCategory, searchQuery, quickFilter]);
 
   // Cart Metrics
   const cartItems: CartEntry[] = useMemo(() => Object.values(cart), [cart]);
   const totalItemCount = cartItems.reduce((acc, item) => acc + item.qty, 0);
-  const cartSubtotal = cartItems.reduce((acc, item) => acc + item.qty * item.product.harga_jual, 0);
+  const cartSubtotal = cartItems.reduce((acc, item) => {
+    const unitPrice = item.variant ? item.variant.price : item.product.harga_jual;
+    return acc + item.qty * unitPrice;
+  }, 0);
   const deliveryFee = getEffectiveDeliveryFee(settings, orderType);
   const grandTotal = cartSubtotal + deliveryFee;
 
   // Cart operations
-  const handleAddToCart = (product: Product, e?: React.MouseEvent) => {
+  const getCartKey = (productId: string, variantId?: string) =>
+    variantId ? `${productId}__${variantId}` : productId;
+
+  const handleAddToCart = (product: Product, e?: React.MouseEvent, specificVariant?: ProductVariant) => {
     if (e) e.stopPropagation();
+    const prodVars = variantsByProduct.get(product.id) || [];
+
+    // If product has variants and no specific variant was passed, open Variant Selector Modal
+    if (prodVars.length > 0 && !specificVariant) {
+      setEditingCartKey(null);
+      setVariantSearchQuery('');
+      setVariantModalProduct(product);
+      return;
+    }
+
+    if (specificVariant) {
+      if (specificVariant.stock <= 0) {
+        if (showToast) {
+          showToast(`Stok varian ${specificVariant.variantName} habis!`, 'error');
+        }
+        return;
+      }
+
+      // If switching flavor of an existing cart item
+      if (editingCartKey) {
+        const newKey = getCartKey(product.id, specificVariant.variantId);
+        setCart((prev) => {
+          const oldEntry = prev[editingCartKey];
+          if (!oldEntry) return prev;
+          const next = { ...prev };
+          delete next[editingCartKey];
+          const existingTarget = next[newKey];
+          const combinedQty = Math.min(
+            specificVariant.stock,
+            oldEntry.qty + (existingTarget ? existingTarget.qty : 0)
+          );
+          next[newKey] = {
+            cartKey: newKey,
+            product,
+            variant: specificVariant,
+            qty: combinedQty,
+            notes: oldEntry.notes || existingTarget?.notes || '',
+          };
+          return next;
+        });
+        setEditingCartKey(null);
+        setVariantModalProduct(null);
+        if (showToast) {
+          showToast(
+            `Varian diubah ke ${formatVariantDisplayName(product.nama, specificVariant.variantName)}`,
+            'success'
+          );
+        }
+        return;
+      }
+
+      const key = getCartKey(product.id, specificVariant.variantId);
+      setCart((prev) => {
+        const existing = prev[key];
+        const currentQty = existing ? existing.qty : 0;
+        if (currentQty + 1 > specificVariant.stock) {
+          if (showToast) {
+            showToast(
+              `Stok maksimal ${formatVariantDisplayName(product.nama, specificVariant.variantName)} tersisa ${specificVariant.stock}`,
+              'error'
+            );
+          }
+          return prev;
+        }
+        return {
+          ...prev,
+          [key]: {
+            cartKey: key,
+            product,
+            variant: specificVariant,
+            qty: currentQty + 1,
+            notes: existing ? existing.notes : '',
+          },
+        };
+      });
+      if (showToast) {
+        showToast(
+          `${formatVariantDisplayName(product.nama, specificVariant.variantName)} ditambahkan ke keranjang!`,
+          'success'
+        );
+      }
+      return;
+    }
+
     if (product.stok <= 0) return;
+    const key = getCartKey(product.id);
     setCart((prev) => {
-      const existing = prev[product.id];
+      const existing = prev[key];
       const newQty = (existing ? existing.qty : 0) + 1;
       return {
         ...prev,
-        [product.id]: {
+        [key]: {
+          cartKey: key,
           product,
           qty: newQty,
           notes: existing ? existing.notes : '',
@@ -222,20 +408,27 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
     }
   };
 
-  const handleUpdateQty = (productId: string, delta: number, e?: React.MouseEvent) => {
+  const handleUpdateQty = (cartKey: string, delta: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setCart((prev) => {
-      const existing = prev[productId];
+      const existing = prev[cartKey];
       if (!existing) return prev;
+      const maxStock = existing.variant ? existing.variant.stock : existing.product.stok;
       const newQty = existing.qty + delta;
       if (newQty <= 0) {
         const copy = { ...prev };
-        delete copy[productId];
+        delete copy[cartKey];
         return copy;
+      }
+      if (delta > 0 && newQty > maxStock) {
+        if (showToast) {
+          showToast(`Stok maksimal tersisa ${maxStock}`, 'error');
+        }
+        return prev;
       }
       return {
         ...prev,
-        [productId]: {
+        [cartKey]: {
           ...existing,
           qty: newQty,
         },
@@ -243,23 +436,23 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
     });
   };
 
-  const handleUpdateItemNotes = (productId: string, notes: string) => {
+  const handleUpdateItemNotes = (cartKey: string, notes: string) => {
     setCart((prev) => {
-      if (!prev[productId]) return prev;
+      if (!prev[cartKey]) return prev;
       return {
         ...prev,
-        [productId]: {
-          ...prev[productId],
+        [cartKey]: {
+          ...prev[cartKey],
           notes,
         },
       };
     });
   };
 
-  const handleRemoveItem = (productId: string) => {
+  const handleRemoveItem = (cartKey: string) => {
     setCart((prev) => {
       const copy = { ...prev };
-      delete copy[productId];
+      delete copy[cartKey];
       return copy;
     });
   };
@@ -335,17 +528,28 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
       const tanggal = now.toISOString().split('T')[0];
       const jam = now.toTimeString().split(' ')[0];
 
-      // Format Items for Transaction
-      const itemsFormatted = cartItems.map((item, idx) => ({
-        id_detail: `DET-${orderId}-${idx + 1}`,
-        id_transaksi: orderId,
-        id_produk: item.product.id,
-        nama_produk: item.product.nama,
-        harga: item.product.harga_jual,
-        qty: item.qty,
-        subtotal: item.qty * item.product.harga_jual,
-        catatan: item.notes || undefined,
-      }));
+      // Format Items for Transaction (supporting product variants)
+      const itemsFormatted = cartItems.map((item, idx) => {
+        const unitPrice = item.variant ? item.variant.price : item.product.harga_jual;
+        const unitCost = item.variant ? item.variant.costPrice : item.product.harga_modal;
+        const displayName = item.variant
+          ? formatVariantDisplayName(item.product.nama, item.variant.variantName)
+          : item.product.nama;
+        return {
+          id_detail: `DET-${orderId}-${idx + 1}`,
+          id_transaksi: orderId,
+          id_produk: item.product.id,
+          nama_produk: displayName,
+          productName: item.product.nama,
+          variantId: item.variant?.variantId,
+          variantName: item.variant?.variantName,
+          harga_modal: unitCost,
+          harga: unitPrice,
+          qty: item.qty,
+          subtotal: item.qty * unitPrice,
+          catatan: item.notes || undefined,
+        };
+      });
 
       const combinedNote = isDelivery
         ? deliveryNote.trim() || generalNotes.trim()
@@ -404,9 +608,11 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
         paymentMethod: paymentMethod === 'QRIS' ? 'QRIS Warung' : paymentMethod === 'Transfer' ? 'Transfer Bank' : 'Tunai / COD',
         notes: combinedNote,
         items: cartItems.map((item) => ({
-          name: item.product.nama,
+          name: item.variant
+            ? formatVariantDisplayName(item.product.nama, item.variant.variantName)
+            : item.product.nama,
           qty: item.qty,
-          price: item.product.harga_jual,
+          price: item.variant ? item.variant.price : item.product.harga_jual,
           notes: item.notes,
         })),
         subtotal: cartSubtotal,
@@ -710,18 +916,54 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredProducts.map((product, index) => {
-                const cartEntry = cart[product.id];
-                const isOutOfStock = product.stok <= 0;
+                const prodVars = variantsByProduct.get(product.id) || [];
+                const hasVars = prodVars.length > 0;
+                const effectiveStock = hasVars
+                  ? prodVars.reduce((sum, v) => sum + Math.max(0, Number(v.stock || 0)), 0)
+                  : product.stok;
+                const minPrice = hasVars
+                  ? Math.min(...prodVars.map((v) => Number(v.price || product.harga_jual)))
+                  : product.harga_jual;
+                const maxPrice = hasVars
+                  ? Math.max(...prodVars.map((v) => Number(v.price || product.harga_jual)))
+                  : product.harga_jual;
+
+                const cartEntry = !hasVars ? cart[product.id] : undefined;
+                const productVariantCartCount = hasVars
+                  ? cartItems
+                      .filter((ci) => ci.product.id === product.id)
+                      .reduce((s, ci) => s + ci.qty, 0)
+                  : 0;
+                const isOutOfStock = effectiveStock <= 0;
                 const isSpicy =
                   product.nama.toLowerCase().includes('pedas') ||
                   product.nama.toLowerCase().includes('kobra') ||
                   product.nama.toLowerCase().includes('rendang');
 
+                // Sort preview variants so search matches appear first
+                const q = searchQuery.toLowerCase().trim();
+                const sortedPreviewVars = hasVars
+                  ? [...prodVars].sort((a, b) => {
+                      if (!q) return 0;
+                      const aMatch = a.variantName.toLowerCase().includes(q) ? -1 : 0;
+                      const bMatch = b.variantName.toLowerCase().includes(q) ? -1 : 0;
+                      return aMatch - bMatch;
+                    })
+                  : [];
+
                 return (
                   <div
                     key={product.id}
                     id={`menu-card-${product.id}`}
-                    onClick={() => setSelectedProductDetail(product)}
+                    onClick={() => {
+                      if (hasVars) {
+                        setEditingCartKey(null);
+                        setVariantSearchQuery('');
+                        setVariantModalProduct(product);
+                      } else {
+                        setSelectedProductDetail(product);
+                      }
+                    }}
                     style={{ animationDelay: `${Math.min(index * 45, 450)}ms` }}
                     className="group bg-stone-900/80 hover:bg-stone-900 border border-stone-800/80 hover:border-orange-500/40 rounded-3xl p-3.5 flex flex-col justify-between transition-all duration-300 shadow-md hover:shadow-2xl hover:shadow-orange-950/30 hover:-translate-y-1.5 cursor-pointer animate-fade-in-up"
                   >
@@ -743,13 +985,21 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                         )}
 
                         {/* Badges Over Image */}
-                        <div className="absolute top-2.5 left-2.5 flex flex-wrap gap-1">
-                          <span className="bg-stone-950/80 backdrop-blur-sm text-stone-300 text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-800">
-                            {product.kategori}
-                          </span>
-                          {isSpicy && (
-                            <span className="bg-red-600/90 text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-sm shimmer-effect">
-                              Pedas
+                        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1 flex-wrap">
+                          <div className="flex flex-wrap gap-1">
+                            <span className="bg-stone-950/80 backdrop-blur-sm text-stone-300 text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-800">
+                              {product.kategori}
+                            </span>
+                            {isSpicy && (
+                              <span className="bg-red-600/90 text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-sm shimmer-effect">
+                                Pedas
+                              </span>
+                            )}
+                          </div>
+                          {hasVars && (
+                            <span className="bg-amber-500 text-stone-950 text-[10px] font-black px-2 py-0.5 rounded-lg shadow-md flex items-center gap-1">
+                              <Layers className="w-3 h-3" />
+                              <span>{prodVars.length} Varian</span>
                             </span>
                           )}
                         </div>
@@ -764,22 +1014,107 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                       </div>
 
                       {/* Title & Description */}
-                      <div className="space-y-1">
-                        <h4 className="font-extrabold text-stone-100 group-hover:text-orange-400 transition text-sm sm:text-base line-clamp-1">
-                          {product.nama}
-                        </h4>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <h4 className="font-extrabold text-stone-100 group-hover:text-orange-400 transition text-sm sm:text-base line-clamp-1">
+                            {product.nama}
+                          </h4>
+                          {productVariantCartCount > 0 && (
+                            <span className="shrink-0 bg-orange-500/20 border border-orange-500/40 text-orange-300 text-[10px] font-black px-2 py-0.5 rounded-full">
+                              {productVariantCartCount} dipilih
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-stone-400 line-clamp-2 leading-relaxed">
                           {product.deskripsi || 'Olahan bahan segar pilihan racikan resep warung khas.'}
                         </p>
+
+                        {/* Interactive Variant Flavor Chips Preview on Card */}
+                        {hasVars && (
+                          <div
+                            className="pt-1.5 space-y-1.5"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-center justify-between text-[10px] text-amber-400 font-extrabold uppercase tracking-wider">
+                              <span>Pilih Varian Rasa ({prodVars.length}):</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingCartKey(null);
+                                  setVariantSearchQuery('');
+                                  setVariantModalProduct(product);
+                                }}
+                                className="text-orange-400 hover:text-orange-300 underline cursor-pointer"
+                              >
+                                Lihat Semua
+                              </button>
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {sortedPreviewVars.slice(0, 5).map((v) => {
+                                const vKey = getCartKey(product.id, v.variantId);
+                                const vInCart = cart[vKey];
+                                const vOut = v.stock <= 0;
+                                const isQueryMatch =
+                                  q !== '' && v.variantName.toLowerCase().includes(q);
+                                return (
+                                  <button
+                                    key={v.variantId}
+                                    type="button"
+                                    disabled={vOut}
+                                    onClick={(e) => handleAddToCart(product, e, v)}
+                                    title={
+                                      vOut
+                                        ? `${v.variantName} (Stok Habis)`
+                                        : `Tambah ${v.variantName} (${formatRupiah(v.price)})`
+                                    }
+                                    className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition flex items-center gap-1 cursor-pointer active:scale-95 ${
+                                      vOut
+                                        ? 'bg-stone-950/50 border-stone-800/60 text-stone-600 line-through cursor-not-allowed'
+                                        : vInCart
+                                        ? 'bg-orange-500 text-stone-950 border-orange-400 font-black shadow-sm'
+                                        : isQueryMatch
+                                        ? 'bg-amber-500/25 border-amber-400 text-amber-200 font-extrabold'
+                                        : 'bg-stone-950 hover:bg-stone-800 border-stone-800 hover:border-orange-500/50 text-stone-300 hover:text-orange-300'
+                                    }`}
+                                  >
+                                    <span className="truncate max-w-[115px]">{v.variantName}</span>
+                                    {vInCart ? (
+                                      <span className="bg-stone-950 text-orange-400 px-1 rounded text-[9px] font-black">
+                                        {vInCart.qty}x
+                                      </span>
+                                    ) : (
+                                      <Plus className="w-2.5 h-2.5 opacity-75 shrink-0" />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                              {prodVars.length > 5 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingCartKey(null);
+                                    setVariantSearchQuery('');
+                                    setVariantModalProduct(product);
+                                  }}
+                                  className="text-[10px] font-extrabold px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 transition cursor-pointer"
+                                >
+                                  +{prodVars.length - 5} varian lainnya
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     {/* Price and Cart Controller */}
                     <div className="pt-3 mt-2 border-t border-stone-800/80 flex items-center justify-between gap-2">
                       <div>
-                        <span className="text-[10px] text-stone-400 uppercase font-bold block">Harga</span>
+                        <span className="text-[10px] text-stone-400 uppercase font-bold block">
+                          {hasVars && minPrice !== maxPrice ? 'Harga Mulai' : 'Harga'}
+                        </span>
                         <span className="text-sm sm:text-base font-black text-orange-400">
-                          {formatRupiah(product.harga_jual)}
+                          {formatRupiah(minPrice)}
                         </span>
                       </div>
 
@@ -787,6 +1122,24 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                         <span className="text-[11px] font-bold text-stone-400 py-1.5 px-3 rounded-xl bg-stone-800/50">
                           Stok Habis
                         </span>
+                      ) : hasVars ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingCartKey(null);
+                            setVariantSearchQuery('');
+                            setVariantModalProduct(product);
+                          }}
+                          className="min-h-[36px] px-3.5 py-1.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-stone-950 text-xs font-extrabold flex items-center gap-1.5 shadow-md shadow-orange-950/50 active:scale-90 hover:scale-105 transition-all cursor-pointer"
+                        >
+                          <Layers className="w-3.5 h-3.5" />
+                          <span>
+                            {productVariantCartCount > 0
+                              ? `Pilih Varian (${productVariantCartCount})`
+                              : 'Pilih Varian'}
+                          </span>
+                        </button>
                       ) : cartEntry ? (
                         <div
                           className="flex items-center gap-2 bg-orange-500/20 border border-orange-500/40 p-1 rounded-2xl animate-pop-in"
@@ -873,6 +1226,243 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
           </div>
         </section>
       </main>
+
+      {/* Variant Selector Modal (Pilih Varian Rasa) */}
+      {variantModalProduct && (() => {
+        const modalVars = variantsByProduct.get(variantModalProduct.id) || [];
+        const qVar = variantSearchQuery.toLowerCase().trim();
+        const filteredModalVars = modalVars.filter(
+          (v) =>
+            !qVar ||
+            v.variantName.toLowerCase().includes(qVar) ||
+            (v.sku || '').toLowerCase().includes(qVar)
+        );
+        const totalSelectedForProduct = cartItems
+          .filter((ci) => ci.product.id === variantModalProduct.id)
+          .reduce((s, ci) => s + ci.qty, 0);
+
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in"
+            onClick={() => {
+              setVariantModalProduct(null);
+              setEditingCartKey(null);
+            }}
+          >
+            <div
+              className="bg-stone-900 border-t sm:border border-stone-800 rounded-t-3xl sm:rounded-3xl w-full max-w-lg max-h-[88vh] flex flex-col overflow-hidden shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="p-4 sm:p-5 bg-stone-950 border-b border-stone-800 flex items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  {variantModalProduct.foto ? (
+                    <img
+                      src={variantModalProduct.foto}
+                      alt={variantModalProduct.nama}
+                      className="w-12 h-12 rounded-2xl object-cover border border-stone-800 shrink-0"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-2xl bg-orange-500/20 text-orange-400 flex items-center justify-center shrink-0">
+                      <Layers className="w-6 h-6" />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                        {editingCartKey ? 'Ganti Varian Rasa' : 'Pilih Varian Rasa'}
+                      </span>
+                      <span className="text-[11px] text-stone-400 font-bold">
+                        {modalVars.length} Varian Tersedia
+                      </span>
+                    </div>
+                    <h3 className="text-base sm:text-lg font-black text-stone-100 truncate mt-0.5">
+                      {variantModalProduct.nama}
+                    </h3>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVariantModalProduct(null);
+                    setEditingCartKey(null);
+                  }}
+                  className="w-8 h-8 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-white flex items-center justify-center transition cursor-pointer shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Search Bar inside Variant Modal */}
+              {modalVars.length > 4 && (
+                <div className="px-4 sm:px-5 pt-3 pb-1 bg-stone-900 shrink-0">
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={variantSearchQuery}
+                      onChange={(e) => setVariantSearchQuery(e.target.value)}
+                      placeholder={`Cari varian rasa ${variantModalProduct.nama}...`}
+                      className="w-full pl-10 pr-8 py-2 bg-stone-950 border border-stone-800 rounded-xl text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-orange-500"
+                    />
+                    {variantSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setVariantSearchQuery('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-white"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Variants List */}
+              <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-2">
+                {filteredModalVars.length === 0 ? (
+                  <div className="text-center py-8 text-xs text-stone-400">
+                    Tidak ada varian rasa yang cocok dengan pencarian &quot;{variantSearchQuery}&quot;.
+                  </div>
+                ) : (
+                  filteredModalVars.map((variant) => {
+                    const vKey = getCartKey(variantModalProduct.id, variant.variantId);
+                    const inCartEntry = cart[vKey];
+                    const isOut = variant.stock <= 0;
+
+                    return (
+                      <div
+                        key={variant.variantId}
+                        className={`p-3 rounded-2xl border transition flex items-center justify-between gap-3 ${
+                          isOut
+                            ? 'bg-stone-950/40 border-stone-800/50 opacity-60'
+                            : inCartEntry
+                            ? 'bg-orange-500/10 border-orange-500/50 shadow-sm'
+                            : 'bg-stone-950 border-stone-800 hover:border-orange-500/40'
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-extrabold text-xs sm:text-sm text-stone-100">
+                              {variant.variantName}
+                            </span>
+                            {inCartEntry && (
+                              <span className="text-[10px] font-black bg-orange-500 text-stone-950 px-1.5 py-0.5 rounded-md">
+                                {inCartEntry.qty}x di Keranjang
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2.5 mt-1 text-[11px]">
+                            <span className="font-black text-orange-400">
+                              {formatRupiah(variant.price)}
+                            </span>
+                            <span className="text-stone-600">•</span>
+                            <span
+                              className={
+                                isOut
+                                  ? 'text-red-400 font-bold'
+                                  : variant.stock <= 5
+                                  ? 'text-amber-400 font-semibold'
+                                  : 'text-stone-400'
+                              }
+                            >
+                              {isOut ? 'Stok Habis' : `Stok: ${variant.stock}`}
+                            </span>
+                          </div>
+                        </div>
+
+                        {isOut ? (
+                          <span className="text-[11px] font-bold text-red-400 bg-red-500/10 border border-red-500/20 px-2.5 py-1 rounded-xl shrink-0">
+                            Habis
+                          </span>
+                        ) : editingCartKey ? (
+                          <button
+                            type="button"
+                            onClick={(e) => handleAddToCart(variantModalProduct, e, variant)}
+                            className="px-3.5 py-2 rounded-xl bg-orange-500 hover:bg-orange-400 text-stone-950 font-black text-xs flex items-center gap-1.5 cursor-pointer shrink-0"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Pilih Rasa Ini</span>
+                          </button>
+                        ) : inCartEntry ? (
+                          <div className="flex items-center gap-2 bg-stone-900 border border-orange-500/40 p-1 rounded-xl shrink-0">
+                            <button
+                              type="button"
+                              onClick={(e) => handleUpdateQty(vKey, -1, e)}
+                              className="w-7 h-7 rounded-lg bg-stone-800 hover:bg-stone-700 text-white flex items-center justify-center cursor-pointer"
+                            >
+                              <Minus className="w-3.5 h-3.5" />
+                            </button>
+                            <span className="text-xs font-black text-orange-400 min-w-[20px] text-center">
+                              {inCartEntry.qty}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => handleUpdateQty(vKey, 1, e)}
+                              className="w-7 h-7 rounded-lg bg-orange-500 hover:bg-orange-400 text-stone-950 font-bold flex items-center justify-center cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => handleAddToCart(variantModalProduct, e, variant)}
+                            className="px-3.5 py-2 rounded-xl bg-orange-500 hover:bg-orange-400 text-stone-950 font-extrabold text-xs flex items-center gap-1 shadow-sm cursor-pointer active:scale-95 transition shrink-0"
+                          >
+                            <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                            <span>Tambah</span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 bg-stone-950 border-t border-stone-800 flex items-center justify-between gap-3 shrink-0">
+                <div className="text-xs text-stone-300">
+                  {totalSelectedForProduct > 0 ? (
+                    <span>
+                      <strong className="text-orange-400 font-black">{totalSelectedForProduct} porsi</strong>{' '}
+                      {variantModalProduct.nama} dipilih
+                    </span>
+                  ) : (
+                    <span className="text-stone-400">Klik + Tambah pada varian rasa yang diinginkan</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {totalItemCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVariantModalProduct(null);
+                        setEditingCartKey(null);
+                        setIsCartDrawerOpen(true);
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-orange-400 font-extrabold text-xs cursor-pointer"
+                    >
+                      Lihat Keranjang ({totalItemCount})
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVariantModalProduct(null);
+                      setEditingCartKey(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-400 text-stone-950 font-black text-xs cursor-pointer"
+                  >
+                    Selesai
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Product Detail Modal */}
       {selectedProductDetail && (
@@ -1057,62 +1647,85 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
               <div className="space-y-3">
                 <span className="text-xs font-bold text-stone-300 block">Daftar Menu:</span>
                 <div className="space-y-2">
-                  {cartItems.map((entry) => (
-                    <div
-                      key={entry.product.id}
-                      className="p-3 bg-stone-950 border border-stone-800/80 rounded-2xl space-y-2"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <h5 className="font-extrabold text-stone-100 text-xs sm:text-sm truncate">
-                            {entry.product.nama}
-                          </h5>
-                          <span className="text-[11px] text-orange-400 font-bold">
-                            {formatRupiah(entry.product.harga_jual)} x {entry.qty} ={' '}
-                            {formatRupiah(entry.product.harga_jual * entry.qty)}
-                          </span>
+                  {cartItems.map((entry) => {
+                    const unitPrice = entry.variant ? entry.variant.price : entry.product.harga_jual;
+                    const displayTitle = entry.variant
+                      ? formatVariantDisplayName(entry.product.nama, entry.variant.variantName)
+                      : entry.product.nama;
+                    return (
+                      <div
+                        key={entry.cartKey}
+                        className="p-3 bg-stone-950 border border-stone-800/80 rounded-2xl space-y-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h5 className="font-extrabold text-stone-100 text-xs sm:text-sm truncate">
+                                {displayTitle}
+                              </h5>
+                              {entry.variant && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsCartDrawerOpen(false);
+                                    setEditingCartKey(entry.cartKey);
+                                    setVariantSearchQuery('');
+                                    setVariantModalProduct(entry.product);
+                                  }}
+                                  className="text-[10px] font-bold text-amber-400 hover:text-amber-300 underline flex items-center gap-1 cursor-pointer"
+                                >
+                                  <RefreshCw className="w-2.5 h-2.5" />
+                                  <span>Ganti Rasa</span>
+                                </button>
+                              )}
+                            </div>
+                            <span className="text-[11px] text-orange-400 font-bold">
+                              {formatRupiah(unitPrice)} x {entry.qty} ={' '}
+                              {formatRupiah(unitPrice * entry.qty)}
+                            </span>
+                          </div>
+
+                          {/* Quantity Stepper */}
+                          <div className="flex items-center gap-1.5 shrink-0 bg-stone-900 border border-stone-800 p-1 rounded-xl">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateQty(entry.cartKey, -1)}
+                              className="w-6 h-6 rounded-lg bg-stone-800 hover:bg-stone-700 text-white flex items-center justify-center text-xs"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <span className="text-xs font-black text-stone-100 min-w-[18px] text-center">
+                              {entry.qty}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateQty(entry.cartKey, 1)}
+                              className="w-6 h-6 rounded-lg bg-orange-500 hover:bg-orange-400 text-stone-950 flex items-center justify-center text-xs font-bold"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(entry.cartKey)}
+                              className="w-6 h-6 rounded-lg text-stone-400 hover:text-red-400 flex items-center justify-center ml-1"
+                              title="Hapus"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
 
-                        {/* Quantity Stepper */}
-                        <div className="flex items-center gap-1.5 shrink-0 bg-stone-900 border border-stone-800 p-1 rounded-xl">
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateQty(entry.product.id, -1)}
-                            className="w-6 h-6 rounded-lg bg-stone-800 hover:bg-stone-700 text-white flex items-center justify-center text-xs"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className="text-xs font-black text-stone-100 min-w-[18px] text-center">
-                            {entry.qty}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateQty(entry.product.id, 1)}
-                            className="w-6 h-6 rounded-lg bg-orange-500 hover:bg-orange-400 text-stone-950 flex items-center justify-center text-xs font-bold"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItem(entry.product.id)}
-                            className="w-6 h-6 rounded-lg text-stone-400 hover:text-red-400 flex items-center justify-center ml-1"
-                            title="Hapus"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                        {/* Item Notes */}
+                        <input
+                          type="text"
+                          value={entry.notes}
+                          onChange={(e) => handleUpdateItemNotes(entry.cartKey, e.target.value)}
+                          placeholder="Catatan porsi (contoh: pedas manis, tanpa bawang goreng)..."
+                          className="w-full text-[11px] px-3 py-1.5 bg-stone-900 border border-stone-800 rounded-xl text-stone-200 placeholder-stone-400 focus:outline-none focus:border-orange-500"
+                        />
                       </div>
-
-                      {/* Item Notes */}
-                      <input
-                        type="text"
-                        value={entry.notes}
-                        onChange={(e) => handleUpdateItemNotes(entry.product.id, e.target.value)}
-                        placeholder="Catatan porsi (contoh: pedas manis, tanpa bawang goreng)..."
-                        className="w-full text-[11px] px-3 py-1.5 bg-stone-900 border border-stone-800 rounded-xl text-stone-200 placeholder-stone-400 focus:outline-none focus:border-orange-500"
-                      />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

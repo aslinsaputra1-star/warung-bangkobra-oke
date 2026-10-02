@@ -25,7 +25,11 @@ import {
 } from 'lucide-react';
 import { Product, ProductVariant, ProductCategory, UserRole } from '../../types';
 import { formatRupiah } from '../../utils/formatters';
-import { syncProductsToFirebase, clearAllProductsFromFirebase } from '../../services/firebase';
+import {
+  syncProductsToFirebase,
+  syncProductVariantsToFirebase,
+  clearAllProductsFromFirebase,
+} from '../../services/firebase';
 import {
   exportProductsToExcel,
   downloadProductExcelTemplate,
@@ -42,6 +46,7 @@ interface ProductsViewProps {
   onAddProduct: (prod: Product) => void;
   onUpdateProduct: (prod: Product) => void;
   onDeleteProduct: (id: string) => void;
+  onDeleteProductsBulk?: (ids: string[]) => void;
   onImportProducts: (prods: Product[]) => void;
   onClearAllProducts?: () => Promise<boolean> | void;
   onAddVariant?: (v: ProductVariant) => void;
@@ -58,6 +63,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
+  onDeleteProductsBulk,
   onImportProducts,
   onClearAllProducts,
   onAddVariant,
@@ -130,9 +136,12 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     }
     setIsSyncingFirebase(true);
     try {
-      const success = await syncProductsToFirebase(products);
-      if (success) {
-        showToast(`Katalog ${products.length} menu berhasil disinkronkan ke Firebase Firestore!`, 'success');
+      const [prodOk] = await Promise.all([
+        syncProductsToFirebase(products, true),
+        syncProductVariantsToFirebase(variants, true),
+      ]);
+      if (prodOk) {
+        showToast(`Katalog ${products.length} menu & ${variants.length} varian berhasil disinkronkan ke Firebase Firestore!`, 'success');
       } else {
         showToast('Gagal menyinkronkan menu ke Firebase Firestore.', 'error');
       }
@@ -334,12 +343,14 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   const handleConfirmBulkDelete = () => {
     if (selectedProductIds.size === 0) return;
     const idsToDelete = Array.from(selectedProductIds);
-    idsToDelete.forEach((id) => {
-      if (selectedVariantProductId === id) {
-        setSelectedVariantProductId(null);
-      }
-      onDeleteProduct(id);
-    });
+    if (selectedVariantProductId && selectedProductIds.has(selectedVariantProductId)) {
+      setSelectedVariantProductId(null);
+    }
+    if (onDeleteProductsBulk) {
+      onDeleteProductsBulk(idsToDelete);
+    } else {
+      idsToDelete.forEach((id) => onDeleteProduct(id));
+    }
     setSelectedProductIds(new Set());
     setIsBulkDeleteConfirmOpen(false);
     showToast(`${idsToDelete.length} produk terpilih berhasil dihapus.`, 'success');
