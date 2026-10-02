@@ -37,6 +37,7 @@ import {
   openWhatsAppChat,
   buildDeliveryProofShareUrl,
   buildDeliveryProofWhatsAppMessage,
+  DELIVERY_MIN_ORDER_AMOUNT,
 } from '../../utils/formatters';
 import { normalizeRole } from '../../utils/rbac';
 import {
@@ -431,6 +432,9 @@ export const DeliveryDQMDashboard: React.FC<DeliveryDQMDashboardProps> = ({
               </h2>
               <span className="px-2.5 py-0.5 rounded-lg text-[11px] font-black bg-orange-500 text-stone-950">
                 TUJUAN KHUSUS AREA DQM
+              </span>
+              <span className="px-2.5 py-0.5 rounded-lg text-[11px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono tabular-nums">
+                MINIMAL BELANJA: {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)}
               </span>
               {isDeliveryStaff && (
                 <span className="px-2.5 py-0.5 rounded-lg text-[11px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">

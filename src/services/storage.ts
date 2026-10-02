@@ -749,6 +749,12 @@ export class StorageService {
           kasir: String(tx.kasir || 'Kasir'),
           nama_pelanggan: String(tx.nama_pelanggan || 'Pelanggan Umum'),
           no_whatsapp: String(tx.no_whatsapp || '-'),
+          ...(tx.email_pelanggan ? { email_pelanggan: String(tx.email_pelanggan).trim() } : {}),
+          ...(tx.emailReceiptStatus ? { emailReceiptStatus: tx.emailReceiptStatus } : {}),
+          ...(tx.emailReceiptSentAt ? { emailReceiptSentAt: String(tx.emailReceiptSentAt) } : {}),
+          ...(tx.emailReceiptTarget ? { emailReceiptTarget: String(tx.emailReceiptTarget) } : {}),
+          ...(tx.emailReceiptError ? { emailReceiptError: String(tx.emailReceiptError) } : {}),
+          ...(tx.emailReceiptAttempts !== undefined ? { emailReceiptAttempts: Number(tx.emailReceiptAttempts) } : {}),
           subtotal: Number(tx.subtotal || 0) || 0,
           diskon: Number(tx.diskon || 0) || 0,
           biaya: Number(tx.biaya || 0) || 0,
@@ -937,12 +943,14 @@ export class StorageService {
           total_belanja: exist.total_belanja + transaction.total,
           last_order: new Date().toISOString(),
           no_whatsapp: (transaction.no_whatsapp && transaction.no_whatsapp !== '-') ? transaction.no_whatsapp : exist.no_whatsapp,
+          ...(transaction.email_pelanggan ? { email: transaction.email_pelanggan } : {}),
         };
       } else {
         updatedCustomers.unshift({
           id: 'CUST-' + Math.random().toString(36).substring(2, 7),
           nama: transaction.nama_pelanggan,
           no_whatsapp: transaction.no_whatsapp || '-',
+          ...(transaction.email_pelanggan ? { email: transaction.email_pelanggan } : {}),
           total_transaksi: 1,
           total_belanja: transaction.total,
           last_order: new Date().toISOString(),

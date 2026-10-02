@@ -1189,6 +1189,7 @@ export const POSView: React.FC<POSViewProps> = ({
           settings={settings}
           onClose={() => setIsReceiptModalOpen(false)}
           onNewTransaction={() => setIsReceiptModalOpen(false)}
+          showToast={showToast}
         />
       )}
     </div>

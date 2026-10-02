@@ -1333,6 +1333,7 @@ export default function App() {
       <ReceiptModal
         transaction={matchedTx}
         settings={settings}
+        showToast={showToast}
         onClose={() => {
           setSharedReceiptRoute(null);
           if (typeof window !== 'undefined' && window.history.replaceState) {
@@ -1781,6 +1782,7 @@ export default function App() {
         <ReceiptModal
           transaction={receiptTx}
           settings={settings}
+          showToast={showToast}
           onClose={() => setReceiptTx(null)}
           onNewTransaction={() => {
             setReceiptTx(null);

@@ -15,7 +15,14 @@ import {
   MapPin,
 } from 'lucide-react';
 import { PaymentMethod, StoreSettings, CartItem, OrderType } from '../../types';
-import { formatRupiah, DQM_LOCATIONS, getEffectiveDeliveryFee } from '../../utils/formatters';
+import {
+  formatRupiah,
+  DQM_LOCATIONS,
+  getEffectiveDeliveryFee,
+  DELIVERY_MIN_ORDER_AMOUNT,
+  getDeliveryMinOrderValidation,
+} from '../../utils/formatters';
+import { DeliveryMinOrderBanner } from '../Common/DeliveryMinOrderBanner';
 
 interface PaymentModalProps {
   cart: CartItem[];
@@ -91,6 +98,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     setErrorMessage(null);
 
     if (orderType === 'DELIVERY_DQM') {
+      const minOrderCheck = getDeliveryMinOrderValidation(subtotal);
+      if (!minOrderCheck.isMet) {
+        setErrorMessage(minOrderCheck.warningMessage);
+        return;
+      }
       if (selectedArea !== 'DQM') {
         setErrorMessage('Delivery hanya tersedia untuk area Pesantren DQM.');
         return;
@@ -215,11 +227,24 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
             {orderType === 'BUNGKUS' ? (
               <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-500/30 text-xs font-bold text-amber-300">
-                Pesanan TAKEAWAY akan disiapkan untuk diambil di Warung Bang Kobra.
+                Pesanan TAKEAWAY akan disiapkan untuk diambil di Warung Bang Kobra (Tanpa minimal belanja).
               </div>
             ) : (
-              <div className="p-3 rounded-xl bg-teal-950/30 border border-teal-500/40 text-xs font-bold text-teal-300">
-                Tujuan terkunci: <strong>DQM</strong> (Delivery hanya untuk area Pesantren DQM).
+              <div className="space-y-2.5">
+                <div className="p-3 rounded-xl bg-teal-950/30 border border-teal-500/40 text-xs font-bold text-teal-300 flex items-center justify-between gap-2">
+                  <span>
+                    Tujuan terkunci: <strong>DQM</strong> (Delivery khusus area Pesantren DQM).
+                  </span>
+                  <span className="font-mono font-black text-teal-200 shrink-0">
+                    Min. {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)}
+                  </span>
+                </div>
+                <DeliveryMinOrderBanner
+                  subtotal={subtotal}
+                  variant="checkout"
+                  deliveryFee={deliveryFee}
+                  onAddMoreItems={onClose}
+                />
               </div>
             )}
           </div>
@@ -482,11 +507,18 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             onClick={handlePay}
             disabled={
               (method === 'Cash' && uangDiterima < total) ||
-              (orderType === 'DELIVERY_DQM' && selectedArea !== 'DQM')
+              (orderType === 'DELIVERY_DQM' && selectedArea !== 'DQM') ||
+              (orderType === 'DELIVERY_DQM' && subtotal < DELIVERY_MIN_ORDER_AMOUNT)
             }
             className="flex-[2] py-3.5 px-5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm transition shadow-xl shadow-emerald-950/60 border border-emerald-500/50 flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
-            <span>Bayar &amp; Proses ({formatRupiah(total)})</span>
+            <span>
+              {orderType === 'DELIVERY_DQM' && subtotal < DELIVERY_MIN_ORDER_AMOUNT
+                ? `Min. Delivery ${formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)} (Kurang ${formatRupiah(
+                    DELIVERY_MIN_ORDER_AMOUNT - subtotal
+                  )})`
+                : `Bayar & Proses (${formatRupiah(total)})`}
+            </span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>

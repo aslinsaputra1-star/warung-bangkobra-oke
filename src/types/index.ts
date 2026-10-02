@@ -58,6 +58,38 @@ export type OrderQueueStatus =
   | 'SELESAI'
   | 'DIBATALKAN';
 
+export type EmailReceiptStatus = 'PENDING' | 'SENT' | 'FAILED';
+
+export interface ReceiptEmailAttempt {
+  attempt: number;
+  status: EmailReceiptStatus;
+  timestamp: string;
+  email: string;
+  note?: string;
+}
+
+export interface ReceiptEmailLog {
+  id: string;
+  id_transaksi: string;
+  queueNumber?: string;
+  nama_pelanggan: string;
+  email_pelanggan: string;
+  total: number;
+  orderType: OrderType;
+  status: EmailReceiptStatus;
+  provider?: string;
+  attemptCount: number;
+  idempotencyKey: string;
+  messageId?: string;
+  errorMessage?: string;
+  sentBy: string;
+  createdAt: string;
+  updatedAt: string;
+  sentAt?: string;
+  lastAttemptAt: string;
+  history: ReceiptEmailAttempt[];
+}
+
 export interface ProductVariant {
   variantId: string;
   productId: string;
@@ -124,6 +156,7 @@ export interface Transaction {
   kasir: string;
   nama_pelanggan: string;
   no_whatsapp: string;
+  email_pelanggan?: string;
   subtotal: number;
   diskon: number;
   biaya: number;
@@ -166,7 +199,12 @@ export interface Transaction {
   catatan_pesanan?: string;
   receiptSharedAt?: string;
   receiptSharedBy?: string;
-  receiptShareMethod?: 'GOOGLE_CHAT' | 'WHATSAPP' | 'PRINT' | 'PDF' | string;
+  receiptShareMethod?: 'GOOGLE_CHAT' | 'WHATSAPP' | 'PRINT' | 'PDF' | 'EMAIL' | string;
+  emailReceiptStatus?: EmailReceiptStatus;
+  emailReceiptSentAt?: string;
+  emailReceiptTarget?: string;
+  emailReceiptError?: string;
+  emailReceiptAttempts?: number;
   stockRestored?: boolean;
 }
 
@@ -189,6 +227,7 @@ export interface Customer {
   nama: string;
   no_whatsapp: string;
   whatsapp?: string;
+  email?: string;
   alamat?: string;
   catatan?: string;
   total_transaksi: number;

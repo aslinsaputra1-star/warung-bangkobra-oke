@@ -147,6 +147,15 @@ service cloud.firestore {
         (!('password' in data));
     }
 
+    function isValidReceiptEmailLog(data) {
+      return (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+        (!('id_transaksi' in data) || (data.id_transaksi is string && data.id_transaksi.size() <= 128)) &&
+        (!('email_pelanggan' in data) || (data.email_pelanggan is string && data.email_pelanggan.size() <= 200)) &&
+        (!('status' in data) || (data.status in ['PENDING', 'SENT', 'FAILED'])) &&
+        (!('attemptCount' in data) || (data.attemptCount is number && data.attemptCount >= 0)) &&
+        (!('password' in data));
+    }
+
     // --- Collection Security Rules ---
 
     // Ping / connection test
@@ -275,6 +284,13 @@ service cloud.firestore {
     match /settings/{settingId} {
       allow get, list: if true;
       allow write: if isValidId(settingId);
+    }
+
+    // RECEIPT EMAIL DELIVERY LOGS & HISTORY
+    match /receipt_emails/{logId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(logId) && isValidReceiptEmailLog(incoming());
+      allow delete: if isValidId(logId);
     }
   }
 }

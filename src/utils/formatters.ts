@@ -137,6 +137,47 @@ export function getEffectiveDeliveryFee(settings?: Partial<StoreSettings>, order
 
 export const calculateDeliveryDqmFee = getEffectiveDeliveryFee;
 
+/**
+ * Minimal Belanja Layanan Delivery (Rp20.000)
+ */
+export const DELIVERY_MIN_ORDER_AMOUNT = 20000;
+
+export interface DeliveryMinOrderValidation {
+  isMet: boolean;
+  minAmount: number;
+  currentAmount: number;
+  remainingAmount: number;
+  progressPercent: number;
+  statusMessage: string;
+  warningMessage: string;
+}
+
+export function getDeliveryMinOrderValidation(subtotal: number): DeliveryMinOrderValidation {
+  const minAmount = DELIVERY_MIN_ORDER_AMOUNT;
+  const currentAmount = Math.max(0, Math.round(Number(subtotal) || 0));
+  const isMet = currentAmount >= minAmount;
+  const remainingAmount = Math.max(0, minAmount - currentAmount);
+  const progressPercent = Math.min(100, Math.round((currentAmount / minAmount) * 100));
+
+  const statusMessage = isMet
+    ? 'Minimal belanja terpenuhi. Silakan lanjutkan pesanan.'
+    : currentAmount > 0
+    ? `Belum mencapai minimal belanja Delivery (${formatRupiah(minAmount)}). Kurang ${formatRupiah(remainingAmount)} lagi.`
+    : `Minimal belanja layanan Delivery adalah ${formatRupiah(minAmount)}. Silakan pilih menu terlebih dahulu.`;
+
+  const warningMessage = `Minimal belanja untuk layanan Delivery adalah ${formatRupiah(minAmount)}. Total belanja saat ini ${formatRupiah(currentAmount)} (kurang ${formatRupiah(remainingAmount)} lagi).`;
+
+  return {
+    isMet,
+    minAmount,
+    currentAmount,
+    remainingAmount,
+    progressPercent,
+    statusMessage,
+    warningMessage,
+  };
+}
+
 export function formatDeliveryLocationSummary(tx: Partial<Transaction>): string {
   const type = resolveOrderType(tx);
   if (type === 'BUNGKUS') {

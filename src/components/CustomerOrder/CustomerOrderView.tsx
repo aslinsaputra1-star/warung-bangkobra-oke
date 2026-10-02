@@ -51,11 +51,17 @@ import {
   normalizeDeliveryStatus,
   getOrderStatusLabel,
   getDeliveryStatusLabel,
+  DELIVERY_MIN_ORDER_AMOUNT,
+  getDeliveryMinOrderValidation,
 } from '../../utils/formatters';
 import { StorageService } from '../../services/storage';
-import { saveOrderToFirebase, db } from '../../services/firebase';
+import {
+  saveOrderToFirebase,
+  db,
+} from '../../services/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { BrandLogo } from '../Common/BrandLogo';
+import { DeliveryMinOrderBanner } from '../Common/DeliveryMinOrderBanner';
 import { DeliveryProofModal } from '../Orders/DeliveryProofModal';
 
 interface CustomerOrderViewProps {
@@ -426,6 +432,13 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
     }
 
     if (orderType === 'DELIVERY_DQM') {
+      const minOrderCheck = getDeliveryMinOrderValidation(cartSubtotal);
+      if (!minOrderCheck.isMet) {
+        if (showToast) {
+          showToast(minOrderCheck.warningMessage, 'error');
+        }
+        return;
+      }
       if (selectedAreaOption !== 'DQM') {
         if (showToast) showToast('Delivery hanya tersedia untuk area Pesantren DQM.', 'error');
         setIsCartOpen(true);
@@ -683,28 +696,36 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
             </button>
           </div>
 
-          {/* Quick Notice Info */}
-          <div className="flex items-center gap-2 text-[11px] text-stone-300 bg-stone-950/60 p-2.5 rounded-xl border border-stone-800/80">
-            {orderType === 'BUNGKUS' ? (
-              <>
-                <Store className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>
-                  <strong className="text-amber-400">[BUNGKUS]:</strong> Pesanan akan disiapkan untuk diambil di{' '}
-                  <strong className="text-stone-200">{settings.address || settings.storeAddress || 'Warung Bang Kobra'}</strong>.
+          {/* Quick Notice Info & Delivery Minimum Order Status */}
+          {orderType === 'BUNGKUS' ? (
+            <div className="flex items-center gap-2 text-[11px] text-stone-300 bg-stone-950/60 p-2.5 rounded-xl border border-stone-800/80">
+              <Store className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>
+                <strong className="text-amber-400">[BUNGKUS]:</strong> Pesanan akan disiapkan untuk diambil di{' '}
+                <strong className="text-stone-200">{settings.address || settings.storeAddress || 'Warung Bang Kobra'}</strong> (Tanpa minimal belanja).
+              </span>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between gap-2 text-[11px] text-stone-300 bg-stone-950/60 p-2.5 rounded-xl border border-stone-800/80">
+                <span className="flex items-center gap-2">
+                  <Bike className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>
+                    <strong className="text-emerald-400">[DELIVERY DQM]:</strong> Delivery khusus area Pesantren DQM • Minimal Belanja{' '}
+                    <strong className="font-mono text-white">{formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)}</strong>.
+                  </span>
                 </span>
-              </>
-            ) : (
-              <>
-                <Bike className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>
-                  <strong className="text-emerald-400">[DELIVERY DQM]:</strong> Delivery hanya tersedia di area Pesantren DQM.{' '}
-                  <strong>
-                    {deliveryFee > 0 ? `Biaya Delivery DQM: ${formatRupiah(deliveryFee)}` : 'Delivery DQM: GRATIS'}
-                  </strong>
-                </span>
-              </>
-            )}
-          </div>
+                <strong className="text-emerald-400 shrink-0">
+                  {deliveryFee > 0 ? `Ongkir: ${formatRupiah(deliveryFee)}` : 'Ongkir: GRATIS'}
+                </strong>
+              </div>
+              <DeliveryMinOrderBanner
+                subtotal={cartSubtotal}
+                variant="page"
+                deliveryFee={deliveryFee}
+              />
+            </div>
+          )}
         </div>
 
         {/* Store Announcement if configured */}
@@ -1235,7 +1256,14 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
       {/* Floating Bottom Cart Bar */}
       {totalCartCount > 0 && !isCartOpen && (
         <div className="fixed bottom-0 left-0 right-0 z-40 p-3 sm:p-4 bg-gradient-to-t from-stone-950 via-stone-950/95 to-transparent animate-slide-up-bounce">
-          <div className="max-w-2xl mx-auto">
+          <div className="max-w-2xl mx-auto space-y-2">
+            {orderType === 'DELIVERY_DQM' && (
+              <DeliveryMinOrderBanner
+                subtotal={cartSubtotal}
+                variant="cart-bar"
+                deliveryFee={deliveryFee}
+              />
+            )}
             <button
               type="button"
               id="btn-open-cart"
@@ -1352,12 +1380,25 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                 {orderType === 'BUNGKUS' ? (
                   <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 font-bold flex items-center gap-2">
                     <ShoppingBag className="w-4 h-4 shrink-0" />
-                    <span>Pesanan akan disiapkan untuk diambil.</span>
+                    <span>Pesanan akan disiapkan untuk diambil (Tanpa minimal belanja).</span>
                   </div>
                 ) : (
-                  <div className="p-2.5 rounded-xl bg-teal-500/10 border border-teal-500/30 text-xs text-teal-300 font-bold flex items-center gap-2">
-                    <Bike className="w-4 h-4 shrink-0" />
-                    <span>Delivery hanya tersedia di area Pesantren DQM.</span>
+                  <div className="space-y-2.5">
+                    <div className="p-2.5 rounded-xl bg-teal-500/10 border border-teal-500/30 text-xs text-teal-300 font-bold flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-2">
+                        <Bike className="w-4 h-4 shrink-0" />
+                        <span>Delivery hanya tersedia di area Pesantren DQM.</span>
+                      </span>
+                      <span className="font-mono font-black text-teal-200 shrink-0">
+                        Min. {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)}
+                      </span>
+                    </div>
+                    <DeliveryMinOrderBanner
+                      subtotal={cartSubtotal}
+                      variant="checkout"
+                      deliveryFee={deliveryFee}
+                      onAddMoreItems={() => setIsCartOpen(false)}
+                    />
                   </div>
                 )}
               </div>
@@ -1611,52 +1652,114 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
               <div className="bg-stone-950 p-3 rounded-2xl border border-stone-800 space-y-1.5 text-xs">
                 <div className="flex justify-between text-stone-400">
                   <span>Subtotal Menu</span>
-                  <span>{formatRupiah(cartSubtotal)}</span>
+                  <span className="font-mono font-bold text-stone-200 tabular-nums">{formatRupiah(cartSubtotal)}</span>
                 </div>
                 {orderType === 'DELIVERY_DQM' && (
-                  <div className="flex justify-between text-stone-400">
-                    <span>Biaya Delivery DQM</span>
-                    <span className="font-bold text-emerald-400">
-                      {deliveryFee > 0 ? formatRupiah(deliveryFee) : 'GRATIS'}
-                    </span>
-                  </div>
+                  <>
+                    <div className="flex justify-between text-stone-400">
+                      <span>Minimal Belanja Delivery</span>
+                      <span
+                        className={`font-mono font-bold tabular-nums ${
+                          cartSubtotal >= DELIVERY_MIN_ORDER_AMOUNT
+                            ? 'text-emerald-400'
+                            : 'text-red-400'
+                        }`}
+                      >
+                        {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)}{' '}
+                        {cartSubtotal >= DELIVERY_MIN_ORDER_AMOUNT
+                          ? '(Terpenuhi ✓)'
+                          : `(Kurang ${formatRupiah(DELIVERY_MIN_ORDER_AMOUNT - cartSubtotal)})`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-stone-400">
+                      <span>Biaya Delivery DQM</span>
+                      <span className="font-bold text-emerald-400">
+                        {deliveryFee > 0 ? formatRupiah(deliveryFee) : 'GRATIS'}
+                      </span>
+                    </div>
+                  </>
                 )}
                 <div className="flex justify-between text-stone-100 font-extrabold text-sm pt-2 border-t border-stone-800">
                   <span>Total Pembayaran</span>
-                  <span className="text-amber-400">{formatRupiah(grandTotal)}</span>
+                  <span className="text-amber-400 font-mono tabular-nums">{formatRupiah(grandTotal)}</span>
                 </div>
               </div>
             </div>
 
             {/* Modal Actions */}
-            <div className="p-4 bg-stone-950 border-t border-stone-800 flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => setIsCartOpen(false)}
-                className="px-4 py-2.5 rounded-xl bg-stone-800 text-stone-300 text-xs font-bold hover:bg-stone-750 transition"
-              >
-                Kembali ke Menu
-              </button>
+            <div className="p-4 bg-stone-950 border-t border-stone-800 space-y-2.5">
+              {orderType === 'DELIVERY_DQM' && (
+                <div
+                  className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-between gap-2 ${
+                    cartSubtotal >= DELIVERY_MIN_ORDER_AMOUNT
+                      ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
+                      : 'bg-red-950/60 border-red-500/60 text-red-300'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    {cartSubtotal >= DELIVERY_MIN_ORDER_AMOUNT ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                    )}
+                    <span>
+                      {cartSubtotal >= DELIVERY_MIN_ORDER_AMOUNT
+                        ? 'Minimal belanja terpenuhi. Silakan lanjutkan pesanan.'
+                        : `Minimal belanja Delivery ${formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)} (Kurang ${formatRupiah(
+                            DELIVERY_MIN_ORDER_AMOUNT - cartSubtotal
+                          )})`}
+                    </span>
+                  </span>
+                </div>
+              )}
 
-              <button
-                type="button"
-                id="btn-submit-order-whatsapp"
-                disabled={isSubmitting || (orderType === 'DELIVERY_DQM' && selectedAreaOption === 'OUTSIDE')}
-                onClick={handleSubmitOrder}
-                className="flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-gradient-to-r from-red-600 via-orange-600 to-amber-600 hover:from-red-500 hover:to-orange-500 text-white font-extrabold text-xs shadow-lg shadow-red-950/40 transition active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Mengirim ke ANTRIAN KASIR...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4" />
-                    <span>Kirim Pesanan ({orderType === 'BUNGKUS' ? 'BUNGKUS' : 'DELIVERY DQM'})</span>
-                  </>
-                )}
-              </button>
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsCartOpen(false)}
+                  className="px-4 py-2.5 rounded-xl bg-stone-800 text-stone-300 text-xs font-bold hover:bg-stone-750 transition cursor-pointer"
+                >
+                  {orderType === 'DELIVERY_DQM' && cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT
+                    ? '+ Tambah Menu'
+                    : 'Kembali ke Menu'}
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-submit-order-whatsapp"
+                  disabled={
+                    isSubmitting ||
+                    (orderType === 'DELIVERY_DQM' && selectedAreaOption === 'OUTSIDE') ||
+                    (orderType === 'DELIVERY_DQM' && cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT)
+                  }
+                  onClick={handleSubmitOrder}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl text-white font-extrabold text-xs shadow-lg transition active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                    orderType === 'DELIVERY_DQM' && cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT
+                      ? 'bg-red-800/70 border border-red-500/40 shadow-red-950/40'
+                      : 'bg-gradient-to-r from-red-600 via-orange-600 to-amber-600 hover:from-red-500 hover:to-orange-500 shadow-red-950/40'
+                  }`}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Mengirim ke ANTRIAN KASIR...</span>
+                    </>
+                  ) : orderType === 'DELIVERY_DQM' && cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT ? (
+                    <>
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>
+                        Min. Delivery {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)} (Kurang{' '}
+                        {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT - cartSubtotal)})
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Kirim Pesanan ({orderType === 'BUNGKUS' ? 'BUNGKUS' : 'DELIVERY DQM'})</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

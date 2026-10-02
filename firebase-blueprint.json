@@ -190,6 +190,31 @@
           "description": "Customer WhatsApp phone number",
           "maxLength": 32
         },
+        "email_pelanggan": {
+          "type": "string",
+          "description": "Optional customer email address for digital receipt delivery",
+          "maxLength": 200
+        },
+        "emailReceiptStatus": {
+          "type": "string",
+          "description": "Email receipt delivery status",
+          "enum": ["PENDING", "SENT", "FAILED"]
+        },
+        "emailReceiptSentAt": {
+          "type": "string",
+          "description": "Timestamp when email receipt was successfully sent",
+          "maxLength": 64
+        },
+        "emailReceiptTarget": {
+          "type": "string",
+          "description": "Recipient email address of the latest receipt delivery",
+          "maxLength": 200
+        },
+        "emailReceiptError": {
+          "type": "string",
+          "description": "Error reason if email receipt delivery failed",
+          "maxLength": 500
+        },
         "subtotal": {
           "type": "number",
           "description": "Subtotal amount"
@@ -583,6 +608,33 @@
         "updatedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["variantId", "productId", "variantName", "price", "stock", "isActive"]
+    },
+    "ReceiptEmailLog": {
+      "title": "ReceiptEmailLog",
+      "description": "Email receipt delivery history and status record (PENDING, SENT, FAILED) with duplicate protection and retry history",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "id_transaksi": { "type": "string", "maxLength": 128 },
+        "queueNumber": { "type": "string", "maxLength": 32 },
+        "nama_pelanggan": { "type": "string", "maxLength": 150 },
+        "email_pelanggan": { "type": "string", "maxLength": 200 },
+        "total": { "type": "number" },
+        "orderType": { "type": "string", "enum": ["BUNGKUS", "DELIVERY_DQM"] },
+        "status": { "type": "string", "enum": ["PENDING", "SENT", "FAILED"] },
+        "provider": { "type": "string", "maxLength": 64 },
+        "attemptCount": { "type": "number" },
+        "idempotencyKey": { "type": "string", "maxLength": 320 },
+        "messageId": { "type": "string", "maxLength": 250 },
+        "errorMessage": { "type": "string", "maxLength": 500 },
+        "sentBy": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 },
+        "sentAt": { "type": "string", "maxLength": 64 },
+        "lastAttemptAt": { "type": "string", "maxLength": 64 },
+        "history": { "type": "array", "description": "Bounded list of delivery attempts" }
+      },
+      "required": ["id", "id_transaksi", "email_pelanggan", "status", "attemptCount", "idempotencyKey"]
     }
   },
   "firestore": {
@@ -629,6 +681,10 @@
     "/settings/{settingId}": {
       "schema": "StoreSettings",
       "description": "Global store settings synchronized across all POS devices."
+    },
+    "/receipt_emails/{logId}": {
+      "schema": "ReceiptEmailLog",
+      "description": "Email receipt delivery records and history (PENDING, SENT, FAILED) for POS and online orders."
     }
   }
 }

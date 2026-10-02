@@ -1,5 +1,11 @@
 import React, { useState } from 'react';
-import { Printer, Share2, Download, CheckCircle2, Check } from 'lucide-react';
+import {
+  Printer,
+  Share2,
+  Download,
+  CheckCircle2,
+  Check,
+} from 'lucide-react';
 import { Transaction, StoreSettings } from '../../types';
 import { BrandLogo } from '../Common/BrandLogo';
 import {
@@ -16,12 +22,12 @@ interface ReceiptModalProps {
   settings: StoreSettings;
   onClose: () => void;
   onNewTransaction: () => void;
+  showToast?: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   transaction,
   settings,
-  onClose,
   onNewTransaction,
 }) => {
   const [copied, setCopied] = useState(false);
@@ -36,13 +42,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     const text = buildCashierReceiptWhatsAppMessage(transaction, settings.storeName);
     const targetPhone = transaction.no_whatsapp && transaction.no_whatsapp !== '-' ? transaction.no_whatsapp : '';
     openWhatsAppChat(targetPhone, text);
-  };
-
-  const handleCopyText = () => {
-    const text = buildCashierReceiptWhatsAppMessage(transaction, settings.storeName);
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
   };
 
   return (

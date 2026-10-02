@@ -54,7 +54,9 @@ import {
   normalizeOrderStatus,
   normalizeDeliveryStatus,
   resolveOrderType,
+  getTakeawayQueueNumber,
 } from '../utils/formatters';
+import { StorageService } from './storage';
 
 export {
   auth,
@@ -569,6 +571,12 @@ export async function saveOrderToFirebase(order: Transaction): Promise<{ success
       customerId: auth.currentUser?.uid || '',
       nama_pelanggan: String(order.nama_pelanggan || 'Pelanggan').trim() || 'Pelanggan',
       no_whatsapp: order.no_whatsapp || '',
+      ...(order.email_pelanggan ? { email_pelanggan: String(order.email_pelanggan).trim().toLowerCase() } : {}),
+      ...(order.emailReceiptStatus ? { emailReceiptStatus: order.emailReceiptStatus } : {}),
+      ...(order.emailReceiptSentAt ? { emailReceiptSentAt: String(order.emailReceiptSentAt) } : {}),
+      ...(order.emailReceiptTarget ? { emailReceiptTarget: String(order.emailReceiptTarget) } : {}),
+      ...(order.emailReceiptError !== undefined ? { emailReceiptError: String(order.emailReceiptError) } : {}),
+      ...(order.emailReceiptAttempts !== undefined ? { emailReceiptAttempts: Number(order.emailReceiptAttempts) } : {}),
       subtotal: Number(order.subtotal || 0),
       diskon: Number(order.diskon || 0),
       biaya: isDeliveryDqm ? Number(order.deliveryFee ?? order.biaya ?? 0) : Number(order.biaya || 0),
@@ -2497,7 +2505,7 @@ export function subscribeToFirebaseDeliveryProofs(
 export async function recordReceiptShareToFirebase(
   orderId: string,
   sharedBy = 'Kasir',
-  method: 'GOOGLE_CHAT' | 'WHATSAPP' | 'PRINT' | 'PDF' = 'GOOGLE_CHAT',
+  method: 'GOOGLE_CHAT' | 'WHATSAPP' | 'PRINT' | 'PDF' | 'EMAIL' = 'GOOGLE_CHAT',
   isDeliveryOrder = false
 ): Promise<boolean> {
   if (!orderId) return false;

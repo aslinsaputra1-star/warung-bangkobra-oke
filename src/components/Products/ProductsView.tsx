@@ -275,7 +275,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   };
 
   const handleDelete = (id: string, nama: string) => {
-    const target = products.find((p) => p.id === id) || {
+    const nowIso = new Date().toISOString();
+    const target: Product = products.find((p) => p.id === id) || {
       id,
       sku: id,
       nama,
@@ -287,6 +288,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       stok_minimum: 5,
       foto: '',
       status: 'Aktif',
+      created_at: nowIso,
+      updated_at: nowIso,
     };
     setProductToDelete(target);
   };
