@@ -113,6 +113,9 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
   // Search and Category Filter
   const [selectedCategory, setSelectedCategory] = useState<string>('Semua');
   const [searchQuery, setSearchQuery] = useState('');
+  const [layoutMode, setLayoutMode] = useState<'grid' | 'list'>('grid');
+  const [isQrisZoomOpen, setIsQrisZoomOpen] = useState(false);
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
   // Variant Selector Modal States
   const [variantModalProduct, setVariantModalProduct] = useState<Product | null>(null);
@@ -599,182 +602,308 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col font-sans selection:bg-amber-500 selection:text-stone-950">
-      {/* Top Customer Brand Bar */}
-      <header className="sticky top-0 z-30 bg-stone-900/95 backdrop-blur-md border-b border-stone-800 shadow-md">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
+    <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col font-sans antialiased selection:bg-orange-500 selection:text-stone-950">
+      {/* Sleek Sticky Glassmorphic Top Bar */}
+      <header className="sticky top-0 z-30 h-16 bg-stone-950/85 backdrop-blur-xl border-b border-stone-800/80">
+        <div className="max-w-4xl mx-auto h-full px-4 sm:px-6 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <BrandLogo
               src={settings.logoUrl}
               alt={settings.storeName}
               size="md"
               rounded="rounded-xl"
-              className="shadow-md shadow-amber-950/40 shrink-0"
+              className="shadow-lg shadow-orange-950/30 ring-1 ring-stone-800 shrink-0"
             />
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <h1 className="font-extrabold text-sm sm:text-base text-stone-100 truncate">
+              <div className="flex items-center gap-2">
+                <h1 className="font-display font-extrabold text-sm sm:text-base text-white tracking-tight truncate">
                   {settings.storeName || 'Warung Bang Kobra'}
                 </h1>
-                <span className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full">
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 rounded-md shrink-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                   Buka
                 </span>
               </div>
-              <p className="text-[11px] text-stone-400 truncate">
+              <p className="text-[11px] text-stone-400 truncate mt-0.5">
                 {settings.tagline || 'Pesan Mandiri Cepat Tanpa Antre'}
               </p>
             </div>
           </div>
+
+          {/* Right Cart Trigger */}
+          <button
+            type="button"
+            onClick={() => setIsCartOpen(true)}
+            className={`relative h-10 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
+              totalCartCount > 0
+                ? 'bg-orange-500 hover:bg-orange-400 text-stone-950 shadow-lg shadow-orange-950/50'
+                : 'bg-stone-900 hover:bg-stone-800 text-stone-300 border border-stone-800'
+            }`}
+          >
+            <ShoppingBag className="w-4 h-4" />
+            <span className="hidden sm:inline">Keranjang</span>
+            {totalCartCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-md bg-stone-950 text-orange-400 font-mono font-extrabold text-[11px] tabular-nums">
+                {totalCartCount}
+              </span>
+            )}
+          </button>
         </div>
       </header>
 
       {/* Main Order Content */}
-      <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-4 space-y-4 pb-28">
-        {/* Banner Welcome & Service Toggle */}
-        <div className="bg-gradient-to-b from-stone-900 to-stone-900/80 border border-stone-800 rounded-3xl p-4 sm:p-5 shadow-xl space-y-4">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                <span className="text-[10px] font-extrabold tracking-widest text-amber-400 uppercase bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
-                  QR MENU WARUNG BANG KOBRA
+      <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-5 space-y-5 pb-32">
+        {/* Storefront Editorial Hero & Service Switcher */}
+        <div className="relative overflow-hidden bg-stone-900/90 border border-stone-800/90 rounded-3xl p-5 sm:p-6 shadow-2xl">
+          <div className="pointer-events-none absolute -top-24 -right-24 w-72 h-72 rounded-full bg-orange-500/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 -left-24 w-64 h-64 rounded-full bg-amber-500/5 blur-3xl" />
+
+          <div className="relative z-10 space-y-4">
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-extrabold tracking-widest text-orange-400 uppercase bg-orange-500/10 px-2.5 py-1 rounded-md border border-orange-500/20">
+                  Self-Order Digital Menu
                 </span>
-                <span className="text-[10px] font-extrabold tracking-wide text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-md border border-emerald-500/30 flex items-center gap-1">
-                  <span>BUNGKUS &amp; DELIVERY DQM</span>
+                <span className="text-[11px] text-stone-400 font-medium flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Langsung masuk ke layar Kasir</span>
                 </span>
               </div>
-              <h2 className="text-lg sm:text-xl font-black text-stone-100 mt-1">
-                Pesan Menu Favorit — BUNGKUS atau DELIVERY DQM
+              <h2 className="font-display text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+                Pesan Menu Favorit Tanpa Antre
               </h2>
-              <p className="text-xs text-stone-400 mt-0.5">
-                Pilih produk, masuk ke keranjang, lalu pilih jenis pesanan BUNGKUS atau DELIVERY DQM. Pesanan langsung masuk ke ANTRIAN KASIR!
+              <p className="text-xs sm:text-sm text-stone-400 leading-relaxed max-w-2xl">
+                Pilih layanan <strong className="text-stone-200">Bungkus (Takeaway)</strong> atau{' '}
+                <strong className="text-stone-200">Delivery Area Pesantren DQM</strong>, lalu tentukan menu pilihan Anda.
               </p>
             </div>
-          </div>
 
-          {/* Service Switcher: BUNGKUS vs DELIVERY DQM */}
-          <div className="grid grid-cols-2 gap-2 p-1.5 bg-stone-950 rounded-2xl border border-stone-800">
-            <button
-              type="button"
-              id="btn-select-takeaway"
-              onClick={() => setOrderType('BUNGKUS')}
-              className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl font-extrabold text-xs transition cursor-pointer ${
-                orderType === 'BUNGKUS'
-                  ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-stone-950 shadow-md shadow-amber-950/40'
-                  : 'text-stone-400 hover:text-stone-200 hover:bg-stone-900'
-              }`}
-            >
-              <ShoppingBag className="w-4 h-4" />
-              <span>BUNGKUS</span>
-            </button>
+            {/* Service Switcher: BUNGKUS vs DELIVERY DQM */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-1.5 bg-stone-950/90 rounded-2xl border border-stone-800/90">
+              <button
+                type="button"
+                id="btn-select-takeaway"
+                onClick={() => setOrderType('BUNGKUS')}
+                className={`flex items-center gap-3 p-3 rounded-xl text-left transition-all cursor-pointer ${
+                  orderType === 'BUNGKUS'
+                    ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-stone-950 shadow-lg shadow-orange-950/40'
+                    : 'text-stone-400 hover:text-stone-200 hover:bg-stone-900/60'
+                }`}
+              >
+                <div
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    orderType === 'BUNGKUS'
+                      ? 'bg-stone-950/15 text-stone-950'
+                      : 'bg-stone-900 text-orange-400 border border-stone-800'
+                  }`}
+                >
+                  <ShoppingBag className="w-5 h-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-extrabold text-xs sm:text-sm tracking-tight">
+                      BUNGKUS (TAKEAWAY)
+                    </span>
+                    <span
+                      className={`text-[10px] font-black uppercase px-1.5 py-0.5 rounded ${
+                        orderType === 'BUNGKUS'
+                          ? 'bg-stone-950/20 text-stone-950'
+                          : 'bg-stone-900 text-stone-400'
+                      }`}
+                    >
+                      Tanpa Min. Order
+                    </span>
+                  </div>
+                  <p
+                    className={`text-[11px] truncate mt-0.5 ${
+                      orderType === 'BUNGKUS' ? 'text-stone-900 font-medium' : 'text-stone-500'
+                    }`}
+                  >
+                    Ambil langsung di kasir warung
+                  </p>
+                </div>
+              </button>
 
-            <button
-              type="button"
-              id="btn-select-delivery"
-              onClick={() => setOrderType('DELIVERY_DQM')}
-              className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl font-extrabold text-xs transition cursor-pointer ${
-                orderType === 'DELIVERY_DQM'
-                  ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-stone-950 shadow-md shadow-amber-950/40'
-                  : 'text-stone-400 hover:text-stone-200 hover:bg-stone-900'
-              }`}
-            >
-              <Bike className="w-4 h-4" />
-              <span>DELIVERY DQM</span>
-            </button>
-          </div>
-
-          {/* Quick Notice Info & Delivery Minimum Order Status */}
-          {orderType === 'BUNGKUS' ? (
-            <div className="flex items-center gap-2 text-[11px] text-stone-300 bg-stone-950/60 p-2.5 rounded-xl border border-stone-800/80">
-              <Store className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>
-                <strong className="text-amber-400">[BUNGKUS]:</strong> Pesanan akan disiapkan untuk diambil di{' '}
-                <strong className="text-stone-200">{settings.address || settings.storeAddress || 'Warung Bang Kobra'}</strong> (Tanpa minimal belanja).
-              </span>
+              <button
+                type="button"
+                id="btn-select-delivery"
+                onClick={() => setOrderType('DELIVERY_DQM')}
+                className={`flex items-center gap-3 p-3 rounded-xl text-left transition-all cursor-pointer ${
+                  orderType === 'DELIVERY_DQM'
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-stone-950 shadow-lg shadow-emerald-950/40'
+                    : 'text-stone-400 hover:text-stone-200 hover:bg-stone-900/60'
+                }`}
+              >
+                <div
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    orderType === 'DELIVERY_DQM'
+                      ? 'bg-stone-950/15 text-stone-950'
+                      : 'bg-stone-900 text-emerald-400 border border-stone-800'
+                  }`}
+                >
+                  <Bike className="w-5 h-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-extrabold text-xs sm:text-sm tracking-tight">
+                      DELIVERY DQM
+                    </span>
+                    <span
+                      className={`text-[10px] font-mono font-black uppercase px-1.5 py-0.5 rounded ${
+                        orderType === 'DELIVERY_DQM'
+                          ? 'bg-stone-950/20 text-stone-950'
+                          : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                      }`}
+                    >
+                      Min. {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)}
+                    </span>
+                  </div>
+                  <p
+                    className={`text-[11px] truncate mt-0.5 ${
+                      orderType === 'DELIVERY_DQM' ? 'text-stone-900 font-medium' : 'text-stone-500'
+                    }`}
+                  >
+                    Diantar ke Asrama / Gedung DQM
+                  </p>
+                </div>
+              </button>
             </div>
-          ) : (
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between gap-2 text-[11px] text-stone-300 bg-stone-950/60 p-2.5 rounded-xl border border-stone-800/80">
-                <span className="flex items-center gap-2">
-                  <Bike className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>
-                    <strong className="text-emerald-400">[DELIVERY DQM]:</strong> Delivery khusus area Pesantren DQM • Minimal Belanja{' '}
-                    <strong className="font-mono text-white">{formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)}</strong>.
+
+            {/* Quick Notice Info & Delivery Minimum Order Status */}
+            {orderType === 'BUNGKUS' ? (
+              <div className="flex items-center justify-between gap-3 text-xs text-stone-300 bg-stone-950/70 px-3.5 py-2.5 rounded-xl border border-stone-800/80">
+                <span className="flex items-center gap-2 min-w-0">
+                  <Store className="w-4 h-4 text-orange-400 shrink-0" />
+                  <span className="truncate">
+                    Ambil pesanan di{' '}
+                    <strong className="text-stone-100">
+                      {settings.address || settings.storeAddress || 'Warung Bang Kobra'}
+                    </strong>
                   </span>
                 </span>
-                <strong className="text-emerald-400 shrink-0">
-                  {deliveryFee > 0 ? `Ongkir: ${formatRupiah(deliveryFee)}` : 'Ongkir: GRATIS'}
-                </strong>
+                <span className="text-[11px] font-bold text-orange-400 shrink-0">Siap 10-15 Menit</span>
               </div>
+            ) : (
               <DeliveryMinOrderBanner
                 subtotal={cartSubtotal}
                 variant="page"
                 deliveryFee={deliveryFee}
               />
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Store Announcement if configured */}
         {(settings.onlineMenuBannerText || settings.onlineMenuAnnouncement) && (
-          <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center gap-2 text-xs text-amber-300">
+          <div className="px-4 py-3 bg-amber-500/10 border border-amber-500/25 rounded-2xl flex items-center gap-2.5 text-xs text-amber-300">
             <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
             <span className="font-semibold">{settings.onlineMenuBannerText || settings.onlineMenuAnnouncement}</span>
           </div>
         )}
 
-        {/* Search & Categories */}
-        <div className="space-y-2.5">
-          {/* Search Bar */}
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-500" />
-            <input
-              type="text"
-              placeholder="Cari makanan, minuman, snack..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-stone-900 border border-stone-800 rounded-2xl pl-10 pr-4 py-2.5 text-xs text-stone-200 placeholder-stone-500 focus:outline-none focus:border-amber-500 transition shadow-inner"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-200"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+        {/* Sticky Search, Layout Toggle & Categories */}
+        <div className="sticky top-16 z-20 -mx-4 sm:mx-0 px-4 sm:px-0 py-2.5 bg-stone-950/90 backdrop-blur-xl border-b sm:border-b-0 border-stone-800/70 space-y-2.5">
+          <div className="flex items-center gap-2">
+            {/* Search Bar */}
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-500" />
+              <input
+                type="text"
+                placeholder="Cari menu favorit, minuman, atau cemilan..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-11 bg-stone-900/90 border border-stone-800 rounded-xl pl-10 pr-9 text-xs sm:text-sm text-stone-100 placeholder-stone-500 focus:outline-none focus:border-orange-500 transition"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
 
-          {/* Category Chips Horizontal Scroll */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
-            {categories.map((cat) => (
+            {/* Layout Mode Switcher */}
+            <div className="flex items-center p-1 bg-stone-900 border border-stone-800 rounded-xl shrink-0">
               <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3.5 py-1.5 rounded-xl whitespace-nowrap font-bold text-xs transition-all duration-200 cursor-pointer active:scale-95 ${
-                  selectedCategory === cat
-                    ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-stone-950 shadow-md shadow-amber-950/40 scale-105 animate-pop-in'
-                    : 'bg-stone-900 text-stone-400 hover:bg-stone-850 hover:text-stone-200 border border-stone-800'
+                type="button"
+                onClick={() => setLayoutMode('grid')}
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                  layoutMode === 'grid'
+                    ? 'bg-stone-800 text-orange-400 shadow-xs'
+                    : 'text-stone-400 hover:text-stone-200'
                 }`}
               >
-                {cat}
+                Grid
               </button>
-            ))}
+              <button
+                type="button"
+                onClick={() => setLayoutMode('list')}
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                  layoutMode === 'list'
+                    ? 'bg-stone-800 text-orange-400 shadow-xs'
+                    : 'text-stone-400 hover:text-stone-200'
+                }`}
+              >
+                Ringkas
+              </button>
+            </div>
+          </div>
+
+          {/* Category Tabs */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+            {categories.map((cat) => {
+              const isSelected = selectedCategory === cat;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3.5 py-2 rounded-xl whitespace-nowrap font-bold text-xs transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-orange-500 text-stone-950 shadow-md shadow-orange-950/30'
+                      : 'bg-stone-900/90 text-stone-400 hover:text-stone-200 border border-stone-800/90'
+                  }`}
+                >
+                  {cat}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Product Catalog Grid */}
-        <div className="space-y-3">
-          {filteredProducts.length === 0 ? (
-            <div className="bg-stone-900/60 border border-stone-800 rounded-3xl p-8 text-center space-y-2">
-              <ShoppingBag className="w-10 h-10 text-stone-600 mx-auto" />
-              <h3 className="font-bold text-stone-300 text-sm">Tidak ada menu yang cocok</h3>
+        {/* Product Catalog Grid / List */}
+        {filteredProducts.length === 0 ? (
+          <div className="bg-stone-900/50 border border-stone-800/80 rounded-3xl p-10 text-center space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-stone-800/80 border border-stone-700/60 flex items-center justify-center mx-auto text-stone-400">
+              <Search className="w-5 h-5" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="font-bold text-stone-200 text-sm">Menu tidak ditemukan</h3>
               <p className="text-xs text-stone-500">
-                Coba ketik kata kunci lain atau pilih kategori Semua
+                Coba kata kunci lain atau tampilkan semua kategori menu.
               </p>
             </div>
-          ) : (
-            filteredProducts.map((product, index) => {
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setSelectedCategory('Semua');
+              }}
+              className="px-4 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-xs font-bold text-orange-400 transition cursor-pointer"
+            >
+              Reset Pencarian
+            </button>
+          </div>
+        ) : (
+          <div
+            className={
+              layoutMode === 'grid'
+                ? 'grid grid-cols-1 sm:grid-cols-2 gap-3.5'
+                : 'space-y-2.5'
+            }
+          >
+            {filteredProducts.map((product) => {
               const prodVars = variantsByProduct.get(product.id) || [];
               const hasVars = prodVars.length > 0;
               const effectiveStock = hasVars
@@ -793,7 +922,9 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                     .filter((ci) => ci.product.id === product.id)
                     .reduce((s, ci) => s + ci.qty, 0)
                 : 0;
+              const totalProductQty = hasVars ? productVariantCartCount : inCart?.qty || 0;
               const isOutOfStock = effectiveStock <= 0;
+              const hasValidPhoto = Boolean(product.foto && !failedImages[product.id]);
 
               const q = searchQuery.toLowerCase().trim();
               const sortedPreviewVars = hasVars
@@ -807,11 +938,14 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
 
               return (
                 <div
-                  key={`${selectedCategory}-${searchQuery}-${product.id}`}
-                  style={{ animationDelay: `${Math.min(index * 30, 250)}ms` }}
-                  className="group bg-stone-900 border border-stone-800/80 hover:border-amber-500/40 rounded-2xl p-3 sm:p-3.5 flex items-start gap-3 transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-amber-950/20 hover:-translate-y-0.5 animate-fade-in-up"
+                  key={product.id}
+                  className={`group bg-stone-900/90 border rounded-2xl p-3.5 flex gap-3.5 transition-all duration-200 menu-card-hover ${
+                    totalProductQty > 0
+                      ? 'border-orange-500/50 bg-stone-900 shadow-lg shadow-orange-950/15'
+                      : 'border-stone-800/90 hover:border-stone-700'
+                  }`}
                 >
-                  {/* Photo */}
+                  {/* Product Visual */}
                   <div
                     onClick={() => {
                       if (hasVars) {
@@ -820,76 +954,93 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                         setVariantModalProduct(product);
                       }
                     }}
-                    className={`w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden bg-stone-950 shrink-0 relative border border-stone-800 ${
+                    className={`${
+                      layoutMode === 'list' ? 'w-20 h-20' : 'w-24 h-24 sm:w-28 sm:h-28'
+                    } rounded-xl overflow-hidden bg-stone-950 shrink-0 relative border border-stone-800/90 ${
                       hasVars ? 'cursor-pointer' : ''
                     }`}
                   >
-                    <img
-                      src={product.foto}
-                      alt={product.nama}
-                      className={`w-full h-full object-cover transition-transform duration-500 ${
-                        isOutOfStock ? 'grayscale opacity-60' : 'group-hover:scale-110'
-                      }`}
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src =
-                          'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300&q=80';
-                      }}
-                    />
-                    {hasVars && (
-                      <div className="absolute bottom-1 left-1 right-1 bg-amber-500/95 text-stone-950 text-[9px] font-black px-1.5 py-0.5 rounded flex items-center justify-center gap-1 shadow">
-                        <Layers className="w-2.5 h-2.5 shrink-0" />
-                        <span>{prodVars.length} Varian</span>
+                    {hasValidPhoto ? (
+                      <img
+                        src={product.foto}
+                        alt={product.nama}
+                        loading="lazy"
+                        className={`w-full h-full object-cover transition-transform duration-500 ${
+                          isOutOfStock ? 'grayscale opacity-50' : 'group-hover:scale-105'
+                        }`}
+                        onError={() =>
+                          setFailedImages((prev) => ({ ...prev, [product.id]: true }))
+                        }
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-stone-900 via-stone-900 to-stone-950 flex flex-col items-center justify-center p-2 text-center select-none">
+                        <svg
+                          viewBox="0 0 64 64"
+                          className="w-9 h-9 text-orange-500/40 mb-1"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.2"
+                        >
+                          <path
+                            d="M12 36h40c0 11-9 18-20 18S12 47 12 36Z"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d="M8 36h48M22 26c0-3 2-5 2-8M32 24c0-3 2-5 2-8M42 26c0-3 2-5 2-8"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-stone-500 line-clamp-1">
+                          {product.kategori}
+                        </span>
                       </div>
                     )}
+
+                    {hasVars && (
+                      <div className="absolute bottom-1.5 left-1.5 right-1.5 bg-stone-950/90 backdrop-blur-md text-amber-400 border border-amber-500/30 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md flex items-center justify-center gap-1">
+                        <Layers className="w-2.5 h-2.5 shrink-0" />
+                        <span>{prodVars.length} Rasa</span>
+                      </div>
+                    )}
+
                     {isOutOfStock && (
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                        <span className="text-[10px] font-black text-rose-400 uppercase tracking-wide bg-rose-950/80 px-1.5 py-0.5 rounded border border-rose-800">
+                      <div className="absolute inset-0 bg-stone-950/75 backdrop-blur-[2px] flex items-center justify-center">
+                        <span className="text-[10px] font-black text-rose-400 uppercase tracking-wider bg-rose-950/90 px-2 py-0.5 rounded-md border border-rose-800">
                           Habis
                         </span>
                       </div>
                     )}
                   </div>
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-1.5 flex-wrap">
-                      <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
-                        {product.kategori}
-                      </span>
-                      {productVariantCartCount > 0 && (
-                        <span className="text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full">
-                          {productVariantCartCount} dipilih
+                  {/* Card Info (Clean 3-Data-Point Hierarchy) */}
+                  <div className="flex-1 min-w-0 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between gap-1.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                          {product.kategori}
                         </span>
-                      )}
-                    </div>
-                    <h3 className="font-bold text-sm text-stone-100 truncate mt-0.5">
-                      {product.nama}
-                    </h3>
-                    {product.deskripsi && (
-                      <p className="text-[11px] text-stone-400 line-clamp-1 mt-0.5">
-                        {product.deskripsi}
-                      </p>
-                    )}
+                        {totalProductQty > 0 && (
+                          <span className="text-[10px] font-mono font-extrabold bg-orange-500/15 text-orange-400 border border-orange-500/30 px-2 py-0.5 rounded-md tabular-nums">
+                            {totalProductQty}x di keranjang
+                          </span>
+                        )}
+                      </div>
 
-                    {/* Variant Flavor Chips Preview */}
-                    {hasVars && (
-                      <div className="mt-2 space-y-1">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-amber-400">
-                          <span>Pilih Varian Rasa ({prodVars.length}):</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingCartKey(null);
-                              setVariantSearchQuery('');
-                              setVariantModalProduct(product);
-                            }}
-                            className="underline hover:text-amber-300 cursor-pointer"
-                          >
-                            Lihat Semua
-                          </button>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {sortedPreviewVars.slice(0, 4).map((v) => {
+                      <h3 className="font-bold text-sm sm:text-base text-white leading-snug line-clamp-2 mt-0.5">
+                        {product.nama}
+                      </h3>
+
+                      {product.deskripsi && layoutMode === 'grid' && (
+                        <p className="text-xs text-stone-400 line-clamp-1 mt-0.5">
+                          {product.deskripsi}
+                        </p>
+                      )}
+
+                      {/* Variant Quick Chips */}
+                      {hasVars && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {sortedPreviewVars.slice(0, 3).map((v) => {
                             const vKey = getCartKey(product.id, v.variantId);
                             const vInCart = cart[vKey];
                             const vOut = v.stock <= 0;
@@ -899,26 +1050,26 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                                 type="button"
                                 disabled={vOut}
                                 onClick={() => handleAddToCart(product, v)}
-                                className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border transition flex items-center gap-1 cursor-pointer ${
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-md border transition flex items-center gap-1 cursor-pointer ${
                                   vOut
                                     ? 'bg-stone-950/40 border-stone-800/50 text-stone-600 line-through cursor-not-allowed'
                                     : vInCart
-                                    ? 'bg-amber-500 text-stone-950 border-amber-400 font-black'
-                                    : 'bg-stone-950 hover:bg-stone-800 border-stone-800 text-stone-300 hover:border-amber-500/40'
+                                    ? 'bg-orange-500 text-stone-950 border-orange-400 font-extrabold'
+                                    : 'bg-stone-950 hover:bg-stone-800 border-stone-800 text-stone-300 hover:border-orange-500/40'
                                 }`}
                               >
-                                <span className="truncate max-w-[105px]">{v.variantName}</span>
+                                <span className="truncate max-w-[90px]">{v.variantName}</span>
                                 {vInCart ? (
-                                  <span className="bg-stone-950 text-amber-400 px-1 rounded text-[9px] font-black">
+                                  <span className="font-mono text-[9px] font-black">
                                     {vInCart.qty}x
                                   </span>
                                 ) : (
-                                  <Plus className="w-2.5 h-2.5 opacity-75 shrink-0" />
+                                  <Plus className="w-2.5 h-2.5 opacity-70 shrink-0" />
                                 )}
                               </button>
                             );
                           })}
-                          {prodVars.length > 4 && (
+                          {prodVars.length > 3 && (
                             <button
                               type="button"
                               onClick={() => {
@@ -926,30 +1077,30 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                                 setVariantSearchQuery('');
                                 setVariantModalProduct(product);
                               }}
-                              className="text-[10px] font-extrabold px-2 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 cursor-pointer"
+                              className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-stone-950 border border-stone-800 text-orange-400 hover:border-orange-500/40 cursor-pointer"
                             >
-                              +{prodVars.length - 4} lainnya
+                              +{prodVars.length - 3} rasa
                             </button>
                           )}
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
 
-                    <div className="flex items-center justify-between mt-2">
+                    {/* Price & Action Row */}
+                    <div className="flex items-end justify-between gap-2 mt-3 pt-2 border-t border-stone-800/60">
                       <div>
                         {hasVars && minPrice !== maxPrice && (
-                          <span className="text-[9px] text-stone-400 uppercase font-bold block">
-                            Mulai
+                          <span className="text-[10px] text-stone-500 font-semibold block leading-none mb-0.5">
+                            Mulai dari
                           </span>
                         )}
-                        <span className="font-extrabold text-amber-400 text-sm">
+                        <span className="font-mono font-extrabold text-amber-400 text-sm sm:text-base tabular-nums">
                           {formatRupiah(minPrice)}
                         </span>
                       </div>
 
-                      {/* Add to Cart Actions */}
                       {isOutOfStock ? (
-                        <span className="text-[11px] text-stone-500 font-semibold">
+                        <span className="text-[11px] text-stone-500 font-bold px-2.5 py-1 rounded-lg bg-stone-950 border border-stone-800">
                           Stok Habis
                         </span>
                       ) : hasVars ? (
@@ -960,31 +1111,31 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                             setVariantSearchQuery('');
                             setVariantModalProduct(product);
                           }}
-                          className="flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-stone-950 font-extrabold text-xs px-3.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer active:scale-95 shadow-sm"
+                          className="h-9 px-3.5 rounded-xl bg-orange-500 hover:bg-orange-400 text-stone-950 font-extrabold text-xs flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-sm"
                         >
                           <Layers className="w-3.5 h-3.5" />
                           <span>
                             {productVariantCartCount > 0
-                              ? `Pilih Varian (${productVariantCartCount})`
-                              : 'Pilih Varian'}
+                              ? `Varian (${productVariantCartCount})`
+                              : 'Pilih Rasa'}
                           </span>
                         </button>
                       ) : inCart ? (
-                        <div className="flex items-center gap-1.5 bg-stone-950 p-1 rounded-xl border border-stone-800">
+                        <div className="flex items-center gap-1 bg-stone-950 p-1 rounded-xl border border-orange-500/40">
                           <button
                             type="button"
                             onClick={() => handleUpdateQty(product.id, -1)}
-                            className="w-6 h-6 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 flex items-center justify-center transition"
+                            className="w-7 h-7 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 flex items-center justify-center transition cursor-pointer"
                           >
                             <Minus className="w-3.5 h-3.5" />
                           </button>
-                          <span className="font-bold text-xs text-amber-400 w-5 text-center">
+                          <span className="font-mono font-extrabold text-xs text-orange-400 w-6 text-center tabular-nums">
                             {inCart.qty}
                           </span>
                           <button
                             type="button"
                             onClick={() => handleUpdateQty(product.id, 1)}
-                            className="w-6 h-6 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold flex items-center justify-center transition"
+                            className="w-7 h-7 rounded-lg bg-orange-500 hover:bg-orange-400 text-stone-950 font-bold flex items-center justify-center transition cursor-pointer"
                           >
                             <Plus className="w-3.5 h-3.5" />
                           </button>
@@ -993,42 +1144,38 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                         <button
                           type="button"
                           onClick={() => handleAddToCart(product)}
-                          className="flex items-center gap-1 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500 hover:to-orange-500 text-amber-400 hover:text-stone-950 border border-amber-500/40 font-extrabold text-xs px-3.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer active:scale-80 hover:scale-105 shadow-sm"
+                          className="h-9 px-3.5 rounded-xl bg-stone-800 hover:bg-orange-500 text-orange-400 hover:text-stone-950 border border-stone-700 hover:border-orange-400 font-extrabold text-xs flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5" />
-                          <span>Pesan</span>
+                          <span>Tambah</span>
                         </button>
                       )}
                     </div>
 
-                    {/* Show Item Note button if in cart */}
+                    {/* Item Note Trigger */}
                     {inCart && (
-                      <div className="mt-2 pt-1.5 border-t border-stone-800/80 flex items-center justify-between text-[11px]">
-                        {inCart.notes ? (
-                          <span className="text-amber-300 italic truncate max-w-[160px]">
-                            Catatan: {inCart.notes}
-                          </span>
-                        ) : (
-                          <span className="text-stone-500">Belum ada catatan</span>
-                        )}
+                      <div className="mt-2 pt-1.5 border-t border-stone-800/60 flex items-center justify-between text-[11px]">
+                        <span className="text-stone-400 truncate max-w-[160px]">
+                          {inCart.notes ? `Catatan: "${inCart.notes}"` : 'Tambah catatan khusus?'}
+                        </span>
                         <button
                           type="button"
                           onClick={() => {
                             setActiveNoteItemId(product.id);
                             setTempNoteText(inCart.notes || '');
                           }}
-                          className="text-amber-400 hover:underline font-semibold"
+                          className="text-orange-400 hover:text-orange-300 font-bold cursor-pointer"
                         >
-                          {inCart.notes ? 'Ubah Catatan' : '+ Catatan'}
+                          {inCart.notes ? 'Edit' : '+ Catatan'}
                         </button>
                       </div>
                     )}
                   </div>
                 </div>
               );
-            })
-          )}
-        </div>
+            })}
+          </div>
+        )}
       </main>
 
       {/* Variant Selector Modal (Pilih Varian Rasa) */}
@@ -1241,75 +1388,85 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
       })()}
 
       {/* Floating Bottom Cart Bar */}
-      {totalCartCount > 0 && !isCartOpen && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 p-3 sm:p-4 bg-gradient-to-t from-stone-950 via-stone-950/95 to-transparent animate-slide-up-bounce">
-          <div className="max-w-2xl mx-auto space-y-2">
-            {orderType === 'DELIVERY_DQM' && (
-              <DeliveryMinOrderBanner
-                subtotal={cartSubtotal}
-                variant="cart-bar"
-                deliveryFee={deliveryFee}
-              />
-            )}
-            <button
-              type="button"
-              id="btn-open-cart"
-              onClick={() => setIsCartOpen(true)}
-              className="w-full bg-gradient-to-r from-amber-600 via-orange-600 to-amber-600 hover:from-amber-500 hover:to-orange-500 text-stone-950 font-black p-3.5 rounded-2xl shadow-xl shadow-amber-950/60 flex items-center justify-between transition-all duration-300 active:scale-95 hover:scale-[1.01] cursor-pointer animate-pulse-glow"
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-xl bg-stone-950/80 text-amber-400 flex items-center justify-center font-bold text-xs animate-pop-in">
-                  {totalCartCount}
-                </div>
-                <div className="text-left">
-                  <p className="text-xs font-extrabold uppercase tracking-wider text-stone-950">
-                    {orderType === 'BUNGKUS' ? '[BUNGKUS]' : '[DELIVERY DQM]'}
-                  </p>
-                  <p className="text-[11px] text-stone-900/80 font-medium">
-                    {totalCartCount} Menu Dipilih
-                  </p>
-                </div>
+      {totalCartCount > 0 && !isCartOpen && !completedOrder && (
+        <div className="fixed bottom-4 left-4 right-4 z-40 max-w-lg mx-auto space-y-2 animate-slide-up-bounce">
+          {orderType === 'DELIVERY_DQM' && (
+            <DeliveryMinOrderBanner
+              subtotal={cartSubtotal}
+              variant="cart-bar"
+              deliveryFee={deliveryFee}
+            />
+          )}
+          <button
+            type="button"
+            id="btn-open-cart"
+            onClick={() => setIsCartOpen(true)}
+            className="w-full bg-stone-900/95 hover:bg-stone-900 text-white p-2.5 pr-4 rounded-2xl shadow-2xl shadow-black/80 border border-orange-500/50 backdrop-blur-xl flex items-center justify-between transition-all duration-200 active:scale-[0.98] cursor-pointer group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-stone-950 flex items-center justify-center font-mono font-extrabold text-sm shadow-md shadow-orange-950/40 tabular-nums">
+                {totalCartCount}
               </div>
+              <div className="text-left">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-extrabold tracking-tight text-white">
+                    Lanjut ke Checkout
+                  </span>
+                  <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-400 border border-orange-500/30">
+                    {orderType === 'BUNGKUS' ? 'Bungkus' : 'Delivery DQM'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-stone-400 font-medium mt-0.5">
+                  {totalCartCount} item dipilih • Ketuk untuk kirim pesanan
+                </p>
+              </div>
+            </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-base font-black text-stone-950">
+            <div className="flex items-center gap-2">
+              <div className="text-right">
+                <span className="block text-[10px] text-stone-400 font-medium leading-none">
+                  Total
+                </span>
+                <span className="font-mono text-sm sm:text-base font-extrabold text-amber-400 tabular-nums">
                   {formatRupiah(grandTotal)}
                 </span>
-                <ChevronRight className="w-5 h-5 text-stone-950 transition-transform group-hover:translate-x-1" />
               </div>
-            </button>
-          </div>
+              <div className="w-8 h-8 rounded-xl bg-orange-500 text-stone-950 flex items-center justify-center group-hover:translate-x-0.5 transition-transform">
+                <ChevronRight className="w-4 h-4" />
+              </div>
+            </div>
+          </button>
         </div>
       )}
 
       {/* Cart & Checkout Modal / Bottom Sheet */}
       {isCartOpen && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto animate-in fade-in"
           onClick={() => setIsCartOpen(false)}
         >
           <div
-            className="bg-stone-900 border border-stone-800 w-full max-w-xl rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in slide-in-from-bottom-6 duration-200"
+            className="bg-stone-900 border-t sm:border border-stone-800 w-full max-w-xl rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col animate-in slide-in-from-bottom-6 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="p-4 bg-stone-950 border-b border-stone-800 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center font-bold">
+            <div className="px-5 py-4 bg-stone-950 border-b border-stone-800/90 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-orange-500/15 text-orange-400 border border-orange-500/30 flex items-center justify-center font-bold">
                   {orderType === 'BUNGKUS' ? (
-                    <ShoppingBag className="w-4 h-4" />
+                    <ShoppingBag className="w-5 h-5" />
                   ) : (
-                    <Bike className="w-4 h-4" />
+                    <Bike className="w-5 h-5" />
                   )}
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-sm sm:text-base text-stone-100">
-                    Checkout Pesanan Warung Bang Kobra
+                  <h3 className="font-display font-extrabold text-base text-white tracking-tight">
+                    Checkout Pesanan Online
                   </h3>
-                  <p className="text-[11px] text-stone-400">
-                    Jenis Pesanan:{' '}
-                    <strong className="text-amber-400">
-                      {orderType === 'BUNGKUS' ? '[BUNGKUS]' : '[DELIVERY DQM]'}
+                  <p className="text-xs text-stone-400">
+                    {settings.storeName || 'Warung Bang Kobra'} •{' '}
+                    <strong className="text-orange-400">
+                      {orderType === 'BUNGKUS' ? 'Bungkus (Takeaway)' : 'Delivery Area DQM'}
                     </strong>
                   </p>
                 </div>
@@ -1317,7 +1474,7 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
 
               <button
                 onClick={() => setIsCartOpen(false)}
-                className="p-2 rounded-xl bg-stone-800 text-stone-300 hover:text-white"
+                className="w-8 h-8 rounded-full bg-stone-800/90 text-stone-400 hover:text-white flex items-center justify-center cursor-pointer transition"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1325,25 +1482,35 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
 
             {/* Modal Scrollable Content */}
             <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
-              {/* Section 10: PILIH JENIS PESANAN */}
-              <div className="bg-stone-950 p-3.5 rounded-2xl border border-stone-800 space-y-3">
-                <h4 className="text-xs font-black uppercase tracking-wider text-amber-400">
-                  PILIH JENIS PESANAN
-                </h4>
+              {/* Step 1: PILIH JENIS PESANAN */}
+              <div className="bg-stone-950/90 p-4 rounded-2xl border border-stone-800/90 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-stone-400 flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-md bg-orange-500/15 text-orange-400 border border-orange-500/30 flex items-center justify-center font-mono text-[10px]">
+                      1
+                    </span>
+                    Metode Layanan
+                  </span>
+                </div>
+
                 <div className="grid grid-cols-2 gap-2.5">
                   <button
                     type="button"
                     onClick={() => setOrderType('BUNGKUS')}
                     className={`p-3 rounded-xl border text-left transition flex items-center gap-2.5 cursor-pointer ${
                       orderType === 'BUNGKUS'
-                        ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-black'
-                        : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                        ? 'bg-orange-500/15 border-orange-500 text-white'
+                        : 'bg-stone-900/70 border-stone-800 text-stone-400 hover:text-stone-200'
                     }`}
                   >
-                    <span className="text-sm">{orderType === 'BUNGKUS' ? '◉' : '○'}</span>
+                    <ShoppingBag
+                      className={`w-4 h-4 shrink-0 ${
+                        orderType === 'BUNGKUS' ? 'text-orange-400' : 'text-stone-500'
+                      }`}
+                    />
                     <div>
-                      <div className="text-xs font-black">BUNGKUS</div>
-                      <div className="text-[10px] opacity-80">Ambil di Warung</div>
+                      <div className="text-xs font-extrabold">BUNGKUS</div>
+                      <div className="text-[10px] text-stone-400">Ambil di Kasir</div>
                     </div>
                   </button>
 
@@ -1352,54 +1519,49 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                     onClick={() => setOrderType('DELIVERY_DQM')}
                     className={`p-3 rounded-xl border text-left transition flex items-center gap-2.5 cursor-pointer ${
                       orderType === 'DELIVERY_DQM'
-                        ? 'bg-teal-500/20 border-teal-500 text-teal-300 font-black'
-                        : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                        ? 'bg-emerald-500/15 border-emerald-500 text-white'
+                        : 'bg-stone-900/70 border-stone-800 text-stone-400 hover:text-stone-200'
                     }`}
                   >
-                    <span className="text-sm">{orderType === 'DELIVERY_DQM' ? '◉' : '○'}</span>
+                    <Bike
+                      className={`w-4 h-4 shrink-0 ${
+                        orderType === 'DELIVERY_DQM' ? 'text-emerald-400' : 'text-stone-500'
+                      }`}
+                    />
                     <div>
-                      <div className="text-xs font-black">DELIVERY DQM</div>
-                      <div className="text-[10px] opacity-80">Khusus Pesantren DQM</div>
+                      <div className="text-xs font-extrabold">DELIVERY DQM</div>
+                      <div className="text-[10px] text-stone-400">Khusus Area DQM</div>
                     </div>
                   </button>
                 </div>
 
                 {orderType === 'BUNGKUS' ? (
-                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 font-bold flex items-center gap-2">
-                    <ShoppingBag className="w-4 h-4 shrink-0" />
-                    <span>Pesanan akan disiapkan untuk diambil (Tanpa minimal belanja).</span>
+                  <div className="px-3 py-2 rounded-xl bg-stone-900 border border-stone-800 text-[11px] text-stone-300 flex items-center gap-2">
+                    <Store className="w-4 h-4 text-orange-400 shrink-0" />
+                    <span>Pesanan disiapkan untuk diambil langsung (Tanpa minimal belanja).</span>
                   </div>
                 ) : (
-                  <div className="space-y-2.5">
-                    <div className="p-2.5 rounded-xl bg-teal-500/10 border border-teal-500/30 text-xs text-teal-300 font-bold flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-2">
-                        <Bike className="w-4 h-4 shrink-0" />
-                        <span>Delivery hanya tersedia di area Pesantren DQM.</span>
-                      </span>
-                      <span className="font-mono font-black text-teal-200 shrink-0">
-                        Min. {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)}
-                      </span>
-                    </div>
-                    <DeliveryMinOrderBanner
-                      subtotal={cartSubtotal}
-                      variant="checkout"
-                      deliveryFee={deliveryFee}
-                      onAddMoreItems={() => setIsCartOpen(false)}
-                    />
-                  </div>
+                  <DeliveryMinOrderBanner
+                    subtotal={cartSubtotal}
+                    variant="checkout"
+                    deliveryFee={deliveryFee}
+                    onAddMoreItems={() => setIsCartOpen(false)}
+                  />
                 )}
               </div>
 
-              {/* Customer Info Form */}
-              <div className="bg-stone-950 p-3.5 rounded-2xl border border-stone-800 space-y-3">
-                <h4 className="text-xs font-bold text-stone-200 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-                  Data Pemesan ({orderType === 'BUNGKUS' ? 'BUNGKUS' : 'DELIVERY DQM'})
-                </h4>
+              {/* Step 2: Customer Info Form */}
+              <div className="bg-stone-950/90 p-4 rounded-2xl border border-stone-800/90 space-y-3.5">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-stone-400 flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-md bg-orange-500/15 text-orange-400 border border-orange-500/30 flex items-center justify-center font-mono text-[10px]">
+                    2
+                  </span>
+                  Data Pemesan &amp; Pengantaran
+                </span>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] text-stone-400 block mb-1 font-semibold">
+                    <label className="text-[11px] text-stone-300 block mb-1.5 font-semibold">
                       Nama Pemesan <span className="text-rose-400">*</span>
                     </label>
                     <input
@@ -1407,55 +1569,47 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                       placeholder="Contoh: Ahmad"
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
-                      className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
+                      className="w-full h-10 bg-stone-900 border border-stone-800 rounded-xl px-3 text-xs text-white placeholder-stone-500 focus:outline-none focus:border-orange-500 transition"
                     />
                   </div>
 
                   <div>
-                    <label className="text-[11px] text-stone-400 block mb-1 font-semibold">
+                    <label className="text-[11px] text-stone-300 block mb-1.5 font-semibold">
                       Nomor WhatsApp <span className="text-rose-400">*</span>
                     </label>
                     <input
                       type="tel"
-                      placeholder="Contoh: 08xxxxxxxxxx"
+                      placeholder="Contoh: 0812xxxxxxxx"
                       value={customerPhone}
                       onChange={(e) => setCustomerPhone(e.target.value)}
-                      className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
+                      className="w-full h-10 bg-stone-900 border border-stone-800 rounded-xl px-3 text-xs text-white placeholder-stone-500 focus:outline-none focus:border-orange-500 transition"
                     />
                   </div>
                 </div>
 
-                {/* Conditional Fields based on BUNGKUS or DELIVERY_DQM */}
                 {orderType === 'BUNGKUS' ? (
                   <div>
-                    <label className="text-[11px] text-stone-400 block mb-1 font-semibold">
-                      Perkiraan Jam Ambil (Opsional)
+                    <label className="text-[11px] text-stone-300 block mb-1.5 font-semibold">
+                      Perkiraan Waktu Ambil (Opsional)
                     </label>
                     <input
                       type="text"
                       placeholder="Contoh: Sekitar 15-20 menit lagi"
                       value={pickupTime}
                       onChange={(e) => setPickupTime(e.target.value)}
-                      className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
+                      className="w-full h-10 bg-stone-900 border border-stone-800 rounded-xl px-3 text-xs text-white placeholder-stone-500 focus:outline-none focus:border-orange-500 transition"
                     />
                   </div>
                 ) : (
                   <div className="space-y-3 pt-1">
-                    <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-xs font-extrabold text-emerald-300 flex items-center justify-between">
-                      <span>✅ Tujuan Pengantaran: AREA PESANTREN DQM</span>
-                      <span className="px-2 py-0.5 rounded bg-emerald-500 text-stone-950 text-[10px] font-black">
-                        KHUSUS DQM
-                      </span>
-                    </div>
-
                     <div>
-                      <label className="text-[11px] text-stone-400 block mb-1 font-semibold">
-                        Lokasi DQM (Asrama / Blok / Gedung) <span className="text-rose-400">*</span>
+                      <label className="text-[11px] text-stone-300 block mb-1.5 font-semibold">
+                        Titik Lokasi DQM (Asrama / Gedung) <span className="text-rose-400">*</span>
                       </label>
                       <select
                         value={deliveryLocation}
                         onChange={(e) => setDeliveryLocation(e.target.value)}
-                        className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
+                        className="w-full h-10 bg-stone-900 border border-stone-800 rounded-xl px-3 text-xs text-white focus:outline-none focus:border-orange-500 transition"
                       >
                         {DQM_LOCATIONS.map((loc) => (
                           <option key={loc} value={loc}>
@@ -1465,50 +1619,60 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                       </select>
                     </div>
 
-                    <div>
-                      <label className="text-[11px] text-stone-400 block mb-1 font-semibold">
-                        Detail Lokasi (Kamar / Blok / Lantai) <span className="text-rose-400">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Contoh: Kamar 12 / Blok B Lantai 2"
-                        value={deliveryDetail}
-                        onChange={(e) => setDeliveryDetail(e.target.value)}
-                        className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] text-stone-300 block mb-1.5 font-semibold">
+                          Detail Kamar / Lantai <span className="text-rose-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Kamar 12 / Blok B Lt. 2"
+                          value={deliveryDetail}
+                          onChange={(e) => setDeliveryDetail(e.target.value)}
+                          className="w-full h-10 bg-stone-900 border border-stone-800 rounded-xl px-3 text-xs text-white placeholder-stone-500 focus:outline-none focus:border-orange-500 transition"
+                        />
+                      </div>
 
-                    <div>
-                      <label className="text-[11px] text-stone-400 block mb-1 font-semibold">
-                        Catatan Pengantaran
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Contoh: Antar setelah Maghrib"
-                        value={deliveryNote}
-                        onChange={(e) => setDeliveryNote(e.target.value)}
-                        className="w-full bg-stone-900 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
-                      />
+                      <div>
+                        <label className="text-[11px] text-stone-300 block mb-1.5 font-semibold">
+                          Patokan / Catatan Kurir
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Titip di pos satpam / lobi"
+                          value={deliveryNote}
+                          onChange={(e) => setDeliveryNote(e.target.value)}
+                          className="w-full h-10 bg-stone-900 border border-stone-800 rounded-xl px-3 text-xs text-white placeholder-stone-500 focus:outline-none focus:border-orange-500 transition"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Items List in Cart */}
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-stone-300">Daftar Menu ({totalCartCount} item)</h4>
-                <div className="divide-y divide-stone-800 bg-stone-950 rounded-2xl border border-stone-800 p-2 space-y-2">
+              {/* Step 3: Items List in Cart */}
+              <div className="bg-stone-950/90 p-4 rounded-2xl border border-stone-800/90 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-stone-400 flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-md bg-orange-500/15 text-orange-400 border border-orange-500/30 flex items-center justify-center font-mono text-[10px]">
+                      3
+                    </span>
+                    Ringkasan Menu ({totalCartCount} item)
+                  </span>
+                </div>
+
+                <div className="divide-y divide-stone-800/80">
                   {cartItems.map((item) => {
                     const unitPrice = item.variant ? item.variant.price : item.product.harga_jual;
                     const displayTitle = item.variant
                       ? formatVariantDisplayName(item.product.nama, item.variant.variantName)
                       : item.product.nama;
                     return (
-                      <div key={item.cartKey} className="pt-2 first:pt-0 space-y-1">
-                        <div className="flex items-center justify-between gap-2">
+                      <div key={item.cartKey} className="py-2.5 first:pt-0 last:pb-0 space-y-1.5">
+                        <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className="font-bold text-xs text-stone-200 truncate">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-bold text-xs sm:text-sm text-white truncate">
                                 {displayTitle}
                               </p>
                               {item.variant && (
@@ -1520,34 +1684,36 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                                     setVariantSearchQuery('');
                                     setVariantModalProduct(item.product);
                                   }}
-                                  className="text-[10px] font-bold text-amber-400 hover:text-amber-300 underline flex items-center gap-1 cursor-pointer"
+                                  className="text-[10px] font-bold text-orange-400 hover:text-orange-300 flex items-center gap-1 cursor-pointer"
                                 >
                                   <RefreshCw className="w-2.5 h-2.5" />
-                                  <span>Ganti Rasa</span>
+                                  <span>Ubah Rasa</span>
                                 </button>
                               )}
                             </div>
-                            <p className="text-[11px] text-amber-400 font-semibold">
-                              {formatRupiah(unitPrice)} x {item.qty} ={' '}
-                              {formatRupiah(item.qty * unitPrice)}
+                            <p className="text-xs text-stone-400 font-mono tabular-nums mt-0.5">
+                              {formatRupiah(unitPrice)} × {item.qty} ={' '}
+                              <strong className="text-amber-400">
+                                {formatRupiah(item.qty * unitPrice)}
+                              </strong>
                             </p>
                           </div>
 
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1 bg-stone-900 p-1 rounded-xl border border-stone-800">
                             <button
                               type="button"
                               onClick={() => handleUpdateQty(item.cartKey, -1)}
-                              className="w-6 h-6 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 flex items-center justify-center"
+                              className="w-7 h-7 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 flex items-center justify-center cursor-pointer"
                             >
                               <Minus className="w-3.5 h-3.5" />
                             </button>
-                            <span className="font-bold text-xs text-stone-100 w-5 text-center">
+                            <span className="font-mono font-extrabold text-xs text-white w-6 text-center tabular-nums">
                               {item.qty}
                             </span>
                             <button
                               type="button"
                               onClick={() => handleUpdateQty(item.cartKey, 1)}
-                              className="w-6 h-6 rounded-lg bg-amber-500 text-stone-950 font-bold flex items-center justify-center"
+                              className="w-7 h-7 rounded-lg bg-orange-500 hover:bg-orange-400 text-stone-950 font-bold flex items-center justify-center cursor-pointer"
                             >
                               <Plus className="w-3.5 h-3.5" />
                             </button>
@@ -1555,256 +1721,309 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                         </div>
 
                         {item.notes && (
-                          <p className="text-[11px] text-amber-300 italic bg-stone-900 px-2 py-1 rounded-lg">
-                            Catatan: {item.notes}
+                          <p className="text-[11px] text-amber-300/90 italic bg-stone-900/90 px-2.5 py-1 rounded-lg border border-stone-800">
+                            Catatan: &ldquo;{item.notes}&rdquo;
                           </p>
                         )}
                       </div>
                     );
                   })}
                 </div>
+
+                {/* General Order Notes */}
+                <div className="pt-2 border-t border-stone-800/80">
+                  <input
+                    type="text"
+                    placeholder="Tambahkan catatan dapur (cth: minta sendok plastik, sambal pisah)..."
+                    value={generalNotes}
+                    onChange={(e) => setGeneralNotes(e.target.value)}
+                    className="w-full h-9 bg-stone-900 border border-stone-800 rounded-xl px-3 text-xs text-white placeholder-stone-500 focus:outline-none focus:border-orange-500 transition"
+                  />
+                </div>
               </div>
 
-              {/* Payment Method Selector */}
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-stone-300">Pilih Metode Pembayaran</h4>
+              {/* Step 4: Payment Method Selector */}
+              <div className="bg-stone-950/90 p-4 rounded-2xl border border-stone-800/90 space-y-3">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-stone-400 flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-md bg-orange-500/15 text-orange-400 border border-orange-500/30 flex items-center justify-center font-mono text-[10px]">
+                    4
+                  </span>
+                  Metode Pembayaran
+                </span>
+
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('Cash')}
-                    className={`p-2.5 rounded-xl border text-center font-bold text-xs transition flex flex-col items-center justify-center gap-1 ${
+                    className={`p-3 rounded-xl border text-center font-bold text-xs transition flex flex-col items-center justify-center gap-1.5 cursor-pointer ${
                       paymentMethod === 'Cash'
-                        ? 'bg-amber-500/20 border-amber-500 text-amber-400'
-                        : 'bg-stone-950 border-stone-800 text-stone-400 hover:bg-stone-900'
+                        ? 'bg-orange-500/15 border-orange-500 text-orange-400'
+                        : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
                     }`}
                   >
                     <Banknote className="w-4 h-4" />
-                    <span>Bayar Tunai</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('Transfer')}
-                    className={`p-2.5 rounded-xl border text-center font-bold text-xs transition flex flex-col items-center justify-center gap-1 ${
-                      paymentMethod === 'Transfer'
-                        ? 'bg-amber-500/20 border-amber-500 text-amber-400'
-                        : 'bg-stone-950 border-stone-800 text-stone-400 hover:bg-stone-900'
-                    }`}
-                  >
-                    <CreditCard className="w-4 h-4" />
-                    <span>Transfer Bank</span>
+                    <span>Tunai</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('QRIS')}
-                    className={`p-2.5 rounded-xl border text-center font-bold text-xs transition flex flex-col items-center justify-center gap-1 ${
+                    className={`p-3 rounded-xl border text-center font-bold text-xs transition flex flex-col items-center justify-center gap-1.5 cursor-pointer ${
                       paymentMethod === 'QRIS'
-                        ? 'bg-amber-500/20 border-amber-500 text-amber-400'
-                        : 'bg-stone-950 border-stone-800 text-stone-400 hover:bg-stone-900'
+                        ? 'bg-orange-500/15 border-orange-500 text-orange-400'
+                        : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
                     }`}
                   >
                     <QrCode className="w-4 h-4" />
                     <span>Scan QRIS</span>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('Transfer')}
+                    className={`p-3 rounded-xl border text-center font-bold text-xs transition flex flex-col items-center justify-center gap-1.5 cursor-pointer ${
+                      paymentMethod === 'Transfer'
+                        ? 'bg-orange-500/15 border-orange-500 text-orange-400'
+                        : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                    }`}
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    <span>Transfer</span>
+                  </button>
                 </div>
 
                 {paymentMethod === 'Transfer' && (
-                  <div className="p-2.5 bg-stone-950 rounded-xl border border-stone-800 text-[11px] text-stone-300">
-                    Rekening Warung: <strong className="text-amber-400">BCA 123-456-7890 (a/n Warung Bang Kobra)</strong>. Bukti transfer dikirim via WhatsApp.
+                  <div className="p-3 bg-stone-900 rounded-xl border border-stone-800 flex items-center justify-between gap-2 text-xs text-stone-300">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-stone-500 block">
+                        Rekening Tujuan
+                      </span>
+                      <strong className="font-mono text-amber-400">
+                        BCA 123-456-7890 (Warung Bang Kobra)
+                      </strong>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard?.writeText('1234567890');
+                        if (showToast) showToast('Nomor rekening disalin!', 'info');
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-[11px] font-bold text-stone-200 shrink-0 cursor-pointer"
+                    >
+                      Salin
+                    </button>
                   </div>
                 )}
+
                 {paymentMethod === 'QRIS' && (
-                  <div className="p-3 bg-stone-950 rounded-xl border border-amber-500/30 text-[11px] text-stone-300 space-y-2.5">
-                    {(settings.qrisImageUrl || settings.qrisUrl) ? (
-                      <div className="flex flex-col sm:flex-row items-center gap-3">
-                        <div className="p-2 bg-white rounded-xl shrink-0 shadow-md">
+                  <div className="p-3.5 bg-stone-900 rounded-2xl border border-amber-500/30 text-xs text-stone-300">
+                    {settings.qrisImageUrl || settings.qrisUrl ? (
+                      <div className="flex flex-col sm:flex-row items-center gap-3.5">
+                        <button
+                          type="button"
+                          onClick={() => setIsQrisZoomOpen(true)}
+                          className="group relative p-2 bg-white rounded-xl shrink-0 shadow-md cursor-pointer overflow-hidden"
+                          title="Klik untuk memperbesar QRIS"
+                        >
                           <img
                             src={settings.qrisImageUrl || settings.qrisUrl}
                             alt="QRIS Warung Bang Kobra"
                             className="w-28 h-28 object-contain"
                           />
-                        </div>
-                        <div className="space-y-1 text-center sm:text-left">
-                          <div className="font-extrabold text-xs text-amber-400">
-                            {settings.qrisMerchantName || settings.storeName || 'WARUNG BANG KOBRA'}
+                          <span className="absolute inset-x-1 bottom-1 bg-stone-950/85 text-white text-[9px] font-bold py-0.5 rounded text-center opacity-0 group-hover:opacity-100 transition">
+                            Perbesar
+                          </span>
+                        </button>
+                        <div className="space-y-1.5 text-center sm:text-left flex-1">
+                          <div className="flex items-center justify-center sm:justify-start gap-1.5">
+                            <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 font-extrabold text-[10px] uppercase">
+                              QRIS Resmi
+                            </span>
+                            <span className="font-extrabold text-xs text-white">
+                              {settings.qrisMerchantName || settings.storeName || 'WARUNG BANG KOBRA'}
+                            </span>
                           </div>
                           {settings.qrisNmid && (
                             <div className="text-[10px] font-mono text-stone-400">
                               NMID: {settings.qrisNmid}
                             </div>
                           )}
-                          <p className="text-[11px] text-stone-300 leading-relaxed">
+                          <p className="text-[11px] text-stone-400 leading-relaxed">
                             {settings.qrisInstruction ||
-                              'Scan kode QRIS di samping menggunakan aplikasi e-Wallet atau Mobile Banking, lalu kirim bukti bayar via WhatsApp.'}
+                              'Scan kode QRIS menggunakan GoPay, OVO, DANA, ShopeePay, atau Mobile Banking.'}
                           </p>
+                          <button
+                            type="button"
+                            onClick={() => setIsQrisZoomOpen(true)}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-400 hover:text-orange-300 cursor-pointer"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>Lihat QRIS Layar Penuh</span>
+                          </button>
                         </div>
                       </div>
                     ) : (
-                      <div>
-                        Kode QRIS akan dikirimkan otomatis oleh kasir warung melalui balasan WhatsApp.
+                      <div className="text-stone-400">
+                        Kode QRIS akan dikirimkan otomatis oleh kasir warung melalui WhatsApp.
                       </div>
                     )}
                   </div>
                 )}
               </div>
 
-              {/* General Order Notes */}
-              <div>
-                <label className="text-[11px] text-stone-400 block mb-1 font-semibold">
-                  Catatan Tambahan untuk Warung (Opsional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Contoh: Minta sendok plastik, sambal dipisah ya bang..."
-                  value={generalNotes}
-                  onChange={(e) => setGeneralNotes(e.target.value)}
-                  className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              {/* Price Breakdown */}
-              <div className="bg-stone-950 p-3 rounded-2xl border border-stone-800 space-y-1.5 text-xs">
+              {/* Receipt Price Breakdown */}
+              <div className="bg-stone-950 p-4 rounded-2xl border border-stone-800/90 space-y-2 text-xs">
                 <div className="flex justify-between text-stone-400">
-                  <span>Subtotal Menu</span>
-                  <span className="font-mono font-bold text-stone-200 tabular-nums">{formatRupiah(cartSubtotal)}</span>
-                </div>
-                {orderType === 'DELIVERY_DQM' && (
-                  <>
-                    <div className="flex justify-between text-stone-400">
-                      <span>Minimal Belanja Delivery</span>
-                      <span
-                        className={`font-mono font-bold tabular-nums ${
-                          cartSubtotal >= DELIVERY_MIN_ORDER_AMOUNT
-                            ? 'text-emerald-400'
-                            : 'text-red-400'
-                        }`}
-                      >
-                        {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)}{' '}
-                        {cartSubtotal >= DELIVERY_MIN_ORDER_AMOUNT
-                          ? '(Terpenuhi ✓)'
-                          : `(Kurang ${formatRupiah(DELIVERY_MIN_ORDER_AMOUNT - cartSubtotal)})`}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-stone-400">
-                      <span>Biaya Delivery DQM</span>
-                      <span className="font-bold text-emerald-400">
-                        {deliveryFee > 0 ? formatRupiah(deliveryFee) : 'GRATIS'}
-                      </span>
-                    </div>
-                  </>
-                )}
-                <div className="flex justify-between text-stone-100 font-extrabold text-sm pt-2 border-t border-stone-800">
-                  <span>Total Pembayaran</span>
-                  <span className="text-amber-400 font-mono tabular-nums">{formatRupiah(grandTotal)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Actions */}
-            <div className="p-4 bg-stone-950 border-t border-stone-800 space-y-2.5">
-              {orderType === 'DELIVERY_DQM' && (
-                <div
-                  className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-between gap-2 ${
-                    cartSubtotal >= DELIVERY_MIN_ORDER_AMOUNT
-                      ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
-                      : 'bg-red-950/60 border-red-500/60 text-red-300'
-                  }`}
-                >
-                  <span className="flex items-center gap-1.5">
-                    {cartSubtotal >= DELIVERY_MIN_ORDER_AMOUNT ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    ) : (
-                      <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                    )}
-                    <span>
-                      {cartSubtotal >= DELIVERY_MIN_ORDER_AMOUNT
-                        ? 'Minimal belanja terpenuhi. Silakan lanjutkan pesanan.'
-                        : `Minimal belanja Delivery ${formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)} (Kurang ${formatRupiah(
-                            DELIVERY_MIN_ORDER_AMOUNT - cartSubtotal
-                          )})`}
-                    </span>
+                  <span>Subtotal Menu ({totalCartCount} item)</span>
+                  <span className="font-mono font-bold text-stone-200 tabular-nums">
+                    {formatRupiah(cartSubtotal)}
                   </span>
                 </div>
-              )}
-
-              <div className="flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsCartOpen(false)}
-                  className="px-4 py-2.5 rounded-xl bg-stone-800 text-stone-300 text-xs font-bold hover:bg-stone-750 transition cursor-pointer"
-                >
-                  {orderType === 'DELIVERY_DQM' && cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT
-                    ? '+ Tambah Menu'
-                    : 'Kembali ke Menu'}
-                </button>
-
-                <button
-                  type="button"
-                  id="btn-submit-order-whatsapp"
-                  disabled={
-                    isSubmitting ||
-                    (orderType === 'DELIVERY_DQM' && selectedAreaOption === 'OUTSIDE') ||
-                    (orderType === 'DELIVERY_DQM' && cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT)
-                  }
-                  onClick={handleSubmitOrder}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl text-white font-extrabold text-xs shadow-lg transition active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-                    orderType === 'DELIVERY_DQM' && cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT
-                      ? 'bg-red-800/70 border border-red-500/40 shadow-red-950/40'
-                      : 'bg-gradient-to-r from-red-600 via-orange-600 to-amber-600 hover:from-red-500 hover:to-orange-500 shadow-red-950/40'
-                  }`}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Mengirim ke ANTRIAN KASIR...</span>
-                    </>
-                  ) : orderType === 'DELIVERY_DQM' && cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT ? (
-                    <>
-                      <AlertCircle className="w-4 h-4 shrink-0" />
-                      <span>
-                        Min. Delivery {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)} (Kurang{' '}
-                        {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT - cartSubtotal)})
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4" />
-                      <span>Kirim Pesanan ({orderType === 'BUNGKUS' ? 'BUNGKUS' : 'DELIVERY DQM'})</span>
-                    </>
-                  )}
-                </button>
+                {orderType === 'DELIVERY_DQM' && (
+                  <div className="flex justify-between text-stone-400">
+                    <span>Ongkos Kirim Area DQM</span>
+                    <span className="font-mono font-bold text-emerald-400 tabular-nums">
+                      {deliveryFee > 0 ? formatRupiah(deliveryFee) : 'GRATIS'}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between items-baseline text-white font-extrabold text-sm pt-2.5 border-t border-stone-800">
+                  <span>Total Pembayaran</span>
+                  <span className="text-base sm:text-lg text-amber-400 font-mono tabular-nums">
+                    {formatRupiah(grandTotal)}
+                  </span>
+                </div>
               </div>
             </div>
+
+            {/* Modal Footer Actions */}
+            <div className="p-4 bg-stone-950 border-t border-stone-800/90 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setIsCartOpen(false)}
+                className="h-12 px-4 rounded-xl bg-stone-900 hover:bg-stone-800 text-stone-300 border border-stone-800 text-xs font-bold transition cursor-pointer shrink-0"
+              >
+                + Tambah Menu
+              </button>
+
+              <button
+                type="button"
+                id="btn-submit-order-whatsapp"
+                disabled={
+                  isSubmitting ||
+                  (orderType === 'DELIVERY_DQM' && selectedAreaOption === 'OUTSIDE') ||
+                  (orderType === 'DELIVERY_DQM' && cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT)
+                }
+                onClick={handleSubmitOrder}
+                className={`flex-1 h-12 flex items-center justify-center gap-2 px-5 rounded-xl font-extrabold text-xs sm:text-sm shadow-lg transition active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                  orderType === 'DELIVERY_DQM' && cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT
+                    ? 'bg-red-950/80 border border-red-500/40 text-red-200'
+                    : 'bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-stone-950 shadow-orange-950/50'
+                }`}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Mengirim ke Kasir...</span>
+                  </>
+                ) : orderType === 'DELIVERY_DQM' && cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT ? (
+                  <>
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>
+                      Kurang {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT - cartSubtotal)} (Min. Delivery)
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>Kirim Pesanan Sekarang</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QRIS Fullscreen Zoom Modal */}
+      {isQrisZoomOpen && (settings.qrisImageUrl || settings.qrisUrl) && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in"
+          onClick={() => setIsQrisZoomOpen(false)}
+        >
+          <div
+            className="bg-stone-900 border border-stone-800 rounded-3xl max-w-sm w-full p-5 text-center space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-left">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-orange-400">
+                  Pembayaran QRIS Resmi
+                </span>
+                <h4 className="font-display font-extrabold text-sm text-white">
+                  {settings.qrisMerchantName || settings.storeName || 'WARUNG BANG KOBRA'}
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsQrisZoomOpen(false)}
+                className="w-8 h-8 rounded-full bg-stone-800 text-stone-300 hover:text-white flex items-center justify-center cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-white rounded-2xl shadow-inner mx-auto">
+              <img
+                src={settings.qrisImageUrl || settings.qrisUrl}
+                alt="QRIS Fullscreen"
+                className="w-full max-h-72 object-contain mx-auto"
+              />
+            </div>
+
+            <div className="bg-stone-950 p-3 rounded-xl border border-stone-800 flex items-center justify-between text-xs">
+              <span className="text-stone-400">Total Bayar</span>
+              <span className="font-mono font-extrabold text-sm text-amber-400 tabular-nums">
+                {formatRupiah(grandTotal)}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsQrisZoomOpen(false)}
+              className="w-full py-2.5 rounded-xl bg-orange-500 hover:bg-orange-400 text-stone-950 font-extrabold text-xs cursor-pointer"
+            >
+              Tutup Pratinjau QRIS
+            </button>
           </div>
         </div>
       )}
 
       {/* Item Note Modal Dialog */}
       {activeNoteItemId && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-stone-900 border border-stone-800 rounded-2xl w-full max-w-sm p-4 space-y-3 shadow-2xl">
-            <h4 className="font-bold text-sm text-stone-100">Catatan untuk Menu Ini</h4>
+            <h4 className="font-bold text-sm text-white">Catatan Khusus Menu</h4>
             <input
               type="text"
               autoFocus
               placeholder="Contoh: Pedas sedang, jangan pakai toge..."
               value={tempNoteText}
               onChange={(e) => setTempNoteText(e.target.value)}
-              className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
+              className="w-full h-10 bg-stone-950 border border-stone-800 rounded-xl px-3 text-xs text-white focus:outline-none focus:border-orange-500"
             />
             <div className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setActiveNoteItemId(null)}
-                className="px-3 py-1.5 rounded-lg bg-stone-800 text-stone-300 text-xs"
+                className="px-3.5 py-2 rounded-xl bg-stone-800 text-stone-300 text-xs font-bold cursor-pointer"
               >
                 Batal
               </button>
               <button
                 type="button"
                 onClick={() => handleSaveItemNote(activeNoteItemId)}
-                className="px-4 py-1.5 rounded-lg bg-amber-500 text-stone-950 font-bold text-xs"
+                className="px-4 py-2 rounded-xl bg-orange-500 text-stone-950 font-extrabold text-xs cursor-pointer"
               >
                 Simpan
               </button>
@@ -1813,134 +2032,112 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
         </div>
       )}
 
-      {/* Completed Order Modal / Success Screen with Flow Stepper */}
+      {/* Digital Queue Ticket Pass Confirmation Modal */}
       {completedOrder && (
-        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-stone-900 border border-stone-800 rounded-3xl w-full max-w-md p-6 shadow-2xl text-center space-y-5 animate-pop-in">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto shadow-lg shadow-emerald-950/50 animate-check-pop animate-pulse-glow-emerald">
-              <CheckCircle2 className="w-8 h-8" />
-            </div>
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-stone-900 border border-stone-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-pop-in">
+            {/* Top Ticket Banner */}
+            <div className="bg-gradient-to-br from-emerald-950/90 via-stone-900 to-stone-900 p-6 text-center border-b border-dashed border-stone-800 relative">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto mb-3 shadow-lg shadow-emerald-950/50">
+                <CheckCircle2 className="w-7 h-7" />
+              </div>
 
-            <div className="space-y-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-md border border-emerald-500/20">
-                Pesanan Masuk ke Kasir
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/25">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                Terkirim ke Antrian Kasir
               </span>
-              <h3 className="text-xl font-black text-stone-100">
+
+              <h3 className="font-display text-xl font-extrabold text-white mt-2">
                 Terima Kasih, {customerName}!
               </h3>
-              <p className="text-xs text-stone-400">
-                Pesanan Anda telah otomatis terkirim melalui Firebase Firestore dan masuk ke layar Kasir Warung Bang Kobra.
+              <p className="text-xs text-stone-400 mt-1">
+                Pesanan Anda telah masuk otomatis ke sistem Kasir Warung Bang Kobra.
               </p>
             </div>
 
-            {/* Stepper Visualization */}
-            <div className="p-3 bg-stone-950 rounded-2xl border border-stone-800 text-left space-y-2">
-              <p className="text-[11px] font-extrabold text-stone-300 uppercase tracking-wider flex items-center gap-1.5">
-                <Radio className="w-3.5 h-3.5 text-orange-400 animate-pulse" />
-                Alur Pemesanan Mandiri (Web Browser)
-              </p>
-              <div className="grid grid-cols-3 gap-1.5 text-center text-[10px]">
-                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-1.5">
-                  <div className="font-black text-emerald-400">1. Scan Kamera</div>
-                  <div className="text-stone-400 text-[9px]">Tanpa App</div>
+            <div className="p-5 space-y-4">
+              {/* Digital Queue Number Pass */}
+              <div className="p-4 bg-stone-950 border border-orange-500/40 rounded-2xl text-center space-y-1.5 relative overflow-hidden">
+                <div className="flex items-center justify-center gap-1.5 text-[10px] uppercase font-extrabold tracking-widest text-orange-400">
+                  <BellRing className="w-3.5 h-3.5 text-orange-400" />
+                  <span>Nomor Antrian Pesanan</span>
                 </div>
-                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-1.5">
-                  <div className="font-black text-emerald-400">2. Firebase</div>
-                  <div className="text-stone-400 text-[9px]">Otomatis Sync</div>
+                <div className="font-mono text-3xl sm:text-4xl font-extrabold text-white tracking-wider py-0.5 tabular-nums">
+                  {getTakeawayQueueNumber(completedOrder.createdOrder)}
                 </div>
-                <div className="bg-orange-500/20 border border-orange-500/40 rounded-xl p-1.5">
-                  <div className="font-black text-orange-400">3. Kasir Terima</div>
-                  <div className="text-stone-300 text-[9px]">Masuk Dapur</div>
-                </div>
+                <p className="text-[11px] text-stone-400">
+                  {orderType === 'BUNGKUS'
+                    ? 'Tunjukkan nomor antrian ini saat mengambil pesanan di kasir.'
+                    : `Diantar ke Area DQM: ${deliveryLocation} (${deliveryDetail})`}
+                </p>
               </div>
-            </div>
 
-            <div className="p-4 bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border-2 border-amber-500/60 rounded-2xl text-center space-y-1 shadow-lg shadow-amber-950/40 animate-in zoom-in-95">
-              <div className="flex items-center justify-center gap-1.5 text-[11px] uppercase font-black tracking-widest text-amber-400">
-                <BellRing className="w-4 h-4 animate-bounce text-amber-400" />
-                <span>NOMOR ANTRIAN KASIR ANDA</span>
-              </div>
-              <div className="text-4xl font-black text-white font-mono tracking-widest py-1 drop-shadow-md">
-                {getTakeawayQueueNumber(completedOrder.createdOrder)}
-              </div>
-              <p className="text-[11px] text-stone-300">
-                {orderType === 'BUNGKUS'
-                  ? 'Pesanan akan disiapkan untuk diambil di kasir.'
-                  : `Pesanan akan diantar ke Pesantren DQM (${deliveryLocation} - ${deliveryDetail}).`}
-              </p>
-            </div>
-
-            <div className="bg-stone-950 p-4 rounded-2xl border border-stone-800 text-left space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span className="text-stone-400">No. Transaksi:</span>
-                <span className="font-mono font-bold text-amber-400">
-                  {completedOrder.orderId}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-stone-400">Jenis Pesanan:</span>
-                <span className="font-bold text-stone-200">
-                  {orderType === 'BUNGKUS' ? '[BUNGKUS]' : '[DELIVERY DQM]'}
-                </span>
-              </div>
-              {orderType === 'DELIVERY_DQM' && (
-                <div className="flex justify-between">
-                  <span className="text-stone-400">Lokasi DQM:</span>
-                  <span className="font-bold text-teal-400">
-                    {deliveryLocation} ({deliveryDetail})
+              {/* Live Order Progress Tracker */}
+              <div className="bg-stone-950 p-3.5 rounded-2xl border border-stone-800/90 space-y-2.5 text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="text-stone-400 font-medium">Status Real-Time</span>
+                  <span className="text-orange-400 font-extrabold flex items-center gap-1.5 bg-orange-500/10 px-2.5 py-1 rounded-lg border border-orange-500/25">
+                    <span className="w-2 h-2 rounded-full bg-orange-400 animate-pulse"></span>
+                    {orderType === 'DELIVERY_DQM'
+                      ? getDeliveryStatusLabel(liveDeliveryStatus)
+                      : getOrderStatusLabel(liveStatus, orderType)}
                   </span>
                 </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-stone-400">Total Tagihan:</span>
-                <span className="font-extrabold text-emerald-400 font-mono text-sm">
-                  {formatRupiah(completedOrder.total)}
-                </span>
+                <div className="flex justify-between text-stone-400 pt-2 border-t border-stone-800/80">
+                  <span>ID Transaksi</span>
+                  <span className="font-mono font-bold text-stone-200">
+                    {completedOrder.orderId}
+                  </span>
+                </div>
+                <div className="flex justify-between text-stone-400">
+                  <span>Layanan</span>
+                  <span className="font-bold text-stone-200">
+                    {orderType === 'BUNGKUS' ? 'Bungkus (Takeaway)' : 'Delivery Area DQM'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-baseline pt-2 border-t border-stone-800/80">
+                  <span className="text-stone-300 font-bold">Total Pembayaran</span>
+                  <span className="font-mono font-extrabold text-emerald-400 text-sm tabular-nums">
+                    {formatRupiah(completedOrder.total)}
+                  </span>
+                </div>
               </div>
-              <div className="flex justify-between items-center pt-2 border-t border-stone-800">
-                <span className="text-stone-400">Status Pesanan:</span>
-                <span className="text-amber-400 font-bold flex items-center gap-1.5 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/30">
-                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-                  {orderType === 'DELIVERY_DQM'
-                    ? getDeliveryStatusLabel(liveDeliveryStatus)
-                    : getOrderStatusLabel(liveStatus, orderType)}
-                </span>
-              </div>
-            </div>
 
-            <div className="space-y-2">
-              {orderType === 'DELIVERY_DQM' && (
+              {/* Action Buttons */}
+              <div className="space-y-2 pt-1">
+                {orderType === 'DELIVERY_DQM' && (
+                  <button
+                    type="button"
+                    onClick={() => setIsViewingCustomerProof(true)}
+                    className="w-full h-11 flex items-center justify-center gap-2 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 border border-stone-700 text-white font-extrabold text-xs transition cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>Lihat Bukti Pengantaran DQM</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
-                  onClick={() => setIsViewingCustomerProof(true)}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-black text-xs shadow-lg transition active:scale-95 cursor-pointer"
+                  onClick={() => {
+                    openWhatsAppChat(
+                      settings.whatsappNumber || '',
+                      completedOrder.whatsappMessage
+                    );
+                  }}
+                  className="w-full h-11 flex items-center justify-center gap-2 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-extrabold text-xs shadow-lg shadow-emerald-950/40 transition active:scale-[0.98] cursor-pointer"
                 >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>LIHAT BUKTI PENGANTARAN DQM</span>
+                  <MessageCircle className="w-4 h-4" />
+                  <span>Konfirmasi via WhatsApp Warung</span>
                 </button>
-              )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  openWhatsAppChat(
-                    settings.whatsappNumber || '',
-                    completedOrder.whatsappMessage
-                  );
-                }}
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-extrabold text-xs shadow-lg shadow-emerald-950/40 transition active:scale-95 cursor-pointer"
-              >
-                <MessageCircle className="w-4 h-4" />
-                <span>Kirim Format ke WhatsApp Warung</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleResetOrder}
-                className="w-full py-2.5 px-4 rounded-xl bg-stone-800 hover:bg-stone-750 text-stone-300 font-bold text-xs transition cursor-pointer"
-              >
-                Pesan Menu Lain
-              </button>
+                <button
+                  type="button"
+                  onClick={handleResetOrder}
+                  className="w-full h-10 px-4 rounded-xl bg-stone-950 hover:bg-stone-800 text-stone-400 hover:text-stone-200 border border-stone-800 font-bold text-xs transition cursor-pointer"
+                >
+                  Buat Pesanan Baru
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -190,23 +190,24 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
 
   return (
     <div className="max-w-7xl mx-auto p-3 sm:p-6 space-y-5">
-      {/* Top Banner: ANTRIAN KASIR */}
-      <div className="bg-stone-900 border-2 border-stone-800 rounded-3xl p-4 sm:p-6 shadow-xl relative overflow-hidden">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="space-y-1">
+      {/* Top Banner: ANTRIAN KASIR & PESANAN ONLINE */}
+      <div className="relative bg-stone-900/90 border border-stone-800/90 rounded-3xl p-5 sm:p-6 shadow-2xl overflow-hidden">
+        <div className="pointer-events-none absolute -top-24 -right-24 w-72 h-72 rounded-full bg-orange-500/10 blur-3xl" />
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1.5">
             <div className="flex flex-wrap items-center gap-2.5">
-              <span className="p-2.5 rounded-2xl bg-amber-500 text-stone-950 font-black shadow-md">
+              <span className="p-2.5 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-stone-950 font-black shadow-lg shadow-orange-950/40">
                 <ShoppingBag className="w-5 h-5" />
               </span>
-              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                ANTRIAN KASIR
+              <h2 className="font-display text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+                Antrian Kasir &amp; Pesanan Online
               </h2>
-              <span className="px-2.5 py-0.5 rounded-lg text-[11px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                [BUNGKUS] &amp; [DELIVERY DQM]
+              <span className="px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider bg-orange-500/15 text-orange-400 border border-orange-500/30">
+                Real-Time Sync
               </span>
             </div>
             <p className="text-xs sm:text-sm text-stone-400">
-              Semua pesanan BUNGKUS dan DELIVERY DQM masuk ke Antrian Kasir secara real-time. Tidak ada sistem meja/dine-in.
+              Kelola seluruh pesanan pelanggan untuk layanan <strong className="text-stone-200">Bungkus (Takeaway)</strong> dan <strong className="text-stone-200">Delivery Area DQM</strong> secara langsung.
             </p>
           </div>
 
@@ -215,10 +216,10 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
               <button
                 type="button"
                 onClick={onNavigateToDeliveryDQM}
-                className="min-h-[44px] px-4 rounded-2xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 font-black text-xs flex items-center gap-2 transition cursor-pointer"
+                className="min-h-[42px] px-4 rounded-xl bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 border border-teal-500/35 font-extrabold text-xs flex items-center gap-2 transition cursor-pointer"
               >
                 <Truck className="w-4 h-4 text-teal-400" />
-                <span>Buka Dashboard DELIVERY DQM</span>
+                <span>Dashboard Delivery DQM</span>
               </button>
             )}
 
@@ -240,7 +241,7 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
                   'success'
                 );
               }}
-              className="min-h-[44px] px-4 rounded-2xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-extrabold text-xs flex items-center gap-2 transition cursor-pointer"
+              className="min-h-[42px] px-4 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/35 font-extrabold text-xs flex items-center gap-2 transition cursor-pointer"
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
               <span>Ekspor Excel</span>
@@ -250,10 +251,10 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
               <button
                 type="button"
                 onClick={onNavigateToQR}
-                className="min-h-[44px] px-4 rounded-2xl bg-stone-950 hover:bg-stone-800 text-amber-400 border border-stone-700 font-extrabold text-xs flex items-center gap-2 transition cursor-pointer"
+                className="min-h-[42px] px-4 rounded-xl bg-stone-950 hover:bg-stone-800 text-stone-200 border border-stone-800 font-extrabold text-xs flex items-center gap-2 transition cursor-pointer"
               >
-                <span>QR Menu Warung Bang Kobra</span>
-                <ArrowUpRight className="w-4 h-4" />
+                <span>Buka Menu Online</span>
+                <ArrowUpRight className="w-4 h-4 text-orange-400" />
               </button>
             )}
 
@@ -261,11 +262,70 @@ export const OrdersManagementView: React.FC<OrdersManagementViewProps> = ({
               type="button"
               id="btn-create-wa-order"
               onClick={() => setActiveTab('create_new')}
-              className="min-h-[44px] px-4 rounded-2xl bg-amber-500 hover:bg-amber-400 active:scale-95 text-stone-950 font-black text-xs flex items-center gap-2 shadow-lg transition cursor-pointer"
+              className="min-h-[42px] px-4 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 active:scale-95 text-stone-950 font-extrabold text-xs flex items-center gap-2 shadow-lg shadow-orange-950/40 transition cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Buat Pesanan Manual</span>
             </button>
+          </div>
+        </div>
+
+        {/* KPI Summary Strip */}
+        <div className="relative z-10 grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-5 pt-4 border-t border-stone-800/80">
+          <div className="bg-stone-950/80 border border-stone-800/80 rounded-2xl p-3 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 block">
+                Total Pesanan
+              </span>
+              <span className="font-mono text-lg sm:text-xl font-extrabold text-white tabular-nums">
+                {transactions.length}
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-stone-900 border border-stone-800 flex items-center justify-center text-stone-400">
+              <ShoppingBag className="w-4 h-4" />
+            </div>
+          </div>
+
+          <div className="bg-stone-950/80 border border-stone-800/80 rounded-2xl p-3 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-orange-400 block">
+                Antrian Aktif
+              </span>
+              <span className="font-mono text-lg sm:text-xl font-extrabold text-orange-400 tabular-nums">
+                {activeQueueCount}
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-orange-500/10 border border-orange-500/25 flex items-center justify-center text-orange-400">
+              <Flame className="w-4 h-4" />
+            </div>
+          </div>
+
+          <div className="bg-stone-950/80 border border-stone-800/80 rounded-2xl p-3 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block">
+                Layanan Bungkus
+              </span>
+              <span className="font-mono text-lg sm:text-xl font-extrabold text-amber-400 tabular-nums">
+                {bungkusCount}
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-400">
+              <ShoppingBag className="w-4 h-4" />
+            </div>
+          </div>
+
+          <div className="bg-stone-950/80 border border-stone-800/80 rounded-2xl p-3 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-teal-400 block">
+                Delivery DQM
+              </span>
+              <span className="font-mono text-lg sm:text-xl font-extrabold text-teal-400 tabular-nums">
+                {deliveryDqmCount}
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-teal-500/10 border border-teal-500/25 flex items-center justify-center text-teal-400">
+              <Truck className="w-4 h-4" />
+            </div>
           </div>
         </div>
       </div>

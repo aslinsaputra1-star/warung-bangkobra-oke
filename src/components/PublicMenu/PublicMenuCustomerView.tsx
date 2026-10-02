@@ -114,6 +114,9 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
   const [quickFilter, setQuickFilter] = useState<'all' | 'popular' | 'spicy' | 'under15k'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProductDetail, setSelectedProductDetail] = useState<Product | null>(null);
+  const [layoutMode, setLayoutMode] = useState<'grid' | 'compact'>('grid');
+  const [isQrisZoomOpen, setIsQrisZoomOpen] = useState(false);
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
   // Variant Selector Modal States
   const [variantModalProduct, setVariantModalProduct] = useState<Product | null>(null);
@@ -667,309 +670,381 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col antialiased selection:bg-orange-500 selection:text-black">
-      {/* Top Floating Announcement Bar */}
-      <div className="bg-gradient-to-r from-orange-600 via-amber-600 to-red-600 text-white text-xs py-2 px-4 shadow-md sticky top-0 z-30 flex items-center justify-between border-b border-orange-500/30">
-        <div className="flex items-center gap-2 overflow-hidden">
-          <span className="shrink-0 bg-white/20 p-1 rounded-full animate-pulse">
-            <Flame className="w-3.5 h-3.5 text-amber-200" />
-          </span>
-          <p className="font-semibold truncate">
-            {settings.onlineMenuBannerText ||
-              '🔥 Selamat Datang di Menu Online Warung Bang Kobra! Pesan Cepat via WhatsApp.'}
-          </p>
-        </div>
+    <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col antialiased selection:bg-orange-500 selection:text-stone-950">
+      {/* Clean 3-Zone Sticky Glass Top Bar */}
+      <header className="sticky top-0 z-30 h-16 bg-stone-950/85 backdrop-blur-xl border-b border-white/[0.07] px-4 sm:px-6 flex items-center justify-between gap-4">
+        {/* Zone 1: Single Brand Wordmark */}
+        <a
+          href="#top"
+          className="font-display text-base sm:text-lg font-extrabold tracking-tight text-stone-100 hover:text-orange-400 transition-colors truncate"
+        >
+          {settings.storeName}
+        </a>
 
+        {/* Zone 2: Clean Single-Line Navigation Links */}
+        <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-stone-400">
+          <a href="#layanan" className="hover:text-stone-100 transition-colors whitespace-nowrap">
+            Layanan Pesan
+          </a>
+          <a href="#katalog-menu" className="hover:text-stone-100 transition-colors whitespace-nowrap">
+            Katalog Menu
+          </a>
+          <a href="#keunggulan" className="hover:text-stone-100 transition-colors whitespace-nowrap">
+            Standar Dapur
+          </a>
+          <a
+            href={`https://wa.me/${sanitizeWhatsAppNumber(settings.whatsappNumber)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-emerald-400 transition-colors whitespace-nowrap"
+          >
+            Hubungi Warung
+          </a>
+        </nav>
+
+        {/* Zone 3: Primary Actions (Share + Live Cart Trigger) */}
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={handleCopyLink}
-            className="flex items-center gap-1 bg-white/20 hover:bg-white/30 text-white px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer"
+            className="min-h-[38px] px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 border border-white/[0.08] text-stone-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap"
             title="Salin Tautan Menu Online"
           >
-            {copiedLink ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3" />}
-            <span>{copiedLink ? 'Tersalin' : 'Salin Link'}</span>
+            {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-stone-400" />}
+            <span className="hidden sm:inline">{copiedLink ? 'Tersalin' : 'Salin Link'}</span>
           </button>
 
           <button
             type="button"
-            onClick={handleShareToWhatsApp}
-            className="hidden sm:flex items-center gap-1 bg-emerald-700 hover:bg-emerald-600 text-white px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer"
-            title="Bagikan ke WhatsApp"
+            onClick={() => setIsCartDrawerOpen(true)}
+            className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-orange-500 hover:bg-orange-400 text-stone-950 text-xs font-bold flex items-center gap-2 shadow-sm transition cursor-pointer whitespace-nowrap"
           >
-            <Share2 className="w-3 h-3" />
-            <span>Bagikan</span>
+            <ShoppingBag className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>Keranjang</span>
+            <span className="font-mono font-extrabold tabular-nums bg-stone-950/15 px-1.5 py-0.5 rounded-md">
+              {totalItemCount}
+            </span>
           </button>
-        </div>
-      </div>
-
-      {/* Main Hero Header */}
-      <header className="relative bg-gradient-to-b from-stone-900 to-stone-950 border-b border-stone-800/80 px-4 pt-6 pb-6 sm:pb-8 overflow-hidden animate-fade-in-up">
-        {/* Ambient Warm Backlight */}
-        <div className="absolute top-0 left-1/4 w-96 h-48 bg-orange-600/10 rounded-full blur-3xl pointer-events-none -translate-y-1/2" />
-        <div className="absolute top-1/2 right-10 w-72 h-36 bg-amber-600/10 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
-          <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4">
-            {/* Warung Avatar / Logo with Pulsing Glow */}
-            <div className="relative shrink-0 transition-transform duration-300 hover:scale-105">
-              <BrandLogo
-                src={settings.logoUrl}
-                alt={settings.storeName}
-                size="2xl"
-                rounded="rounded-2xl"
-                className="shadow-xl shadow-orange-950/40 border-2 border-orange-500/40 animate-pulse-glow"
-              />
-              <span className="absolute -bottom-1 -right-1 flex h-4 w-4">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 border-2 border-stone-950"></span>
-              </span>
-            </div>
-
-            {/* Warung Identity Info */}
-            <div className="space-y-1.5">
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-                <h1 className="text-2xl sm:text-3xl font-black text-stone-100 tracking-tight">
-                  {settings.storeName}
-                </h1>
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse-glow-emerald">
-                  <BadgeCheck className="w-3.5 h-3.5" />
-                  <span>Buka Sekarang</span>
-                </span>
-              </div>
-
-              <p className="text-xs sm:text-sm text-stone-400 font-medium max-w-xl">
-                {settings.tagline || 'Spesialis Masakan Nusantara, Mi Rendang & Sambal Kobra Mantap'}
-              </p>
-
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 pt-1 text-[11px] text-stone-400 font-medium">
-                <span className="flex items-center gap-1 text-stone-300 hover:text-orange-300 transition-colors">
-                  <Clock className="w-3.5 h-3.5 text-orange-400" />
-                  <span>{settings.onlineMenuHours || '09:00 - 22:00 WIB'}</span>
-                </span>
-
-                <span className="flex items-center gap-1 text-stone-300 hover:text-red-300 transition-colors">
-                  <MapPin className="w-3.5 h-3.5 text-red-400" />
-                  <span className="max-w-[220px] truncate">{settings.address || settings.storeAddress}</span>
-                </span>
-
-                <a
-                  href={`https://wa.me/${sanitizeWhatsAppNumber(settings.whatsappNumber)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 hover:underline font-bold transition-all hover:scale-105"
-                >
-                  <MessageCircle className="w-3.5 h-3.5" />
-                  <span>Chat WA Warung</span>
-                </a>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Action Badges */}
-          <div className="flex flex-row md:flex-col items-center sm:items-end gap-2 shrink-0">
-            <div className="flex items-center gap-2 bg-stone-900 border border-stone-800 rounded-2xl p-2 px-3 shadow-inner hover:scale-105 hover:border-orange-500/40 transition-all duration-300 cursor-default">
-              <Bike className="w-4 h-4 text-orange-400" />
-              <div className="text-left">
-                <div className="text-[10px] uppercase font-bold text-stone-400">Jenis Pesanan</div>
-                <div className="text-xs font-black text-stone-200">BUNGKUS &amp; DELIVERY DQM</div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 bg-stone-900 border border-stone-800 rounded-2xl p-2 px-3 shadow-inner hover:scale-105 hover:border-amber-500/40 transition-all duration-300 cursor-default">
-              <Sparkles className="w-4 h-4 text-amber-400" />
-              <div className="text-left">
-                <div className="text-[10px] uppercase font-bold text-stone-400">Antrian</div>
-                <div className="text-xs font-black text-amber-300">Langsung ke ANTRIAN KASIR</div>
-              </div>
-            </div>
-          </div>
         </div>
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-5xl mx-auto w-full px-4 py-6 space-y-6">
-        {/* Service Type Selector & Delivery Minimum Order Info Banner */}
-        <section className="bg-stone-900/90 border border-stone-800 rounded-3xl p-4 sm:p-5 space-y-3.5 shadow-lg">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <h2 className="text-sm sm:text-base font-black text-stone-100">
-                Pilih Layanan Pemesanan
-              </h2>
-              <p className="text-xs text-stone-400">
-                Layanan BUNGKUS (ambil di warung tanpa minimal belanja) atau DELIVERY DQM (minimal belanja {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)}).
-              </p>
+      <main id="top" className="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8 space-y-8 pb-28">
+        {/* Storefront Hero & Integrated Service Mode Switcher */}
+        <section className="relative rounded-3xl bg-gradient-to-b from-stone-900/95 via-stone-900/80 to-stone-950 border border-white/[0.08] p-5 sm:p-8 overflow-hidden shadow-2xl">
+          {/* Subtle Ambient Glow */}
+          <div className="absolute -top-24 -right-24 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-white/[0.07]">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-5">
+              <div className="relative shrink-0">
+                <BrandLogo
+                  src={settings.logoUrl}
+                  alt={settings.storeName}
+                  size="2xl"
+                  rounded="rounded-2xl"
+                  className="shadow-xl border border-white/15"
+                />
+                <span
+                  className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-stone-950"
+                  title="Buka Sekarang"
+                />
+              </div>
+
+              <div className="space-y-2">
+                {/* Quiet Unboxed Metadata Kicker */}
+                <div className="flex flex-wrap items-center gap-2 text-xs text-stone-400 font-medium">
+                  <span className="text-emerald-400 font-semibold">Buka Sekarang</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{settings.onlineMenuHours || '09:00 - 22:00 WIB'}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>Masuk Otomatis ke Antrian Kasir</span>
+                </div>
+
+                <h1
+                  className="font-display text-2xl sm:text-3xl lg:text-4xl font-extrabold text-stone-50 tracking-tight"
+                  style={{ textWrap: 'balance' }}
+                >
+                  {settings.storeName}
+                </h1>
+
+                <p className="text-xs sm:text-sm text-stone-300 max-w-2xl leading-relaxed">
+                  {settings.tagline || 'Spesialis Masakan Nusantara, Mi Rendang & Sambal Kobra Mantap — Dimasak Fresh Saat Pesanan Masuk.'}
+                </p>
+
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-xs text-stone-400">
+                  <span>{settings.address || settings.storeAddress}</span>
+                  <span aria-hidden="true">·</span>
+                  <a
+                    href={`https://wa.me/${sanitizeWhatsAppNumber(settings.whatsappNumber)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-orange-400 hover:text-orange-300 font-semibold underline underline-offset-4 transition-colors"
+                  >
+                    Chat WhatsApp Resmi
+                  </a>
+                  <span aria-hidden="true">·</span>
+                  <button
+                    type="button"
+                    onClick={handleShareToWhatsApp}
+                    className="text-stone-300 hover:text-white font-medium underline underline-offset-4 transition-colors cursor-pointer"
+                  >
+                    Bagikan Katalog
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="text-xs font-mono font-bold text-stone-300 tabular-nums">
-              Keranjang Saat Ini:{' '}
-              <span className="text-orange-400 font-black">{formatRupiah(cartSubtotal)}</span>
+
+            {/* Live Order & Service Summary Box */}
+            <div className="bg-stone-950/80 border border-white/[0.07] rounded-2xl p-4 sm:px-5 shrink-0 flex flex-row lg:flex-col justify-between gap-4 min-w-[220px]">
+              <div>
+                <span className="text-[11px] text-stone-400 block">Mode Pesanan Aktif</span>
+                <span className="text-xs sm:text-sm font-bold text-stone-100 mt-0.5 block">
+                  {orderType === 'BUNGKUS' ? 'Bungkus · Ambil di Warung' : 'Delivery · Area Pesantren DQM'}
+                </span>
+              </div>
+              <div className="text-right lg:text-left lg:pt-2 lg:border-t lg:border-white/[0.06]">
+                <span className="text-[11px] text-stone-400 block">Estimasi Total Keranjang</span>
+                <span className="text-base sm:text-lg font-mono font-extrabold text-orange-400 tabular-nums">
+                  {formatRupiah(grandTotal)}
+                </span>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <button
-              type="button"
-              onClick={() => setOrderType('BUNGKUS')}
-              className={`min-h-[48px] p-3.5 rounded-2xl border text-left transition flex items-center justify-between gap-3 cursor-pointer ${
-                orderType === 'BUNGKUS'
-                  ? 'bg-orange-500/20 border-orange-500 text-stone-100 shadow-md'
-                  : 'bg-stone-950 border-stone-800 text-stone-400 hover:text-stone-200 hover:border-stone-700'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <ShoppingBag className={`w-5 h-5 shrink-0 ${orderType === 'BUNGKUS' ? 'text-orange-400' : 'text-stone-500'}`} />
-                <div>
-                  <div className="text-xs sm:text-sm font-black">BUNGKUS (TAKEAWAY)</div>
-                  <div className="text-[11px] text-stone-400">Ambil di Warung • Tanpa Minimal Belanja</div>
-                </div>
+          {/* Integrated Service Mode Selector */}
+          <div id="layanan" className="relative z-10 pt-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm sm:text-base font-bold text-stone-100">
+                  01. Pilih Metode Layanan Pesanan
+                </h2>
+                <p className="text-xs text-stone-400">
+                  Pilih ambil langsung di warung (tanpa minimal belanja) atau pengantaran ke asrama Pesantren DQM.
+                </p>
               </div>
-              <span className="text-xs font-black">{orderType === 'BUNGKUS' ? '◉' : '○'}</span>
-            </button>
+              {settings.onlineMenuBannerText && (
+                <p className="text-xs text-amber-300/90 font-medium truncate max-w-md">
+                  {settings.onlineMenuBannerText}
+                </p>
+              )}
+            </div>
 
-            <button
-              type="button"
-              onClick={() => setOrderType('DELIVERY_DQM')}
-              className={`min-h-[48px] p-3.5 rounded-2xl border text-left transition flex items-center justify-between gap-3 cursor-pointer ${
-                orderType === 'DELIVERY_DQM'
-                  ? 'bg-emerald-500/20 border-emerald-500 text-stone-100 shadow-md'
-                  : 'bg-stone-950 border-stone-800 text-stone-400 hover:text-stone-200 hover:border-stone-700'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Bike className={`w-5 h-5 shrink-0 ${orderType === 'DELIVERY_DQM' ? 'text-emerald-400' : 'text-stone-500'}`} />
-                <div>
-                  <div className="text-xs sm:text-sm font-black">DELIVERY DQM</div>
-                  <div className="text-[11px] text-stone-300">
-                    Khusus Pesantren DQM • Minimal Belanja <strong className="font-mono">{formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)}</strong>
-                  </div>
-                </div>
-              </div>
-              <span className="text-xs font-black">{orderType === 'DELIVERY_DQM' ? '◉' : '○'}</span>
-            </button>
-          </div>
-
-          {orderType === 'DELIVERY_DQM' && (
-            <DeliveryMinOrderBanner
-              subtotal={cartSubtotal}
-              variant="page"
-              deliveryFee={deliveryFee}
-            />
-          )}
-        </section>
-
-        {/* Search & Category Filter Bar */}
-        <section className="space-y-4">
-          {/* Search Box */}
-          <div className="relative">
-            <Search className="w-5 h-5 text-stone-400 absolute left-4 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari menu favorit (contoh: Mi Rendang, Es Teh, Nasi Goreng)..."
-              className="w-full min-h-[48px] pl-12 pr-10 py-3 bg-stone-900/90 border border-stone-800 rounded-2xl text-sm font-medium text-stone-100 placeholder-stone-400 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition shadow-inner"
-            />
-            {searchQuery && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-200 p-1"
+                onClick={() => setOrderType('BUNGKUS')}
+                className={`p-4 rounded-2xl border text-left transition-all duration-200 flex items-center justify-between gap-3 cursor-pointer ${
+                  orderType === 'BUNGKUS'
+                    ? 'bg-orange-500/12 border-orange-500/70 text-stone-100 shadow-lg shadow-orange-950/20'
+                    : 'bg-stone-950/70 border-white/[0.07] text-stone-400 hover:text-stone-200 hover:border-white/15'
+                }`}
               >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-
-          {/* Quick Filter Chips */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar text-xs">
-            <button
-              type="button"
-              onClick={() => setQuickFilter('all')}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all duration-200 shrink-0 cursor-pointer active:scale-95 hover:scale-105 ${
-                quickFilter === 'all'
-                  ? 'bg-orange-500 text-stone-950 shadow-md shadow-orange-950/40'
-                  : 'bg-stone-900 border border-stone-800 text-stone-400 hover:text-stone-200'
-              }`}
-            >
-              Semua Menu
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setQuickFilter('popular')}
-              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all duration-200 shrink-0 cursor-pointer active:scale-95 hover:scale-105 ${
-                quickFilter === 'popular'
-                  ? 'bg-amber-500 text-stone-950 shadow-md shadow-amber-950/40 animate-pulse-glow'
-                  : 'bg-stone-900 border border-stone-800 text-stone-400 hover:text-stone-200'
-              }`}
-            >
-              <Flame className="w-3.5 h-3.5 text-orange-400" />
-              <span>🔥 Terlaris</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setQuickFilter('spicy')}
-              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all duration-200 shrink-0 cursor-pointer active:scale-95 hover:scale-105 ${
-                quickFilter === 'spicy'
-                  ? 'bg-red-500 text-white shadow-md shadow-red-950/40'
-                  : 'bg-stone-900 border border-stone-800 text-stone-400 hover:text-stone-200'
-              }`}
-            >
-              <Flame className="w-3.5 h-3.5 text-red-400" />
-              <span>🌶️ Pedas Kobra</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setQuickFilter('under15k')}
-              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all duration-200 shrink-0 cursor-pointer active:scale-95 hover:scale-105 ${
-                quickFilter === 'under15k'
-                  ? 'bg-emerald-500 text-stone-950 shadow-md shadow-emerald-950/40'
-                  : 'bg-stone-900 border border-stone-800 text-stone-400 hover:text-stone-200'
-              }`}
-            >
-              <span>⚡ Di Bawah 15rb</span>
-            </button>
-          </div>
-
-          {/* Category Tabs */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-stone-800/80 no-scrollbar">
-            {categories.map((cat) => {
-              const isSelected = selectedCategory === cat;
-              return (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`pb-2.5 px-3 text-xs sm:text-sm font-extrabold whitespace-nowrap transition-all duration-200 border-b-2 shrink-0 cursor-pointer active:scale-95 ${
-                    isSelected
-                      ? 'border-orange-500 text-orange-400 scale-105'
-                      : 'border-transparent text-stone-400 hover:text-stone-100 hover:border-stone-700'
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
+                      orderType === 'BUNGKUS'
+                        ? 'bg-orange-500 text-stone-950 border-orange-400'
+                        : 'bg-stone-900 text-stone-400 border-white/[0.06]'
+                    }`}
+                  >
+                    <ShoppingBag className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs sm:text-sm font-bold text-stone-100 truncate">
+                      Bungkus (Takeaway)
+                    </div>
+                    <div className="text-xs text-stone-400 truncate mt-0.5">
+                      Ambil di Warung · Tanpa Minimal Belanja
+                    </div>
+                  </div>
+                </div>
+                <span
+                  className={`w-5 h-5 rounded-full border flex items-center justify-center text-[10px] shrink-0 ${
+                    orderType === 'BUNGKUS'
+                      ? 'border-orange-400 bg-orange-500 text-stone-950 font-black'
+                      : 'border-stone-700 text-transparent'
                   }`}
                 >
-                  {cat}
+                  ✓
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setOrderType('DELIVERY_DQM')}
+                className={`p-4 rounded-2xl border text-left transition-all duration-200 flex items-center justify-between gap-3 cursor-pointer ${
+                  orderType === 'DELIVERY_DQM'
+                    ? 'bg-emerald-500/12 border-emerald-500/70 text-stone-100 shadow-lg shadow-emerald-950/20'
+                    : 'bg-stone-950/70 border-white/[0.07] text-stone-400 hover:text-stone-200 hover:border-white/15'
+                }`}
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
+                      orderType === 'DELIVERY_DQM'
+                        ? 'bg-emerald-500 text-stone-950 border-emerald-400'
+                        : 'bg-stone-900 text-stone-400 border-white/[0.06]'
+                    }`}
+                  >
+                    <Bike className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs sm:text-sm font-bold text-stone-100 truncate">
+                      Delivery Pesantren DQM
+                    </div>
+                    <div className="text-xs text-stone-400 truncate mt-0.5">
+                      Khusus Area DQM · Min. Belanja{' '}
+                      <span className="font-mono font-semibold text-stone-200 tabular-nums">
+                        {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <span
+                  className={`w-5 h-5 rounded-full border flex items-center justify-center text-[10px] shrink-0 ${
+                    orderType === 'DELIVERY_DQM'
+                      ? 'border-emerald-400 bg-emerald-500 text-stone-950 font-black'
+                      : 'border-stone-700 text-transparent'
+                  }`}
+                >
+                  ✓
+                </span>
+              </button>
+            </div>
+
+            {orderType === 'DELIVERY_DQM' && (
+              <DeliveryMinOrderBanner
+                subtotal={cartSubtotal}
+                variant="page"
+                deliveryFee={deliveryFee}
+              />
+            )}
+          </div>
+        </section>
+
+        {/* Search, Segmented Filter Controls & Category Navigation */}
+        <section id="katalog-menu" className="space-y-4">
+          <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+            {/* Search Box */}
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-stone-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Cari menu favorit, varian rasa, atau minuman segar..."
+                className="w-full min-h-[46px] pl-11 pr-10 py-2.5 bg-stone-900/90 border border-white/[0.08] rounded-2xl text-sm text-stone-100 placeholder-stone-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-200 p-1 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
                 </button>
-              );
-            })}
+              )}
+            </div>
+
+            {/* Segmented Filter Control + Layout Switcher */}
+            <div className="flex items-center justify-between sm:justify-end gap-2 overflow-x-auto no-scrollbar">
+              <div className="flex items-center gap-1 p-1 bg-stone-900/90 border border-white/[0.07] rounded-2xl shrink-0">
+                {(
+                  [
+                    { id: 'all', label: 'Semua Menu' },
+                    { id: 'popular', label: 'Terlaris' },
+                    { id: 'spicy', label: 'Pedas Khas' },
+                    { id: 'under15k', label: 'Hemat ≤ 15rb' },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setQuickFilter(tab.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
+                      quickFilter === tab.id
+                        ? 'bg-orange-500 text-stone-950 font-bold shadow-sm'
+                        : 'text-stone-400 hover:text-stone-100'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* View Mode Switcher (Grid vs Compact List) */}
+              <div className="hidden sm:flex items-center gap-1 p-1 bg-stone-900/90 border border-white/[0.07] rounded-2xl shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setLayoutMode('grid')}
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                    layoutMode === 'grid'
+                      ? 'bg-stone-800 text-stone-100 shadow-sm'
+                      : 'text-stone-400 hover:text-stone-200'
+                  }`}
+                >
+                  Grid
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLayoutMode('compact')}
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                    layoutMode === 'compact'
+                      ? 'bg-stone-800 text-stone-100 shadow-sm'
+                      : 'text-stone-400 hover:text-stone-200'
+                  }`}
+                >
+                  Daftar
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Clean Category Tabs with Counts */}
+          <div className="flex items-center justify-between gap-4 border-b border-white/[0.07]">
+            <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar">
+              {categories.map((cat) => {
+                const isSelected = selectedCategory === cat;
+                const count =
+                  cat === 'Semua'
+                    ? activeProducts.length
+                    : activeProducts.filter((p) => p.kategori === cat).length;
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`pb-3 px-3 text-xs sm:text-sm font-semibold whitespace-nowrap transition-all border-b-2 shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                      isSelected
+                        ? 'border-orange-500 text-orange-400 font-bold'
+                        : 'border-transparent text-stone-400 hover:text-stone-200'
+                    }`}
+                  >
+                    <span>{cat}</span>
+                    <span className="text-[11px] font-mono text-stone-500 tabular-nums">
+                      ({count})
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <span className="hidden md:inline text-xs text-stone-400 shrink-0 pb-2 font-mono tabular-nums">
+              {filteredProducts.length} menu tersedia
+            </span>
           </div>
         </section>
 
         {/* Product Menu Grid */}
         <section className="space-y-4">
-          <div className="flex items-center justify-between text-xs text-stone-400 font-bold">
-            <span>
-              Menampilkan <strong className="text-stone-200">{filteredProducts.length}</strong> menu
-              {selectedCategory !== 'Semua' && ` di kategori ${selectedCategory}`}
-            </span>
-          </div>
-
           {filteredProducts.length === 0 ? (
-            <div className="text-center py-16 px-4 bg-stone-900/40 rounded-3xl border border-stone-800/80 space-y-3 animate-fade-in-up">
-              <Utensils className="w-12 h-12 text-stone-400 mx-auto opacity-50" />
-              <h3 className="text-lg font-bold text-stone-200">Menu Tidak Ditemukan</h3>
-              <p className="text-xs text-stone-400 max-w-sm mx-auto">
-                Tidak ada menu yang sesuai dengan pencarian atau filter Anda. Coba kata kunci lain atau pilih kategori Semua.
+            <div className="text-center py-16 px-4 bg-stone-900/40 rounded-3xl border border-white/[0.07] space-y-3">
+              <Utensils className="w-10 h-10 text-stone-500 mx-auto" />
+              <h3 className="text-base font-bold text-stone-200">Menu Tidak Ditemukan</h3>
+              <p className="text-xs text-stone-400 max-w-sm mx-auto leading-relaxed">
+                Tidak ada menu yang sesuai dengan kata kunci atau filter aktif. Silakan atur ulang filter untuk melihat seluruh katalog.
               </p>
               <button
                 type="button"
@@ -978,13 +1053,19 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                   setSelectedCategory('Semua');
                   setQuickFilter('all');
                 }}
-                className="px-4 py-2 bg-stone-800 hover:bg-stone-700 text-orange-400 rounded-xl text-xs font-bold transition-all hover:scale-105 cursor-pointer"
+                className="px-4 py-2 bg-stone-800 hover:bg-stone-700 text-orange-400 rounded-xl text-xs font-bold transition cursor-pointer"
               >
                 Reset Filter Pencarian
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div
+              className={
+                layoutMode === 'compact'
+                  ? 'grid grid-cols-1 md:grid-cols-2 gap-3.5'
+                  : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6'
+              }
+            >
               {filteredProducts.map((product, index) => {
                 const prodVars = variantsByProduct.get(product.id) || [];
                 const hasVars = prodVars.length > 0;
@@ -1010,7 +1091,6 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                   product.nama.toLowerCase().includes('kobra') ||
                   product.nama.toLowerCase().includes('rendang');
 
-                // Sort preview variants so search matches appear first
                 const q = searchQuery.toLowerCase().trim();
                 const sortedPreviewVars = hasVars
                   ? [...prodVars].sort((a, b) => {
@@ -1020,6 +1100,8 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                       return aMatch - bMatch;
                     })
                   : [];
+
+                const hasValidImage = Boolean(product.foto && !failedImages[product.id]);
 
                 return (
                   <div
@@ -1034,79 +1116,104 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                         setSelectedProductDetail(product);
                       }
                     }}
-                    style={{ animationDelay: `${Math.min(index * 45, 450)}ms` }}
-                    className="group bg-stone-900/80 hover:bg-stone-900 border border-stone-800/80 hover:border-orange-500/40 rounded-3xl p-3.5 flex flex-col justify-between transition-all duration-300 shadow-md hover:shadow-2xl hover:shadow-orange-950/30 hover:-translate-y-1.5 cursor-pointer animate-fade-in-up"
+                    style={{ animationDelay: `${Math.min(index * 35, 350)}ms` }}
+                    className={`group bg-stone-900/75 hover:bg-stone-900 border border-white/[0.07] hover:border-orange-500/40 rounded-2xl p-4 flex ${
+                      layoutMode === 'compact'
+                        ? 'flex-row items-start gap-4'
+                        : 'flex-col justify-between'
+                    } menu-card-hover cursor-pointer animate-fade-in-up`}
                   >
-                    <div>
-                      {/* Product Image with Hover Zoom */}
-                      <div className="relative aspect-video sm:aspect-[4/3] w-full bg-stone-950 rounded-2xl overflow-hidden mb-3">
-                        {product.foto ? (
-                          <img
-                            src={product.foto}
-                            alt={product.nama}
-                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 ease-out"
-                            referrerPolicy="no-referrer"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-stone-950 text-stone-400">
-                            <Utensils className="w-8 h-8 opacity-40 group-hover:scale-110 transition-transform duration-300" />
-                          </div>
-                        )}
-
-                        {/* Badges Over Image */}
-                        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1 flex-wrap">
-                          <div className="flex flex-wrap gap-1">
-                            <span className="bg-stone-950/80 backdrop-blur-sm text-stone-300 text-[10px] font-bold px-2 py-0.5 rounded-md border border-stone-800">
-                              {product.kategori}
-                            </span>
-                            {isSpicy && (
-                              <span className="bg-red-600/90 text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-sm shimmer-effect">
-                                Pedas
-                              </span>
-                            )}
-                          </div>
-                          {hasVars && (
-                            <span className="bg-amber-500 text-stone-950 text-[10px] font-black px-2 py-0.5 rounded-lg shadow-md flex items-center gap-1">
-                              <Layers className="w-3 h-3" />
-                              <span>{prodVars.length} Varian</span>
-                            </span>
-                          )}
-                        </div>
-
-                        {isOutOfStock && (
-                          <div className="absolute inset-0 bg-stone-950/80 backdrop-blur-xs flex items-center justify-center">
-                            <span className="bg-red-600/90 text-white text-xs font-black px-3 py-1 rounded-xl shadow-lg">
-                              Habis Hari Ini
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Title & Description */}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <h4 className="font-extrabold text-stone-100 group-hover:text-orange-400 transition text-sm sm:text-base line-clamp-1">
+                    {/* Product Image Container */}
+                    <div
+                      className={`relative bg-stone-950 rounded-xl overflow-hidden ring-1 ring-white/[0.06] shrink-0 ${
+                        layoutMode === 'compact'
+                          ? 'w-28 h-28 sm:w-32 sm:h-32'
+                          : 'aspect-[4/3] w-full mb-4'
+                      }`}
+                    >
+                      {hasValidImage ? (
+                        <img
+                          src={product.foto}
+                          alt={product.nama}
+                          onError={() =>
+                            setFailedImages((prev) => ({ ...prev, [product.id]: true }))
+                          }
+                          className={`w-full h-full object-cover transition-transform duration-500 ease-out ${
+                            isOutOfStock ? 'grayscale opacity-50' : 'group-hover:scale-105'
+                          }`}
+                          referrerPolicy="no-referrer"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-stone-900 via-stone-950 to-orange-950/30 text-stone-500 p-3 text-center">
+                          <Utensils className="w-7 h-7 text-orange-500/50 mb-1.5" />
+                          <span className="text-[11px] font-medium text-stone-400 line-clamp-1">
                             {product.nama}
-                          </h4>
-                          {productVariantCartCount > 0 && (
-                            <span className="shrink-0 bg-orange-500/20 border border-orange-500/40 text-orange-300 text-[10px] font-black px-2 py-0.5 rounded-full">
-                              {productVariantCartCount} dipilih
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Contrast Scrim */}
+                      <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/70 to-transparent pointer-events-none" />
+
+                      {/* Single Subtle Corner Tag (Maximum 1 tag per card rule) */}
+                      {(hasVars || productVariantCartCount > 0 || (cartEntry && cartEntry.qty > 0)) && !isOutOfStock && (
+                        <div className="absolute top-2.5 right-2.5">
+                          {productVariantCartCount > 0 || (cartEntry && cartEntry.qty > 0) ? (
+                            <span className="bg-orange-500 text-stone-950 text-[11px] font-mono font-extrabold px-2.5 py-0.5 rounded-lg shadow-md tabular-nums">
+                              {hasVars ? `${productVariantCartCount} dipilih` : `${cartEntry?.qty}x dipilih`}
+                            </span>
+                          ) : (
+                            <span className="bg-stone-950/85 backdrop-blur-md text-amber-300 text-[11px] font-semibold px-2.5 py-0.5 rounded-lg border border-white/10">
+                              {prodVars.length} Varian
                             </span>
                           )}
                         </div>
+                      )}
+
+                      {isOutOfStock && (
+                        <div className="absolute inset-0 bg-stone-950/80 backdrop-blur-[2px] flex items-center justify-center">
+                          <span className="bg-stone-900 border border-white/15 text-stone-300 text-xs font-bold px-3 py-1 rounded-lg">
+                            Stok Habis
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Card Content & Purchase Module */}
+                    <div className="flex-1 min-w-0 flex flex-col justify-between w-full">
+                      <div className="space-y-1.5">
+                        {/* Clean Unboxed Metadata Line (Zero-Pill Discipline) */}
+                        <div className="flex items-center gap-1.5 text-xs text-stone-400 font-medium truncate">
+                          <span className="text-stone-400">{product.kategori}</span>
+                          {isSpicy && (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <span className="text-orange-400">Pedas Khas</span>
+                            </>
+                          )}
+                          <span aria-hidden="true">·</span>
+                          <span className="font-mono tabular-nums">
+                            {isOutOfStock ? 'Habis' : `Stok ${effectiveStock}`}
+                          </span>
+                        </div>
+
+                        <h3 className="text-base font-semibold text-stone-100 group-hover:text-orange-400 transition-colors line-clamp-1">
+                          {product.nama}
+                        </h3>
+
                         <p className="text-xs text-stone-400 line-clamp-2 leading-relaxed">
-                          {product.deskripsi || 'Olahan bahan segar pilihan racikan resep warung khas.'}
+                          {product.deskripsi || 'Olahan bahan segar pilihan dengan racikan bumbu khas Warung Bang Kobra.'}
                         </p>
 
-                        {/* Interactive Variant Flavor Chips Preview on Card */}
+                        {/* Interactive Variant Flavor Selector on Card */}
                         {hasVars && (
                           <div
-                            className="pt-1.5 space-y-1.5"
+                            className="pt-2 space-y-1.5"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <div className="flex items-center justify-between text-[10px] text-amber-400 font-extrabold uppercase tracking-wider">
-                              <span>Pilih Varian Rasa ({prodVars.length}):</span>
+                            <div className="flex items-center justify-between text-[11px] text-stone-400">
+                              <span>Varian Rasa ({prodVars.length}):</span>
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1114,13 +1221,13 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                                   setVariantSearchQuery('');
                                   setVariantModalProduct(product);
                                 }}
-                                className="text-orange-400 hover:text-orange-300 underline cursor-pointer"
+                                className="text-orange-400 hover:text-orange-300 font-semibold cursor-pointer whitespace-nowrap"
                               >
-                                Lihat Semua
+                                Semua Rasa →
                               </button>
                             </div>
-                            <div className="flex flex-wrap gap-1">
-                              {sortedPreviewVars.slice(0, 5).map((v) => {
+                            <div className="flex flex-wrap gap-1.5">
+                              {sortedPreviewVars.slice(0, 4).map((v) => {
                                 const vKey = getCartKey(product.id, v.variantId);
                                 const vInCart = cart[vKey];
                                 const vOut = v.stock <= 0;
@@ -1137,28 +1244,28 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                                         ? `${v.variantName} (Stok Habis)`
                                         : `Tambah ${v.variantName} (${formatRupiah(v.price)})`
                                     }
-                                    className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition flex items-center gap-1 cursor-pointer active:scale-95 ${
+                                    className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border transition flex items-center gap-1 cursor-pointer whitespace-nowrap ${
                                       vOut
-                                        ? 'bg-stone-950/50 border-stone-800/60 text-stone-600 line-through cursor-not-allowed'
+                                        ? 'bg-stone-950/40 border-white/[0.04] text-stone-600 line-through cursor-not-allowed'
                                         : vInCart
-                                        ? 'bg-orange-500 text-stone-950 border-orange-400 font-black shadow-sm'
+                                        ? 'bg-orange-500 text-stone-950 border-orange-400 font-bold'
                                         : isQueryMatch
-                                        ? 'bg-amber-500/25 border-amber-400 text-amber-200 font-extrabold'
-                                        : 'bg-stone-950 hover:bg-stone-800 border-stone-800 hover:border-orange-500/50 text-stone-300 hover:text-orange-300'
+                                        ? 'bg-amber-500/20 border-amber-400/60 text-amber-200 font-semibold'
+                                        : 'bg-stone-950/90 hover:bg-stone-800 border-white/[0.07] text-stone-300 hover:text-white'
                                     }`}
                                   >
-                                    <span className="truncate max-w-[115px]">{v.variantName}</span>
+                                    <span className="truncate max-w-[110px]">{v.variantName}</span>
                                     {vInCart ? (
-                                      <span className="bg-stone-950 text-orange-400 px-1 rounded text-[9px] font-black">
+                                      <span className="font-mono text-[10px] font-extrabold tabular-nums">
                                         {vInCart.qty}x
                                       </span>
                                     ) : (
-                                      <Plus className="w-2.5 h-2.5 opacity-75 shrink-0" />
+                                      <Plus className="w-3 h-3 opacity-70 shrink-0" />
                                     )}
                                   </button>
                                 );
                               })}
-                              {prodVars.length > 5 && (
+                              {prodVars.length > 4 && (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -1166,83 +1273,85 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                                     setVariantSearchQuery('');
                                     setVariantModalProduct(product);
                                   }}
-                                  className="text-[10px] font-extrabold px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 transition cursor-pointer"
+                                  className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-stone-950 hover:bg-stone-800 border border-white/[0.07] text-amber-400 transition cursor-pointer whitespace-nowrap"
                                 >
-                                  +{prodVars.length - 5} varian lainnya
+                                  +{prodVars.length - 4} lainnya
                                 </button>
                               )}
                             </div>
                           </div>
                         )}
                       </div>
-                    </div>
 
-                    {/* Price and Cart Controller */}
-                    <div className="pt-3 mt-2 border-t border-stone-800/80 flex items-center justify-between gap-2">
-                      <div>
-                        <span className="text-[10px] text-stone-400 uppercase font-bold block">
-                          {hasVars && minPrice !== maxPrice ? 'Harga Mulai' : 'Harga'}
-                        </span>
-                        <span className="text-sm sm:text-base font-black text-orange-400">
-                          {formatRupiah(minPrice)}
-                        </span>
-                      </div>
-
-                      {isOutOfStock ? (
-                        <span className="text-[11px] font-bold text-stone-400 py-1.5 px-3 rounded-xl bg-stone-800/50">
-                          Stok Habis
-                        </span>
-                      ) : hasVars ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingCartKey(null);
-                            setVariantSearchQuery('');
-                            setVariantModalProduct(product);
-                          }}
-                          className="min-h-[36px] px-3.5 py-1.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-stone-950 text-xs font-extrabold flex items-center gap-1.5 shadow-md shadow-orange-950/50 active:scale-90 hover:scale-105 transition-all cursor-pointer"
-                        >
-                          <Layers className="w-3.5 h-3.5" />
-                          <span>
-                            {productVariantCartCount > 0
-                              ? `Pilih Varian (${productVariantCartCount})`
-                              : 'Pilih Varian'}
+                      {/* Price & Action Footer */}
+                      <div className="pt-3.5 mt-3 border-t border-white/[0.06] flex items-center justify-between gap-2">
+                        <div>
+                          {hasVars && minPrice !== maxPrice && (
+                            <span className="text-[11px] text-stone-400 block">
+                              Mulai dari
+                            </span>
+                          )}
+                          <span className="text-[15px] sm:text-base font-mono font-bold text-stone-100 tabular-nums">
+                            {formatRupiah(minPrice)}
                           </span>
-                        </button>
-                      ) : cartEntry ? (
-                        <div
-                          className="flex items-center gap-2 bg-orange-500/20 border border-orange-500/40 p-1 rounded-2xl animate-pop-in"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            type="button"
-                            onClick={(e) => handleUpdateQty(product.id, -1, e)}
-                            className="w-7 h-7 rounded-xl bg-stone-950 hover:bg-stone-800 text-white flex items-center justify-center active:scale-80 hover:scale-110 transition-transform cursor-pointer"
-                          >
-                            <Minus className="w-3.5 h-3.5" />
-                          </button>
-                          <span className="text-xs font-black text-orange-300 min-w-[18px] text-center animate-pop-in">
-                            {cartEntry.qty}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => handleUpdateQty(product.id, 1, e)}
-                            className="w-7 h-7 rounded-xl bg-orange-500 hover:bg-orange-400 text-stone-950 flex items-center justify-center font-bold active:scale-80 hover:scale-110 transition-transform cursor-pointer shadow-sm shadow-orange-500/50"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                          </button>
                         </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => handleAddToCart(product, e)}
-                          className="min-h-[36px] px-3.5 py-1.5 rounded-2xl bg-orange-500 hover:bg-orange-400 text-stone-950 text-xs font-extrabold flex items-center gap-1.5 shadow-md shadow-orange-950/50 active:scale-90 hover:scale-105 hover:shadow-orange-500/30 transition-all cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                          <span>Pesan</span>
-                        </button>
-                      )}
+
+                        {isOutOfStock ? (
+                          <span className="text-xs font-medium text-stone-500 py-1.5 px-3 rounded-xl bg-stone-950 border border-white/[0.05] whitespace-nowrap">
+                            Stok Habis
+                          </span>
+                        ) : hasVars ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingCartKey(null);
+                              setVariantSearchQuery('');
+                              setVariantModalProduct(product);
+                            }}
+                            className="min-h-[38px] px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-400 text-stone-950 text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition cursor-pointer whitespace-nowrap"
+                          >
+                            <Layers className="w-3.5 h-3.5" />
+                            <span>
+                              {productVariantCartCount > 0
+                                ? `Varian (${productVariantCartCount})`
+                                : 'Pilih Varian'}
+                            </span>
+                          </button>
+                        ) : cartEntry ? (
+                          <div
+                            className="flex items-center gap-2 bg-stone-950 border border-orange-500/50 p-1 rounded-xl"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              type="button"
+                              onClick={(e) => handleUpdateQty(product.id, -1, e)}
+                              className="w-7 h-7 rounded-lg bg-stone-900 hover:bg-stone-800 text-stone-200 flex items-center justify-center transition cursor-pointer"
+                            >
+                              <Minus className="w-3.5 h-3.5" />
+                            </button>
+                            <span className="text-xs font-mono font-bold text-orange-400 min-w-[20px] text-center tabular-nums">
+                              {cartEntry.qty}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => handleUpdateQty(product.id, 1, e)}
+                              className="w-7 h-7 rounded-lg bg-orange-500 hover:bg-orange-400 text-stone-950 flex items-center justify-center font-bold transition cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => handleAddToCart(product, e)}
+                            className="min-h-[38px] px-4 py-2 rounded-xl bg-stone-100 hover:bg-orange-500 text-stone-950 text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition-colors cursor-pointer whitespace-nowrap"
+                          >
+                            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                            <span>Tambah</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -1251,47 +1360,55 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
           )}
         </section>
 
-        {/* Info & Delivery Guarantee Banner */}
-        <section className="bg-gradient-to-br from-stone-900 via-stone-900/90 to-stone-950 border border-stone-800 rounded-3xl p-5 sm:p-6 space-y-4">
-          <div className="flex items-center gap-3">
-            <span className="w-10 h-10 rounded-2xl bg-orange-500/20 flex items-center justify-center text-orange-400">
-              <Sparkles className="w-5 h-5" />
-            </span>
-            <div>
-              <h4 className="font-extrabold text-stone-100 text-sm sm:text-base">
-                Kenapa Pesan Lewat Menu Online Kami?
-              </h4>
-              <p className="text-xs text-stone-400">
-                Layanan langsung dari dapur warung tanpa perantara aplikasi pihak ketiga.
-              </p>
-            </div>
+        {/* Culinary Craftsmanship & Service Guarantee Section */}
+        <section
+          id="keunggulan"
+          className="rounded-3xl bg-stone-900/60 border border-white/[0.07] p-6 sm:p-8 space-y-6"
+        >
+          <div className="max-w-xl space-y-1">
+            <h2 className="font-display text-lg sm:text-xl font-bold text-stone-100">
+              Standar Layanan &amp; Dapur {settings.storeName}
+            </h2>
+            <p className="text-xs sm:text-sm text-stone-400 leading-relaxed">
+              Pemesanan mandiri terhubung langsung ke layar kasir dan dapur warung secara real-time tanpa biaya tambahan aplikasi pihak ketiga.
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-            <div className="bg-stone-950/60 border border-stone-800/60 p-3 rounded-2xl space-y-1">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-orange-400">
-                <Flame className="w-4 h-4" />
-                <span>Masak Fresh</span>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-2 border-t border-white/[0.06]">
+            <div className="space-y-1.5">
+              <div className="text-xs font-mono font-semibold text-orange-400">
+                01. Dimasak Fresh Dadakan
               </div>
-              <p className="text-[11px] text-stone-400">Dimasak dadakan saat pesanan masuk, hangat & higienis.</p>
-            </div>
-
-            <div className="bg-stone-950/60 border border-stone-800/60 p-3 rounded-2xl space-y-1">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
-                <Bike className="w-4 h-4" />
-                <span>DELIVERY DQM</span>
-              </div>
-              <p className="text-[11px] text-stone-400">
-                Delivery khusus area Pesantren DQM ({(settings.deliveryFeeType || 'FREE') === 'FREE' ? 'GRATIS' : formatRupiah(Number(settings.deliveryFeeAmount ?? 2000))}).
+              <h3 className="text-sm font-semibold text-stone-100">
+                Kualitas Hangat &amp; Higienis
+              </h3>
+              <p className="text-xs text-stone-400 leading-relaxed">
+                Setiap porsi disiapkan langsung saat pesanan masuk ke antrian kasir dengan bahan baku segar pilihan.
               </p>
             </div>
 
-            <div className="bg-stone-950/60 border border-stone-800/60 p-3 rounded-2xl space-y-1">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-sky-400">
-                <QrCode className="w-4 h-4" />
-                <span>Pembayaran Mudah</span>
+            <div className="space-y-1.5">
+              <div className="text-xs font-mono font-semibold text-emerald-400">
+                02. Layanan Bungkus &amp; Delivery DQM
               </div>
-              <p className="text-[11px] text-stone-400">Bisa bayar tunai di tempat (COD), QRIS, atau transfer bank.</p>
+              <h3 className="text-sm font-semibold text-stone-100">
+                Pengantaran Khusus Area DQM
+              </h3>
+              <p className="text-xs text-stone-400 leading-relaxed">
+                Ambil langsung tanpa antre atau diantar ke gedung/asrama Pesantren DQM ({(settings.deliveryFeeType || 'FREE') === 'FREE' ? 'Gratis Ongkir' : `Ongkir ${formatRupiah(Number(settings.deliveryFeeAmount ?? 2000))}`}).
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="text-xs font-mono font-semibold text-amber-400">
+                03. Pembayaran Fleksibel &amp; Resmi
+              </div>
+              <h3 className="text-sm font-semibold text-stone-100">
+                Tunai COD, QRIS &amp; Transfer
+              </h3>
+              <p className="text-xs text-stone-400 leading-relaxed">
+                Mendukung pembayaran tunai saat pesanan diterima, scan QRIS resmi warung, maupun transfer rekening bank.
+              </p>
             </div>
           </div>
         </section>
@@ -1607,7 +1724,7 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
 
       {/* Floating Bottom Cart Bar */}
       {totalItemCount > 0 && !isCartDrawerOpen && !completedOrder && (
-        <div className="fixed bottom-4 left-4 right-4 z-40 max-w-md mx-auto space-y-2 animate-slide-up-bounce">
+        <div className="fixed bottom-4 left-4 right-4 z-40 max-w-lg mx-auto space-y-2 animate-slide-up-bounce">
           {orderType === 'DELIVERY_DQM' && (
             <DeliveryMinOrderBanner
               subtotal={cartSubtotal}
@@ -1615,19 +1732,21 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
               deliveryFee={deliveryFee}
             />
           )}
-          <div className="bg-gradient-to-r from-orange-600 via-amber-600 to-red-600 text-white p-3.5 sm:p-4 rounded-3xl shadow-2xl shadow-orange-950/80 flex items-center justify-between gap-3 border border-orange-400/40 animate-pulse-glow">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center relative shrink-0">
-                <ShoppingBag className="w-6 h-6 text-white" />
-                <span className="absolute -top-1 -right-1 bg-stone-950 text-orange-400 text-[11px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-orange-500 shadow-md animate-pop-in">
+          <div className="bg-stone-900/95 backdrop-blur-xl text-stone-100 p-3.5 sm:p-4 rounded-2xl shadow-2xl shadow-black/80 flex items-center justify-between gap-3 border border-orange-500/40">
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-11 h-11 rounded-xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center relative shrink-0">
+                <ShoppingBag className="w-5 h-5 text-orange-400" />
+                <span className="absolute -top-1.5 -right-1.5 bg-orange-500 text-stone-950 text-[11px] font-mono font-extrabold w-5 h-5 rounded-full flex items-center justify-center tabular-nums">
                   {totalItemCount}
                 </span>
               </div>
-              <div>
-                <span className="text-[10px] text-orange-100 uppercase tracking-wider font-extrabold block">
-                  Total Pesanan
+              <div className="min-w-0">
+                <span className="text-[11px] text-stone-400 font-medium block truncate">
+                  {orderType === 'BUNGKUS' ? 'Bungkus · Ambil di Warung' : 'Delivery · Area Pesantren DQM'}
                 </span>
-                <span className="text-base font-black text-white">{formatRupiah(cartSubtotal)}</span>
+                <span className="text-base font-mono font-extrabold text-stone-100 tabular-nums">
+                  {formatRupiah(grandTotal)}
+                </span>
               </div>
             </div>
 
@@ -1635,10 +1754,10 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
               type="button"
               id="btn-open-cart-checkout"
               onClick={() => setIsCartDrawerOpen(true)}
-              className="group min-h-[44px] px-4 py-2 rounded-2xl bg-stone-950 hover:bg-stone-900 text-orange-400 hover:text-orange-300 text-xs font-black flex items-center gap-1.5 shadow-md active:scale-95 hover:scale-105 transition-all cursor-pointer"
+              className="group min-h-[42px] px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-400 text-stone-950 text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition cursor-pointer whitespace-nowrap"
             >
-              <span>Lihat Pesanan</span>
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              <span>Checkout Pesanan</span>
+              <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
             </button>
           </div>
         </div>
@@ -1647,15 +1766,21 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
       {/* Cart & Checkout Drawer Modal */}
       {isCartDrawerOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-stone-900 border-t sm:border border-stone-800 rounded-t-3xl sm:rounded-3xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
+          <div className="bg-stone-900 border-t sm:border border-white/[0.08] rounded-t-3xl sm:rounded-3xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
             {/* Drawer Header */}
-            <div className="px-5 py-4 border-b border-stone-800 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5 text-orange-400" />
-                <h3 className="font-extrabold text-stone-100 text-base">Keranjang & Checkout</h3>
-                <span className="text-xs bg-orange-500/20 text-orange-400 font-bold px-2 py-0.5 rounded-full">
-                  {totalItemCount} item
-                </span>
+            <div className="px-5 py-4 bg-stone-950/90 border-b border-white/[0.07] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center text-orange-400">
+                  <ShoppingBag className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-display font-bold text-stone-100 text-base">
+                    Ringkasan &amp; Checkout
+                  </h3>
+                  <p className="text-xs text-stone-400 font-mono tabular-nums">
+                    {totalItemCount} porsi dipilih · {formatRupiah(cartSubtotal)}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
@@ -1667,76 +1792,68 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
             </div>
 
             {/* Drawer Body Scrollable */}
-            <div className="p-5 space-y-5 overflow-y-auto flex-1">
-              {/* Section 10: PILIH JENIS PESANAN (Strictly BUNGKUS or DELIVERY DQM) */}
-              <div className="space-y-2.5 bg-stone-950 p-3.5 rounded-2xl border border-stone-800">
-                <label className="text-xs font-black uppercase tracking-wider text-orange-400 block">
-                  PILIH JENIS PESANAN
-                </label>
+            <div className="p-5 space-y-6 overflow-y-auto flex-1">
+              {/* 01. Pilih Jenis Pesanan */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-stone-200">
+                    01. Metode Layanan Pesanan
+                  </span>
+                  <span className="text-[11px] text-stone-400">
+                    {orderType === 'BUNGKUS' ? 'Tanpa Minimal Order' : `Min. ${formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)}`}
+                  </span>
+                </div>
+
                 <div className="grid grid-cols-2 gap-2.5">
                   <button
                     type="button"
                     onClick={() => setOrderType('BUNGKUS')}
-                    className={`p-3 rounded-2xl flex items-center gap-2.5 text-left text-xs font-extrabold transition cursor-pointer ${
+                    className={`p-3 rounded-xl flex items-center gap-2.5 text-left text-xs font-semibold transition border cursor-pointer ${
                       orderType === 'BUNGKUS'
-                        ? 'bg-orange-500 text-stone-950 shadow-md shadow-orange-950/40 border border-orange-400'
-                        : 'bg-stone-900 border border-stone-800 text-stone-400 hover:text-stone-200'
+                        ? 'bg-orange-500/15 text-stone-100 border-orange-500/70'
+                        : 'bg-stone-950 border-white/[0.07] text-stone-400 hover:text-stone-200'
                     }`}
                   >
-                    <span className="text-sm font-black">{orderType === 'BUNGKUS' ? '◉' : '○'}</span>
-                    <div>
-                      <div className="font-black">BUNGKUS</div>
-                      <div className="text-[10px] opacity-80">Ambil di Warung</div>
+                    <ShoppingBag className={`w-4 h-4 shrink-0 ${orderType === 'BUNGKUS' ? 'text-orange-400' : 'text-stone-500'}`} />
+                    <div className="min-w-0">
+                      <div className="font-bold truncate">Bungkus</div>
+                      <div className="text-[11px] text-stone-400 truncate">Ambil di Warung</div>
                     </div>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setOrderType('DELIVERY_DQM')}
-                    className={`p-3 rounded-2xl flex items-center gap-2.5 text-left text-xs font-extrabold transition cursor-pointer ${
+                    className={`p-3 rounded-xl flex items-center gap-2.5 text-left text-xs font-semibold transition border cursor-pointer ${
                       orderType === 'DELIVERY_DQM'
-                        ? 'bg-teal-500 text-stone-950 shadow-md shadow-teal-950/40 border border-teal-400'
-                        : 'bg-stone-900 border border-stone-800 text-stone-400 hover:text-stone-200'
+                        ? 'bg-emerald-500/15 text-stone-100 border-emerald-500/70'
+                        : 'bg-stone-950 border-white/[0.07] text-stone-400 hover:text-stone-200'
                     }`}
                   >
-                    <span className="text-sm font-black">{orderType === 'DELIVERY_DQM' ? '◉' : '○'}</span>
-                    <div>
-                      <div className="font-black">DELIVERY DQM</div>
-                      <div className="text-[10px] opacity-80">Khusus Pesantren DQM</div>
+                    <Bike className={`w-4 h-4 shrink-0 ${orderType === 'DELIVERY_DQM' ? 'text-emerald-400' : 'text-stone-500'}`} />
+                    <div className="min-w-0">
+                      <div className="font-bold truncate">Delivery DQM</div>
+                      <div className="text-[11px] text-stone-400 truncate">Area Pesantren DQM</div>
                     </div>
                   </button>
                 </div>
 
-                {orderType === 'BUNGKUS' ? (
-                  <div className="p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/30 text-xs text-orange-300 font-bold flex items-center gap-2">
-                    <ShoppingBag className="w-4 h-4 shrink-0" />
-                    <span>Pesanan akan disiapkan untuk diambil (Tanpa minimal belanja).</span>
-                  </div>
-                ) : (
-                  <div className="space-y-2.5">
-                    <div className="p-2.5 rounded-xl bg-teal-500/10 border border-teal-500/30 text-xs text-teal-300 font-bold flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-2">
-                        <Bike className="w-4 h-4 shrink-0" />
-                        <span>Delivery khusus area Pesantren DQM.</span>
-                      </span>
-                      <span className="font-mono font-black text-teal-200 shrink-0">
-                        Min. {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)}
-                      </span>
-                    </div>
-                    <DeliveryMinOrderBanner
-                      subtotal={cartSubtotal}
-                      variant="checkout"
-                      deliveryFee={deliveryFee}
-                      onAddMoreItems={() => setIsCartDrawerOpen(false)}
-                    />
-                  </div>
+                {orderType === 'DELIVERY_DQM' && (
+                  <DeliveryMinOrderBanner
+                    subtotal={cartSubtotal}
+                    variant="checkout"
+                    deliveryFee={deliveryFee}
+                    onAddMoreItems={() => setIsCartDrawerOpen(false)}
+                  />
                 )}
               </div>
 
-              {/* Items List */}
-              <div className="space-y-3">
-                <span className="text-xs font-bold text-stone-300 block">Daftar Menu:</span>
-                <div className="space-y-2">
+              {/* 02. Daftar Menu */}
+              <div className="space-y-3 pt-4 border-t border-white/[0.07]">
+                <span className="text-xs font-semibold text-stone-200 block">
+                  02. Daftar Menu Pesanan
+                </span>
+                <div className="space-y-2.5">
                   {cartItems.map((entry) => {
                     const unitPrice = entry.variant ? entry.variant.price : entry.product.harga_jual;
                     const displayTitle = entry.variant
@@ -1745,12 +1862,12 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                     return (
                       <div
                         key={entry.cartKey}
-                        className="p-3 bg-stone-950 border border-stone-800/80 rounded-2xl space-y-2"
+                        className="p-3.5 bg-stone-950/90 border border-white/[0.07] rounded-2xl space-y-2.5"
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <h5 className="font-extrabold text-stone-100 text-xs sm:text-sm truncate">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h5 className="font-semibold text-stone-100 text-xs sm:text-sm truncate">
                                 {displayTitle}
                               </h5>
                               {entry.variant && (
@@ -1762,42 +1879,41 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                                     setVariantSearchQuery('');
                                     setVariantModalProduct(entry.product);
                                   }}
-                                  className="text-[10px] font-bold text-amber-400 hover:text-amber-300 underline flex items-center gap-1 cursor-pointer"
+                                  className="text-[11px] font-semibold text-amber-400 hover:text-amber-300 underline flex items-center gap-1 cursor-pointer"
                                 >
                                   <RefreshCw className="w-2.5 h-2.5" />
                                   <span>Ganti Rasa</span>
                                 </button>
                               )}
                             </div>
-                            <span className="text-[11px] text-orange-400 font-bold">
-                              {formatRupiah(unitPrice)} x {entry.qty} ={' '}
-                              {formatRupiah(unitPrice * entry.qty)}
+                            <span className="text-xs font-mono text-orange-400 font-semibold tabular-nums mt-0.5 block">
+                              {formatRupiah(unitPrice)} × {entry.qty} = {formatRupiah(unitPrice * entry.qty)}
                             </span>
                           </div>
 
                           {/* Quantity Stepper */}
-                          <div className="flex items-center gap-1.5 shrink-0 bg-stone-900 border border-stone-800 p-1 rounded-xl">
+                          <div className="flex items-center gap-1.5 shrink-0 bg-stone-900 border border-white/[0.07] p-1 rounded-xl">
                             <button
                               type="button"
                               onClick={() => handleUpdateQty(entry.cartKey, -1)}
-                              className="w-6 h-6 rounded-lg bg-stone-800 hover:bg-stone-700 text-white flex items-center justify-center text-xs"
+                              className="w-6 h-6 rounded-lg bg-stone-800 hover:bg-stone-700 text-white flex items-center justify-center text-xs cursor-pointer"
                             >
                               <Minus className="w-3 h-3" />
                             </button>
-                            <span className="text-xs font-black text-stone-100 min-w-[18px] text-center">
+                            <span className="text-xs font-mono font-bold text-stone-100 min-w-[20px] text-center tabular-nums">
                               {entry.qty}
                             </span>
                             <button
                               type="button"
                               onClick={() => handleUpdateQty(entry.cartKey, 1)}
-                              className="w-6 h-6 rounded-lg bg-orange-500 hover:bg-orange-400 text-stone-950 flex items-center justify-center text-xs font-bold"
+                              className="w-6 h-6 rounded-lg bg-orange-500 hover:bg-orange-400 text-stone-950 flex items-center justify-center text-xs font-bold cursor-pointer"
                             >
                               <Plus className="w-3 h-3" />
                             </button>
                             <button
                               type="button"
                               onClick={() => handleRemoveItem(entry.cartKey)}
-                              className="w-6 h-6 rounded-lg text-stone-400 hover:text-red-400 flex items-center justify-center ml-1"
+                              className="w-6 h-6 rounded-lg text-stone-400 hover:text-red-400 flex items-center justify-center ml-0.5 cursor-pointer"
                               title="Hapus"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1811,7 +1927,7 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                           value={entry.notes}
                           onChange={(e) => handleUpdateItemNotes(entry.cartKey, e.target.value)}
                           placeholder="Catatan porsi (contoh: pedas manis, tanpa bawang goreng)..."
-                          className="w-full text-[11px] px-3 py-1.5 bg-stone-900 border border-stone-800 rounded-xl text-stone-200 placeholder-stone-400 focus:outline-none focus:border-orange-500"
+                          className="w-full text-xs px-3 py-2 bg-stone-900 border border-white/[0.06] rounded-xl text-stone-200 placeholder-stone-500 focus:outline-none focus:border-orange-500"
                         />
                       </div>
                     );
@@ -1819,53 +1935,51 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                 </div>
               </div>
 
-              {/* Customer Contact Information Form */}
-              <div className="space-y-3 pt-2 border-t border-stone-800">
-                <span className="text-xs font-bold text-stone-300 block">Informasi Pemesan:</span>
+              {/* 03. Informasi Pemesan */}
+              <div className="space-y-3.5 pt-4 border-t border-white/[0.07]">
+                <span className="text-xs font-semibold text-stone-200 block">
+                  03. Data Pemesan &amp; Pengantaran
+                </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-bold text-stone-400 mb-1 block">Nama Lengkap *</label>
+                    <label className="text-xs font-medium text-stone-400 mb-1.5 block">
+                      Nama Lengkap <span className="text-orange-400">*</span>
+                    </label>
                     <input
                       type="text"
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
                       placeholder="Nama Anda"
-                      className="w-full text-xs px-3 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-stone-100 focus:outline-none focus:border-orange-500"
+                      className="w-full text-xs px-3.5 py-2.5 bg-stone-950 border border-white/[0.08] rounded-xl text-stone-100 placeholder-stone-500 focus:outline-none focus:border-orange-500"
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-stone-400 mb-1 block">No. WhatsApp Aktif *</label>
+                    <label className="text-xs font-medium text-stone-400 mb-1.5 block">
+                      Nomor WhatsApp Aktif <span className="text-orange-400">*</span>
+                    </label>
                     <input
                       type="tel"
                       value={customerPhone}
                       onChange={(e) => setCustomerPhone(e.target.value)}
                       placeholder="08xxxxxxxxxx"
-                      className="w-full text-xs px-3 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-stone-100 focus:outline-none focus:border-orange-500"
+                      className="w-full text-xs px-3.5 py-2.5 bg-stone-950 border border-white/[0.08] rounded-xl text-stone-100 placeholder-stone-500 focus:outline-none focus:border-orange-500"
                       required
                     />
                   </div>
                 </div>
 
-                {/* Conditional Fields based on Order Type (Strictly locked to DQM) */}
                 {orderType === 'DELIVERY_DQM' && (
                   <div className="space-y-3 pt-1">
-                    <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-xs font-extrabold text-emerald-300 flex items-center justify-between">
-                      <span>✅ Tujuan Pengantaran: AREA PESANTREN DQM</span>
-                      <span className="px-2 py-0.5 rounded bg-emerald-500 text-stone-950 text-[10px] font-black">
-                        KHUSUS DQM
-                      </span>
-                    </div>
-
                     <div>
-                      <label className="text-[11px] font-bold text-stone-400 mb-1 block">
-                        Lokasi DQM (Asrama / Blok / Gedung) *
+                      <label className="text-xs font-medium text-stone-400 mb-1.5 block">
+                        Lokasi Area DQM (Asrama / Blok / Gedung) <span className="text-orange-400">*</span>
                       </label>
                       <select
                         value={deliveryLocation}
                         onChange={(e) => setDeliveryLocation(e.target.value)}
-                        className="w-full text-xs px-3 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-stone-100 focus:outline-none focus:border-orange-500"
+                        className="w-full text-xs px-3.5 py-2.5 bg-stone-950 border border-white/[0.08] rounded-xl text-stone-100 focus:outline-none focus:border-orange-500"
                       >
                         {DQM_LOCATIONS.map((loc) => (
                           <option key={loc} value={loc}>
@@ -1876,29 +1990,29 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-bold text-stone-400 mb-1 block">
-                        Detail Lokasi (Kamar / Blok / Lantai) *
+                      <label className="text-xs font-medium text-stone-400 mb-1.5 block">
+                        Detail Lokasi (Kamar / Lantai / Patokan) <span className="text-orange-400">*</span>
                       </label>
                       <input
                         type="text"
                         value={deliveryDetail}
                         onChange={(e) => setDeliveryDetail(e.target.value)}
-                        placeholder="Contoh: Kamar 12 / Asrama Putra"
-                        className="w-full text-xs px-3 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-stone-100 focus:outline-none focus:border-orange-500"
+                        placeholder="Contoh: Kamar 12 / Asrama Putra Lantai 2"
+                        className="w-full text-xs px-3.5 py-2.5 bg-stone-950 border border-white/[0.08] rounded-xl text-stone-100 placeholder-stone-500 focus:outline-none focus:border-orange-500"
                         required
                       />
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-bold text-stone-400 mb-1 block">
-                        Catatan Pesanan / Pengantaran
+                      <label className="text-xs font-medium text-stone-400 mb-1.5 block">
+                        Catatan Pengantaran
                       </label>
                       <input
                         type="text"
                         value={deliveryNote}
                         onChange={(e) => setDeliveryNote(e.target.value)}
-                        placeholder="Contoh: Antar setelah Maghrib"
-                        className="w-full text-xs px-3 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-stone-100 focus:outline-none focus:border-orange-500"
+                        placeholder="Contoh: Titip di lobi asrama / antar setelah Maghrib"
+                        className="w-full text-xs px-3.5 py-2.5 bg-stone-950 border border-white/[0.08] rounded-xl text-stone-100 placeholder-stone-500 focus:outline-none focus:border-orange-500"
                       />
                     </div>
                   </div>
@@ -1906,11 +2020,13 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
 
                 {orderType === 'BUNGKUS' && (
                   <div>
-                    <label className="text-[11px] font-bold text-stone-400 mb-1 block">Estimasi Jam Ambil:</label>
+                    <label className="text-xs font-medium text-stone-400 mb-1.5 block">
+                      Estimasi Waktu Pengambilan
+                    </label>
                     <select
                       value={pickupTime}
                       onChange={(e) => setPickupTime(e.target.value)}
-                      className="w-full text-xs px-3 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-stone-100 focus:outline-none focus:border-orange-500"
+                      className="w-full text-xs px-3.5 py-2.5 bg-stone-950 border border-white/[0.08] rounded-xl text-stone-100 focus:outline-none focus:border-orange-500"
                     >
                       <option value="Sekitar 15-20 menit lagi">Sekitar 15-20 menit lagi</option>
                       <option value="Sekitar 30 menit lagi">Sekitar 30 menit lagi</option>
@@ -1922,28 +2038,32 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                 )}
 
                 <div>
-                  <label className="text-[11px] font-bold text-stone-400 mb-1 block">Catatan Tambahan Untuk Warung:</label>
+                  <label className="text-xs font-medium text-stone-400 mb-1.5 block">
+                    Catatan Tambahan Untuk Dapur
+                  </label>
                   <input
                     type="text"
                     value={generalNotes}
                     onChange={(e) => setGeneralNotes(e.target.value)}
-                    placeholder="Contoh: Minta sendok plastik & sambal ekstra"
-                    className="w-full text-xs px-3 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-stone-100 focus:outline-none focus:border-orange-500"
+                    placeholder="Contoh: Minta sendok plastik & sambal dipisah"
+                    className="w-full text-xs px-3.5 py-2.5 bg-stone-950 border border-white/[0.08] rounded-xl text-stone-100 placeholder-stone-500 focus:outline-none focus:border-orange-500"
                   />
                 </div>
               </div>
 
-              {/* Payment Method Selector */}
-              <div className="space-y-2 pt-2 border-t border-stone-800">
-                <span className="text-xs font-bold text-stone-300 block">Metode Pembayaran:</span>
+              {/* 04. Metode Pembayaran */}
+              <div className="space-y-3 pt-4 border-t border-white/[0.07]">
+                <span className="text-xs font-semibold text-stone-200 block">
+                  04. Pilih Metode Pembayaran
+                </span>
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('Cash')}
-                    className={`p-2.5 rounded-2xl flex flex-col items-center justify-center gap-1 text-xs font-extrabold transition cursor-pointer ${
+                    className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1.5 text-xs font-semibold border transition cursor-pointer ${
                       paymentMethod === 'Cash'
-                        ? 'bg-emerald-500 text-stone-950 shadow-md shadow-emerald-950/40 border border-emerald-400'
-                        : 'bg-stone-950 border border-stone-800 text-stone-400 hover:text-stone-200'
+                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/70 font-bold'
+                        : 'bg-stone-950 border-white/[0.07] text-stone-400 hover:text-stone-200'
                     }`}
                   >
                     <Banknote className="w-4 h-4" />
@@ -1953,71 +2073,92 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('QRIS')}
-                    className={`p-2.5 rounded-2xl flex flex-col items-center justify-center gap-1 text-xs font-extrabold transition cursor-pointer ${
+                    className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1.5 text-xs font-semibold border transition cursor-pointer ${
                       paymentMethod === 'QRIS'
-                        ? 'bg-amber-500 text-stone-950 shadow-md shadow-amber-950/40 border border-amber-400'
-                        : 'bg-stone-950 border border-stone-800 text-stone-400 hover:text-stone-200'
+                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/70 font-bold'
+                        : 'bg-stone-950 border-white/[0.07] text-stone-400 hover:text-stone-200'
                     }`}
                   >
                     <QrCode className="w-4 h-4" />
-                    <span>QRIS</span>
+                    <span>QRIS Resmi</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('Transfer')}
-                    className={`p-2.5 rounded-2xl flex flex-col items-center justify-center gap-1 text-xs font-extrabold transition cursor-pointer ${
+                    className={`p-3 rounded-xl flex flex-col items-center justify-center gap-1.5 text-xs font-semibold border transition cursor-pointer ${
                       paymentMethod === 'Transfer'
-                        ? 'bg-sky-500 text-stone-950 shadow-md shadow-sky-950/40 border border-sky-400'
-                        : 'bg-stone-950 border border-stone-800 text-stone-400 hover:text-stone-200'
+                        ? 'bg-sky-500/15 text-sky-300 border-sky-500/70 font-bold'
+                        : 'bg-stone-950 border-white/[0.07] text-stone-400 hover:text-stone-200'
                     }`}
                   >
                     <CreditCard className="w-4 h-4" />
-                    <span>Transfer</span>
+                    <span>Transfer Bank</span>
                   </button>
                 </div>
 
                 {/* Bank Transfer Info Box */}
                 {paymentMethod === 'Transfer' && (
-                  <div className="p-3 bg-stone-950 border border-stone-800 rounded-2xl space-y-1.5 text-xs text-stone-300">
+                  <div className="p-3.5 bg-stone-950 border border-white/[0.08] rounded-2xl space-y-1.5 text-xs text-stone-300">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-sky-400">Rekening Resmi Warung:</span>
+                      <span className="font-semibold text-sky-400">Rekening Resmi Warung</span>
                       <button
                         type="button"
                         onClick={handleCopyBank}
-                        className="text-[11px] text-orange-400 hover:underline flex items-center gap-1 font-bold cursor-pointer"
+                        className="text-[11px] text-orange-400 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
                       >
                         {copiedBank ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                         <span>{copiedBank ? 'Tersalin' : 'Salin Rekening'}</span>
                       </button>
                     </div>
-                    <div className="font-mono text-stone-100 font-black">
+                    <div className="font-mono text-stone-100 font-bold">
                       {settings.onlineMenuBankInfo || 'BCA 8830192831 a.n Warung Bang Kobra'}
                     </div>
-                    <p className="text-[10px] text-stone-400">Kirim bukti transfer ke WhatsApp setelah pesanan dibuat.</p>
+                    <p className="text-[11px] text-stone-400">
+                      Kirim bukti transfer melalui WhatsApp setelah pesanan dibuat.
+                    </p>
                   </div>
                 )}
 
-                {/* QRIS Info Box */}
+                {/* QRIS Info Box with Zoom Option */}
                 {paymentMethod === 'QRIS' && (settings.qrisImageUrl || settings.qrisUrl) && (
-                  <div className="p-3 bg-stone-950 border border-amber-500/30 rounded-2xl flex items-center gap-3">
-                    <img
-                      src={settings.qrisImageUrl || settings.qrisUrl}
-                      alt="QRIS Warung"
-                      className="w-20 h-20 rounded-xl bg-white p-1.5 object-contain shrink-0"
-                    />
-                    <div className="text-xs space-y-1">
-                      <span className="font-bold text-amber-400 block">
-                        {settings.qrisMerchantName || settings.storeName || 'Scan QRIS Resmi'}
+                  <div className="p-3.5 bg-stone-950 border border-amber-500/30 rounded-2xl flex items-center gap-3.5">
+                    <button
+                      type="button"
+                      onClick={() => setIsQrisZoomOpen(true)}
+                      className="relative group shrink-0 cursor-pointer"
+                      title="Klik untuk memperbesar QRIS"
+                    >
+                      <img
+                        src={settings.qrisImageUrl || settings.qrisUrl}
+                        alt="QRIS Warung"
+                        className="w-20 h-20 rounded-xl bg-white p-1.5 object-contain shadow-sm"
+                      />
+                      <span className="absolute inset-0 rounded-xl bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] font-bold text-white transition">
+                        Perbesar
                       </span>
+                    </button>
+                    <div className="text-xs space-y-1 flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-amber-400 truncate">
+                          {settings.qrisMerchantName || settings.storeName || 'QRIS Resmi Warung'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsQrisZoomOpen(true)}
+                          className="text-[11px] font-semibold text-orange-400 hover:underline shrink-0 cursor-pointer"
+                        >
+                          Perbesar QR
+                        </button>
+                      </div>
                       {settings.qrisNmid && (
-                        <span className="text-[10px] font-mono text-stone-400 block">
+                        <span className="text-[11px] font-mono text-stone-400 block tabular-nums">
                           NMID: {settings.qrisNmid}
                         </span>
                       )}
-                      <p className="text-[11px] text-stone-300">
+                      <p className="text-[11px] text-stone-300 leading-relaxed">
                         {settings.qrisInstruction ||
-                          'Bisa menggunakan GoPay, OVO, Dana, ShopeePay, BCA, Mandiri, BRI, dll.'}
+                          'Scan melalui GoPay, OVO, Dana, ShopeePay, atau Mobile Banking.'}
                       </p>
                     </div>
                   </div>
@@ -2025,81 +2166,51 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
               </div>
 
               {/* Price Calculation Summary */}
-              <div className="p-3.5 bg-stone-950 border border-stone-800 rounded-2xl space-y-1.5 text-xs">
+              <div className="p-4 bg-stone-950 border border-white/[0.08] rounded-2xl space-y-2 text-xs">
                 <div className="flex items-center justify-between text-stone-400">
-                  <span>Subtotal Pesanan:</span>
-                  <span className="font-bold font-mono text-stone-200 tabular-nums">{formatRupiah(cartSubtotal)}</span>
+                  <span>Subtotal Menu ({totalItemCount} porsi)</span>
+                  <span className="font-semibold font-mono text-stone-200 tabular-nums">
+                    {formatRupiah(cartSubtotal)}
+                  </span>
                 </div>
 
                 {orderType === 'DELIVERY_DQM' && (
                   <>
                     <div className="flex items-center justify-between text-stone-400">
-                      <span>Minimal Belanja Delivery:</span>
+                      <span>Syarat Minimal Delivery</span>
                       <span
-                        className={`font-bold font-mono tabular-nums ${
+                        className={`font-semibold font-mono tabular-nums ${
                           cartSubtotal >= DELIVERY_MIN_ORDER_AMOUNT
                             ? 'text-emerald-400'
-                            : 'text-red-400'
+                            : 'text-amber-400'
                         }`}
                       >
                         {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)}{' '}
                         {cartSubtotal >= DELIVERY_MIN_ORDER_AMOUNT
-                          ? '(Terpenuhi ✓)'
+                          ? '(Terpenuhi)'
                           : `(Kurang ${formatRupiah(DELIVERY_MIN_ORDER_AMOUNT - cartSubtotal)})`}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-stone-400">
-                      <span>Biaya Delivery DQM:</span>
-                      <span className="font-bold text-emerald-400">
+                      <span>Biaya Pengantaran DQM</span>
+                      <span className="font-semibold font-mono text-emerald-400 tabular-nums">
                         {deliveryFee > 0 ? formatRupiah(deliveryFee) : 'GRATIS'}
                       </span>
                     </div>
                   </>
                 )}
 
-                <div className="flex items-center justify-between pt-2 border-t border-stone-800/80 font-black text-sm text-stone-100">
-                  <span>Total Tagihan:</span>
-                  <span className="text-orange-400 text-base font-mono tabular-nums">{formatRupiah(grandTotal)}</span>
+                <div className="flex items-center justify-between pt-2.5 border-t border-white/[0.07] font-bold text-sm text-stone-100">
+                  <span>Total Pembayaran</span>
+                  <span className="text-orange-400 text-base font-mono font-extrabold tabular-nums">
+                    {formatRupiah(grandTotal)}
+                  </span>
                 </div>
               </div>
             </div>
 
             {/* Drawer Footer Actions */}
-            <div className="p-4 border-t border-stone-800 bg-stone-950/80 flex flex-col gap-2 shrink-0">
-              {orderType === 'DELIVERY_DQM' && (
-                <div
-                  className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-between gap-2 ${
-                    cartSubtotal >= DELIVERY_MIN_ORDER_AMOUNT
-                      ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
-                      : 'bg-red-950/60 border-red-500/60 text-red-300'
-                  }`}
-                >
-                  <span className="flex items-center gap-1.5">
-                    {cartSubtotal >= DELIVERY_MIN_ORDER_AMOUNT ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    ) : (
-                      <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                    )}
-                    <span>
-                      {cartSubtotal >= DELIVERY_MIN_ORDER_AMOUNT
-                        ? 'Minimal belanja terpenuhi. Silakan lanjutkan pesanan.'
-                        : `Minimal belanja Delivery ${formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)} (Kurang ${formatRupiah(
-                            DELIVERY_MIN_ORDER_AMOUNT - cartSubtotal
-                          )})`}
-                    </span>
-                  </span>
-                  {cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT && (
-                    <button
-                      type="button"
-                      onClick={() => setIsCartDrawerOpen(false)}
-                      className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white text-[11px] font-black shrink-0 cursor-pointer"
-                    >
-                      + Tambah Menu
-                    </button>
-                  )}
-                </div>
-              )}
-
+            <div className="p-4 border-t border-white/[0.07] bg-stone-950/95 flex flex-col gap-2.5 shrink-0">
               <button
                 type="button"
                 id="btn-submit-order-wa"
@@ -2109,78 +2220,181 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                   (orderType === 'DELIVERY_DQM' && selectedAreaOption === 'OUTSIDE') ||
                   (orderType === 'DELIVERY_DQM' && cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT)
                 }
-                className={`w-full min-h-[48px] py-3 px-4 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2 shadow-xl transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                className={`w-full min-h-[48px] py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                   orderType === 'DELIVERY_DQM' && cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT
-                    ? 'bg-red-800/70 border border-red-500/40 shadow-red-950/40'
-                    : 'bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 shadow-emerald-950/60 active:scale-95 hover:scale-[1.02] shimmer-effect'
+                    ? 'bg-stone-800 border border-amber-500/40 text-amber-300'
+                    : 'bg-orange-500 hover:bg-orange-400 text-stone-950 active:scale-[0.99]'
                 }`}
               >
                 {isSubmitting ? (
-                  <span>Mengirim ke ANTRIAN KASIR...</span>
+                  <span>Mengirim Pesanan ke Antrian Kasir...</span>
                 ) : orderType === 'DELIVERY_DQM' && cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT ? (
                   <>
-                    <AlertCircle className="w-5 h-5 shrink-0" />
+                    <AlertCircle className="w-4 h-4 shrink-0" />
                     <span>
-                      Minimal Belanja Delivery {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)} (Kurang{' '}
-                      {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT - cartSubtotal)})
+                      Tambah {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT - cartSubtotal)} Lagi untuk Delivery DQM
                     </span>
                   </>
                 ) : (
                   <>
-                    <MessageCircle className="w-5 h-5 animate-bounce" />
-                    <span>Kirim Pesanan ({orderType === 'BUNGKUS' ? 'BUNGKUS' : 'DELIVERY DQM'})</span>
+                    <Send className="w-4 h-4" />
+                    <span>
+                      Buat Pesanan Sekarang · {formatRupiah(grandTotal)}
+                    </span>
                   </>
                 )}
               </button>
 
-              <p className="text-[10px] text-center text-stone-400">
-                Pesanan akan otomatis masuk ke ANTRIAN KASIR Warung Bang Kobra.
+              <p className="text-[11px] text-center text-stone-400">
+                Pesanan langsung tercatat otomatis di layar Antrian Kasir {settings.storeName}.
               </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Completed Order Confirmation & Real-time Live Tracking Modal */}
-      {completedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
-          <div className="bg-stone-900 border border-stone-800 rounded-3xl w-full max-w-md p-6 text-center space-y-5 shadow-2xl animate-pop-in">
-            <div className="w-16 h-16 rounded-3xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto shadow-inner animate-check-pop animate-pulse-glow-emerald">
-              <CheckCircle2 className="w-8 h-8" />
+      {/* QRIS Fullscreen Zoom Modal */}
+      {isQrisZoomOpen && (settings.qrisImageUrl || settings.qrisUrl) && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+          onClick={() => setIsQrisZoomOpen(false)}
+        >
+          <div
+            className="bg-stone-900 border border-white/10 rounded-3xl max-w-sm w-full p-5 text-center space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-left">
+                <h4 className="font-display font-bold text-sm text-stone-100">
+                  {settings.qrisMerchantName || settings.storeName}
+                </h4>
+                {settings.qrisNmid && (
+                  <p className="text-[11px] font-mono text-stone-400 tabular-nums">
+                    NMID: {settings.qrisNmid}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsQrisZoomOpen(false)}
+                className="w-8 h-8 rounded-full bg-stone-800 text-stone-300 hover:text-white flex items-center justify-center cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            <div className="space-y-1.5">
-              <h3 className="text-xl font-black text-stone-100">Pesanan Masuk ke ANTRIAN KASIR!</h3>
-              <p className="text-xs text-stone-400">
-                No. Antrian: <strong className="text-amber-400 font-mono text-sm">#{getTakeawayQueueNumber(completedOrder.createdOrder)}</strong> • Transaksi: <strong className="text-orange-400 font-mono text-sm">{completedOrder.orderId}</strong>
+            <div className="p-4 bg-white rounded-2xl mx-auto">
+              <img
+                src={settings.qrisImageUrl || settings.qrisUrl}
+                alt="QRIS"
+                className="w-full max-h-72 object-contain mx-auto"
+              />
+            </div>
+
+            <div className="text-xs text-stone-300 space-y-1">
+              <div className="font-mono font-bold text-base text-orange-400 tabular-nums">
+                Nominal: {formatRupiah(grandTotal)}
+              </div>
+              <p className="text-[11px] text-stone-400">
+                Scan kode QRIS di atas menggunakan aplikasi e-Wallet atau Mobile Banking Anda.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Completed Order Confirmation & Real-time Digital Queue Ticket Modal */}
+      {completedOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
+          <div className="bg-stone-900 border border-white/10 rounded-3xl w-full max-w-md p-6 text-center space-y-5 shadow-2xl animate-pop-in">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto">
+              <CheckCircle2 className="w-7 h-7" />
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-emerald-400">
+                Pesanan Tercatat di Antrian Kasir
+              </div>
+              <h3 className="font-display text-xl font-bold text-stone-100">
+                Tiket Antrian Digital Anda
+              </h3>
+              <p className="text-xs text-stone-400 font-mono tabular-nums">
+                ID Transaksi: {completedOrder.orderId}
               </p>
             </div>
 
-            {/* Live Real-time Status Card */}
-            <div className="p-4 bg-stone-950 rounded-2xl border border-stone-800 text-left space-y-2.5 animate-pulse-glow">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-stone-400 uppercase tracking-wider">Status Live:</span>
-                <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30">
-                  {orderType === 'DELIVERY_DQM'
-                    ? getDeliveryStatusLabel(liveDeliveryStatus)
-                    : getOrderStatusLabel(liveStatus, orderType)}
+            {/* Digital Queue Pass Number Box */}
+            <div className="p-4 rounded-2xl bg-stone-950 border border-white/[0.08] space-y-3">
+              <div>
+                <span className="text-[11px] text-stone-400 block">Nomor Antrian Kasir</span>
+                <span className="font-mono text-3xl font-extrabold text-orange-400 tracking-tight tabular-nums block mt-0.5">
+                  #{getTakeawayQueueNumber(completedOrder.createdOrder)}
                 </span>
               </div>
 
-              <div className="text-xs text-stone-300 space-y-1">
+              {/* 4-Step Live Progress Bar */}
+              <div className="pt-3 border-t border-white/[0.06] space-y-2 text-left">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-stone-400">Status Real-time:</span>
+                  <span className="font-semibold text-emerald-400">
+                    {orderType === 'DELIVERY_DQM'
+                      ? getDeliveryStatusLabel(liveDeliveryStatus)
+                      : getOrderStatusLabel(liveStatus, orderType)}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-1.5 pt-1">
+                  {(['MENUNGGU', 'DIPROSES', 'SIAP', 'SELESAI'] as const).map((step, idx) => {
+                    const orderStages = ['MENUNGGU', 'DIPROSES', 'SIAP', 'SELESAI'];
+                    const activeIdx = Math.max(0, orderStages.indexOf(liveStatus));
+                    const isCompleted = idx <= activeIdx;
+                    return (
+                      <div key={step} className="space-y-1 text-center">
+                        <div
+                          className={`h-1.5 rounded-full transition-colors ${
+                            isCompleted ? 'bg-emerald-400' : 'bg-stone-800'
+                          }`}
+                        />
+                        <span
+                          className={`text-[10px] block truncate ${
+                            isCompleted ? 'text-stone-200 font-semibold' : 'text-stone-500'
+                          }`}
+                        >
+                          {idx === 0
+                            ? 'Antri'
+                            : idx === 1
+                            ? 'Dimasak'
+                            : idx === 2
+                            ? orderType === 'DELIVERY_DQM'
+                              ? 'Diantar'
+                              : 'Siap'
+                            : 'Selesai'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Order Details Summary */}
+              <div className="pt-3 border-t border-white/[0.06] text-xs text-stone-300 space-y-1.5 text-left">
                 <div className="flex justify-between">
-                  <span className="text-stone-400">Jenis Pesanan:</span>
-                  <span className="font-extrabold text-amber-400">
-                    {orderType === 'BUNGKUS' ? '[BUNGKUS]' : '[DELIVERY DQM]'}
+                  <span className="text-stone-400">Layanan:</span>
+                  <span className="font-semibold text-stone-100">
+                    {orderType === 'BUNGKUS' ? 'Bungkus (Ambil di Warung)' : 'Delivery Pesantren DQM'}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-stone-400">Total Tagihan:</span>
-                  <span className="font-extrabold text-orange-400">{formatRupiah(completedOrder.total)}</span>
+                  <span className="text-stone-400">Total Pembayaran:</span>
+                  <span className="font-mono font-bold text-orange-400 tabular-nums">
+                    {formatRupiah(completedOrder.total)}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-stone-400">Metode Bayar:</span>
-                  <span className="font-bold text-stone-200">{completedOrder.createdOrder.metode_pembayaran}</span>
+                  <span className="font-semibold text-stone-200">
+                    {completedOrder.createdOrder.metode_pembayaran}
+                  </span>
                 </div>
               </div>
             </div>
@@ -2191,28 +2405,28 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsViewingCustomerProof(true)}
-                  className="w-full min-h-[46px] py-2.5 px-4 rounded-2xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg transition cursor-pointer"
+                  className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 border border-white/10 text-stone-100 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
                 >
-                  <ReceiptText className="w-4 h-4" />
-                  <span>LIHAT BUKTI PENGANTARAN DQM</span>
+                  <ReceiptText className="w-4 h-4 text-orange-400" />
+                  <span>Lihat Bukti Pengantaran DQM</span>
                 </button>
               )}
 
               <button
                 type="button"
                 onClick={handleOpenWhatsAppConfirmation}
-                className="w-full min-h-[46px] py-2.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 transition cursor-pointer"
+                className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-bold text-xs flex items-center justify-center gap-2 shadow-md transition cursor-pointer"
               >
                 <MessageCircle className="w-4 h-4" />
-                <span>Kirim Format Pesanan ke WhatsApp Warung</span>
+                <span>Konfirmasi Pesanan via WhatsApp</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setCompletedOrder(null)}
-                className="w-full min-h-[42px] py-2 px-4 rounded-2xl bg-stone-800 hover:bg-stone-750 text-stone-300 font-bold text-xs transition cursor-pointer"
+                className="w-full min-h-[40px] py-2 px-4 rounded-xl bg-stone-950 hover:bg-stone-800 border border-white/[0.07] text-stone-300 font-semibold text-xs transition cursor-pointer"
               >
-                <span>Selesai & Pesan Menu Lain</span>
+                <span>Selesai &amp; Kembali ke Menu</span>
               </button>
             </div>
           </div>
@@ -2233,14 +2447,14 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
         />
       )}
 
-      {/* Footer */}
-      <footer className="mt-auto border-t border-stone-800/80 bg-stone-900/60 py-6 px-4 text-center text-xs text-stone-400 space-y-3">
-        <div className="max-w-md mx-auto space-y-1">
-          <p className="font-bold text-stone-300">
-            {settings.storeName} • {settings.address || settings.storeAddress}
+      {/* Quiet Editorial Footer */}
+      <footer className="mt-auto border-t border-white/[0.07] bg-stone-950 py-8 px-4 text-center text-xs text-stone-400">
+        <div className="max-w-xl mx-auto space-y-1.5">
+          <p className="font-display font-bold text-stone-200">
+            {settings.storeName}
           </p>
-          <p className="text-[11px] text-stone-400">
-            Layanan Pesan Online Resmi • BUNGKUS &amp; DELIVERY DQM.
+          <p className="text-xs text-stone-400">
+            {settings.address || settings.storeAddress} · Layanan Pesan Online Resmi Bungkus &amp; Delivery DQM
           </p>
         </div>
       </footer>
