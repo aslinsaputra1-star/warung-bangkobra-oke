@@ -139,20 +139,6 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Status, Role, & Controls */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* AI Bot Quick Button */}
-          {onOpenAIBot && (
-            <button
-              id="btn-header-ai-bot"
-              onClick={onOpenAIBot}
-              title="Buka Asisten AI KobraBot"
-              className="min-h-[40px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-stone-900 hover:bg-orange-600 active:scale-95 text-orange-400 hover:text-white border border-stone-800 hover:border-orange-500 transition shadow-sm cursor-pointer"
-            >
-              <Bot className="w-4 h-4 text-orange-400 group-hover:text-white" />
-              <span className="hidden sm:inline">KobraBot</span>
-              <Sparkles className="w-3 h-3 text-orange-400 animate-pulse" />
-            </button>
-          )}
-
           {/* Offline/Online Network & Cloud Sync Indicator */}
           <OfflineSyncBanner />
 

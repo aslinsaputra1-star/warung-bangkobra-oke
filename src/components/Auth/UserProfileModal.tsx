@@ -97,7 +97,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     { id: 'users', label: 'Manajemen Pengguna (RBAC)', desc: 'Pengaturan akun kasir, admin, staf, delivery, dan PIN akses' },
     { id: 'qrcode_order', label: 'QR Menu Warung Bang Kobra', desc: 'Pemesanan mandiri via scan HP untuk BUNGKUS & DELIVERY DQM' },
     { id: 'settings', label: 'Pengaturan Warung', desc: 'Data toko, biaya Delivery DQM, koneksi Sheets & Cloud Firestore' },
-    { id: 'ai_bot', label: 'Asisten AI KobraBot', desc: 'Konsultasi cerdas analisis bisnis & strategi menu' },
   ];
 
   const handleSaveProfile = (e: React.FormEvent) => {

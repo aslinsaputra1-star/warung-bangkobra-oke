@@ -626,19 +626,6 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
               </p>
             </div>
           </div>
-
-          {onBackToApp && (
-            <button
-              type="button"
-              id="btn-customer-back-to-pos"
-              onClick={onBackToApp}
-              title="Kembali ke Menu Utama (POS)"
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-red-600 via-orange-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-black text-xs shadow-md shadow-red-950/50 hover:scale-105 active:scale-95 transition cursor-pointer shrink-0"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Menu Utama (POS)</span>
-            </button>
-          )}
         </div>
       </header>
 

@@ -196,10 +196,45 @@ export default function App() {
   );
   const [settings, setSettings] = useState<StoreSettings>(() => StorageService.getSettings());
 
+  // Helper to check if current URL is a dedicated Customer Pesan Online / QR Menu link
+  const isDirectCustomerUrl = (() => {
+    if (typeof window === 'undefined') return false;
+    const search = window.location.search.toLowerCase();
+    const path = window.location.pathname.toLowerCase();
+    return (
+      search.includes('menu=public') ||
+      search.includes('menu=online') ||
+      search.includes('mode=public') ||
+      search.includes('order=') ||
+      search.includes('mode=order') ||
+      search.includes('scan=') ||
+      path.includes('/menu') ||
+      path.includes('/order') ||
+      path.includes('/pesan')
+    );
+  })();
+
   // User Authentication State & RBAC
   const [currentUser, setCurrentUser] = useState<WarungUser | null>(() => {
+    // 1. CRITICAL: If accessed via Pesan Online / Customer URL, strictly isolate as Customer (null staff user)
+    if (typeof window !== 'undefined') {
+      const search = window.location.search.toLowerCase();
+      const path = window.location.pathname.toLowerCase();
+      if (
+        search.includes('menu=') ||
+        search.includes('mode=public') ||
+        search.includes('order=') ||
+        search.includes('mode=order') ||
+        search.includes('scan=') ||
+        path.includes('/menu') ||
+        path.includes('/order') ||
+        path.includes('/pesan')
+      ) {
+        return null;
+      }
+    }
+    // 2. If existing authenticated staff session exists on internal POS URL, restore it
     const saved = StorageService.getAuthUser();
-    // 1. If existing authenticated staff session exists, restore it
     if (
       saved &&
       ['Owner', 'Admin', 'Kasir', 'Staff', 'Delivery', 'ADMIN', 'KASIR', 'DELIVERY'].includes(
@@ -208,19 +243,7 @@ export default function App() {
     ) {
       return saved;
     }
-    // 2. If the user explicitly navigated to public customer menu via URL, allow customer view
-    if (typeof window !== 'undefined') {
-      const search = window.location.search;
-      if (
-        search.includes('menu=') ||
-        search.includes('mode=public') ||
-        search.includes('order=') ||
-        search.includes('scan=')
-      ) {
-        return null;
-      }
-    }
-    // 3. Default to the primary Owner account (Rayyan) for the Warung Bang Kobra POS system
+    // 3. Default to the primary Owner account (Rayyan) only on internal POS workspace root
     const users = StorageService.getUsers();
     const owner =
       users.find((u) => u.email?.toLowerCase() === 'rayyanarasid549@gmail.com') ||
@@ -794,7 +817,7 @@ export default function App() {
   const handleLogout = () => {
     StorageService.logout();
     setCurrentUser(null);
-    setIsStaffLoginMode(false);
+    setIsStaffLoginMode(true);
     setIsLoginModalOpen(false);
     setIsPublicMenuMode(false);
     setIsCustomerMode(false);
@@ -1357,7 +1380,7 @@ export default function App() {
     );
   }
 
-  // 1. Direct Customer QR Self-Order Mode (from QR Code camera scan)
+  // 1. Direct Customer QR Self-Order Mode or Public Online Menu Mode
   if (isCustomerMode) {
     return (
       <CustomerOrderView
@@ -1379,35 +1402,13 @@ export default function App() {
     );
   }
 
-  // 2. Unauthenticated / Customer Portal: Layout Pelanggan Terpisah
-  if (!isStaffAuthenticated) {
-    // If user explicitly requests Staff Login view
-    if (isStaffLoginMode || activeTab === 'login') {
-      return (
-        <div className="min-h-screen bg-stone-950 flex flex-col justify-center">
-          <LoginView
-            currentUser={currentUser}
-            settings={settings}
-            onLoginSuccess={(user) => {
-              handleLoginSuccess(user);
-            }}
-            onBackToCustomerMenu={() => {
-              setIsStaffLoginMode(false);
-              setActiveTab('public_menu');
-            }}
-            showToast={showToast}
-          />
-        </div>
-      );
-    }
-
-    // Default Customer Menu: isolated public catalogue with takeaway/delivery ordering
+  // 2. Public Online Menu (Pesan Online Pelanggan) — strictly isolated from Owner/Admin/Kasir accounts
+  if (isPublicMenuMode || isDirectCustomerUrl) {
     return (
       <PublicMenuCustomerView
         products={products}
         variants={productVariants}
         settings={settings}
-        onOpenStaffLogin={() => setIsStaffLoginMode(true)}
         onOrderCreated={(newTx) => {
           setTransactions((prev) => [newTx, ...prev]);
           const updatedProds = StorageService.getProducts();
@@ -1422,44 +1423,40 @@ export default function App() {
     );
   }
 
-  // 3. Authenticated Staff: Previewing Customer Menu
-  if (isPublicMenuMode) {
-    return (
-      <div className="min-h-screen flex flex-col bg-stone-950">
-        <div className="bg-amber-950/90 border-b border-amber-800/80 px-4 py-2 flex items-center justify-between text-xs text-amber-200">
-          <div className="flex items-center gap-2">
-            <span className="font-extrabold bg-amber-500 text-stone-950 px-2 py-0.5 rounded text-[10px] uppercase">
-              Mode Pratinjau
-            </span>
-            <span>
-              Anda sedang melihat tampilan Menu Pelanggan (sebagai {currentUser.nama} - {currentUser.role})
-            </span>
-          </div>
-          <button
-            onClick={() => setIsPublicMenuMode(false)}
-            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-black rounded-xl transition text-xs flex items-center gap-1.5 cursor-pointer shadow-md"
-          >
-            <span>Kembali ke Panel POS</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+  // 3. Unauthenticated Staff Portal: Require PIN / Credentials Login
+  if (!isStaffAuthenticated) {
+    if (isStaffLoginMode || activeTab === 'login') {
+      return (
+        <div className="min-h-screen bg-stone-950 flex flex-col justify-center">
+          <LoginView
+            currentUser={currentUser}
+            settings={settings}
+            onLoginSuccess={(user) => {
+              handleLoginSuccess(user);
+            }}
+            showToast={showToast}
+          />
         </div>
-        <PublicMenuCustomerView
-          products={products}
-          variants={productVariants}
-          settings={settings}
-          onOpenStaffLogin={() => setIsPublicMenuMode(false)}
-          onOrderCreated={(newTx) => {
-            setTransactions((prev) => [newTx, ...prev]);
-            const updatedProds = StorageService.getProducts();
-            const updatedVars = StorageService.getProductVariants();
-            setProducts(updatedProds);
-            setProductVariants(updatedVars);
-            syncProductsToFirebase(updatedProds, false).catch(() => {});
-            syncProductVariantsToFirebase(updatedVars, false).catch(() => {});
-          }}
-          showToast={showToast}
-        />
-      </div>
+      );
+    }
+
+    // Isolated Customer Menu without any staff login triggers
+    return (
+      <PublicMenuCustomerView
+        products={products}
+        variants={productVariants}
+        settings={settings}
+        onOrderCreated={(newTx) => {
+          setTransactions((prev) => [newTx, ...prev]);
+          const updatedProds = StorageService.getProducts();
+          const updatedVars = StorageService.getProductVariants();
+          setProducts(updatedProds);
+          setProductVariants(updatedVars);
+          syncProductsToFirebase(updatedProds, false).catch(() => {});
+          syncProductVariantsToFirebase(updatedVars, false).catch(() => {});
+        }}
+        showToast={showToast}
+      />
     );
   }
 
@@ -1482,7 +1479,6 @@ export default function App() {
         onLogout={handleLogout}
         onChangeRole={handleRoleChange}
         onRoleChange={handleRoleChange}
-        onOpenAIBot={() => setIsAIDrawerOpen(true)}
         onOpenLogoEditor={() => setIsLogoEditorOpen(true)}
         onOpenCustomerView={() => setIsPublicMenuMode(true)}
       />
@@ -1751,29 +1747,6 @@ export default function App() {
           )}
         </main>
       </div>
-
-      {/* Floating KobraBot AI Launcher Button (Quick Access anywhere) */}
-      <button
-        id="btn-floating-kobra-bot"
-        onClick={() => setIsAIDrawerOpen(true)}
-        title="Tanya Asisten AI KobraBot"
-        className="fixed bottom-18 lg:bottom-6 right-4 sm:right-6 z-40 p-3 sm:px-4 sm:py-3 rounded-full bg-gradient-to-r from-amber-600 via-orange-500 to-amber-500 text-stone-950 font-extrabold shadow-xl shadow-amber-950/40 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 border-2 border-stone-900 group cursor-pointer"
-      >
-        <Bot className="w-5 h-5 text-stone-950 animate-bounce" />
-        <span className="hidden sm:inline text-xs tracking-wide">Tanya KobraBot</span>
-        <Sparkles className="w-3.5 h-3.5 text-stone-950" />
-      </button>
-
-      {/* AI Bot Quick Slide-over Drawer */}
-      <AIBotDrawer
-        isOpen={isAIDrawerOpen}
-        onClose={() => setIsAIDrawerOpen(false)}
-        products={products}
-        transactions={transactions}
-        settings={settings}
-        onNavigateToFull={() => setActiveTab('ai_bot')}
-        showToast={showToast}
-      />
 
       {/* Quick Logo Editor Modal */}
       <LogoEditorModal

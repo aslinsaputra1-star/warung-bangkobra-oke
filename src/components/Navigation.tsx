@@ -146,7 +146,6 @@ export const Navigation: React.FC<NavigationProps> = ({
     { id: 'menu_ads', label: 'Iklan Menu', icon: Megaphone, desc: 'Banner promo, diskon & running text', badgeText: 'Promo' },
     { id: 'login', label: 'Menu Login', icon: LogIn, desc: 'Portal masuk kasir & switch akun', badgeText: 'Akses' },
     { id: 'settings', label: 'Pengaturan & QRIS', icon: SettingsIcon, desc: 'Upload QRIS, Biaya Delivery DQM, data warung & struk', badgeText: 'QRIS' },
-    { id: 'ai_bot', label: 'Asisten AI', icon: Bot, desc: 'Analisis cerdas Warung KobraBot', badgeText: 'AI' },
   ];
 
   return (

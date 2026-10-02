@@ -681,17 +681,6 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {onOpenStaffLogin && (
-            <button
-              type="button"
-              onClick={onOpenStaffLogin}
-              className="flex items-center gap-1.5 bg-stone-950/90 hover:bg-stone-900 text-amber-300 border border-amber-400/50 px-3 py-1 rounded-lg text-xs font-black transition cursor-pointer shadow-sm active:scale-95"
-              title="Buka Panel Kasir & Pengelolaan Warung Bang Kobra"
-            >
-              <span>Panel POS Kasir</span>
-            </button>
-          )}
-
           <button
             type="button"
             onClick={handleCopyLink}
@@ -2251,22 +2240,9 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
             {settings.storeName} • {settings.address || settings.storeAddress}
           </p>
           <p className="text-[11px] text-stone-400">
-            Sistem Kasir & Menu Digital Online didukung oleh Warung Bang Kobra POS.
+            Layanan Pesan Online Resmi • BUNGKUS &amp; DELIVERY DQM.
           </p>
         </div>
-
-        {onOpenStaffLogin && (
-          <div className="pt-3 border-t border-stone-850">
-            <button
-              type="button"
-              onClick={onOpenStaffLogin}
-              className="text-[11px] text-stone-500 hover:text-amber-400 font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 mx-auto px-3 py-1.5 rounded-lg hover:bg-stone-900 border border-transparent hover:border-stone-800"
-            >
-              <Lock className="w-3.5 h-3.5 text-stone-500" />
-              <span>Portal Karyawan & Pemilik Warung (Masuk dengan PIN)</span>
-            </button>
-          </div>
-        )}
       </footer>
     </div>
   );
