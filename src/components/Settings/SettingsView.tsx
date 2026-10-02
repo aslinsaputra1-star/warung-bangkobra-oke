@@ -25,12 +25,15 @@ import {
   Truck,
   MapPin,
   Check,
+  QrCode,
+  CreditCard,
 } from 'lucide-react';
 import { StoreSettings, Product } from '../../types';
 import { formatRupiah } from '../../utils/formatters';
 import { GoogleSheetsSyncService } from '../../services/googleSheetsSync';
 import { StorageService } from '../../services/storage';
 import { LogoUploader } from './LogoUploader';
+import { QRISUploader } from './QRISUploader';
 import {
   testFirestoreConnection,
   syncProductsToFirebase,
@@ -114,6 +117,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isTestingUrl, setIsTestingUrl] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [showGuideModal, setShowGuideModal] = useState(false);
+  const [activeSettingsSection, setActiveSettingsSection] = useState<
+    'all' | 'qris' | 'delivery' | 'profile' | 'database'
+  >('all');
 
   // Firebase testing and sync states
   const [isTestingFirebase, setIsTestingFirebase] = useState(false);
@@ -333,14 +339,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   return (
     <div className="max-w-5xl mx-auto p-4 sm:p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl sm:text-2xl font-black text-stone-100 flex items-center gap-2">
             <Settings className="w-6 h-6 text-amber-500" />
-            <span>Pengaturan Warung & Database</span>
+            <span>Pengaturan Warung, Pembayaran QRIS &amp; Database</span>
           </h2>
           <p className="text-xs sm:text-sm text-stone-400">
-            Kustomisasi profil warung, integrasi Google Sheets, nomor WhatsApp, dan cetak struk.
+            Kelola pembayaran QRIS Warung Bang Kobra, tarif Delivery DQM, profil toko, dan sinkronisasi Firebase Cloud.
           </p>
         </div>
 
@@ -366,6 +372,79 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <span>{isSaving ? 'Menyimpan...' : isDirty ? 'Simpan Perubahan *' : 'Simpan Perubahan'}</span>
           </button>
         </div>
+      </div>
+
+      {/* Sub-Navigation Menu Pengaturan (Termasuk Menu QRIS) */}
+      <div className="flex items-center gap-1.5 p-1.5 bg-stone-900 border border-stone-800 rounded-2xl overflow-x-auto">
+        <button
+          type="button"
+          id="tab-settings-all"
+          onClick={() => setActiveSettingsSection('all')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer whitespace-nowrap shrink-0 ${
+            activeSettingsSection === 'all'
+              ? 'bg-amber-500 text-stone-950 shadow-md'
+              : 'text-stone-300 hover:text-white hover:bg-stone-800'
+          }`}
+        >
+          <Settings className="w-3.5 h-3.5" />
+          <span>Semua Pengaturan</span>
+        </button>
+
+        <button
+          type="button"
+          id="tab-settings-qris"
+          onClick={() => setActiveSettingsSection('qris')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer whitespace-nowrap shrink-0 ${
+            activeSettingsSection === 'qris'
+              ? 'bg-amber-500 text-stone-950 shadow-md'
+              : 'text-amber-300 hover:text-white bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30'
+          }`}
+        >
+          <QrCode className="w-3.5 h-3.5" />
+          <span>Menu QRIS (Pembayaran)</span>
+        </button>
+
+        <button
+          type="button"
+          id="tab-settings-delivery"
+          onClick={() => setActiveSettingsSection('delivery')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer whitespace-nowrap shrink-0 ${
+            activeSettingsSection === 'delivery'
+              ? 'bg-amber-500 text-stone-950 shadow-md'
+              : 'text-stone-300 hover:text-white hover:bg-stone-800'
+          }`}
+        >
+          <Truck className="w-3.5 h-3.5" />
+          <span>Delivery DQM</span>
+        </button>
+
+        <button
+          type="button"
+          id="tab-settings-profile"
+          onClick={() => setActiveSettingsSection('profile')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer whitespace-nowrap shrink-0 ${
+            activeSettingsSection === 'profile'
+              ? 'bg-amber-500 text-stone-950 shadow-md'
+              : 'text-stone-300 hover:text-white hover:bg-stone-800'
+          }`}
+        >
+          <Store className="w-3.5 h-3.5" />
+          <span>Profil &amp; Logo Warung</span>
+        </button>
+
+        <button
+          type="button"
+          id="tab-settings-database"
+          onClick={() => setActiveSettingsSection('database')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer whitespace-nowrap shrink-0 ${
+            activeSettingsSection === 'database'
+              ? 'bg-amber-500 text-stone-950 shadow-md'
+              : 'text-stone-300 hover:text-white hover:bg-stone-800'
+          }`}
+        >
+          <Database className="w-3.5 h-3.5" />
+          <span>Database, Struk &amp; Excel</span>
+        </button>
       </div>
 
       {/* Cloud Remote Update Alert if local edits are in progress */}
@@ -404,7 +483,46 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       )}
 
       <form onSubmit={handleSave} className="space-y-6">
+        {/* Section QRIS: WARUNG BANG KOBRA — Pengaturan Pembayaran (Fitur Upload QRIS) */}
+        {(activeSettingsSection === 'all' || activeSettingsSection === 'qris') && (
+          <div
+            id="settings-qris-payment"
+            className="bg-stone-900 border-2 border-amber-500/50 rounded-3xl p-6 space-y-5 shadow-xl relative overflow-hidden"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-stone-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/15 text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0">
+                  <QrCode className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-black text-stone-100 text-base sm:text-lg">
+                      Pengaturan Pembayaran — Upload &amp; Kelola QRIS
+                    </h3>
+                    <span className="text-xs font-bold text-amber-400">
+                      · WARUNG BANG KOBRA
+                    </span>
+                  </div>
+                  <p className="text-xs text-stone-400">
+                    Unggah, ganti, edit, pratinjau, atau hapus gambar QRIS (PNG, JPG, JPEG) untuk pembayaran pelanggan di Kasir POS, Menu Online, &amp; QR Order.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <QRISUploader
+              settings={formData}
+              onSaveSettings={async (newSettings) => {
+                setFormData(newSettings);
+                await onSaveSettings(newSettings);
+              }}
+              showToast={showToast}
+            />
+          </div>
+        )}
+
         {/* Section: Pengaturan → Delivery DQM */}
+        {(activeSettingsSection === 'all' || activeSettingsSection === 'delivery') && (
         <div
           id="settings-delivery-dqm"
           className="bg-stone-900 border-2 border-amber-500/40 rounded-3xl p-6 space-y-5 shadow-xl relative overflow-hidden"
@@ -578,7 +696,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </button>
           </div>
         </div>
+        )}
+
         {/* Section 0: Identitas Visual & Upload Logo Warung */}
+        {(activeSettingsSection === 'all' || activeSettingsSection === 'profile') && (
         <div className="bg-stone-900 border border-stone-800 rounded-3xl p-6 space-y-4 shadow-xl">
           <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-stone-800">
             <div className="flex items-center gap-2">
@@ -627,8 +748,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             showToast={showToast}
           />
         </div>
+        )}
 
         {/* Section 1: Profil Toko & WhatsApp */}
+        {(activeSettingsSection === 'all' || activeSettingsSection === 'profile') && (
         <div className="bg-stone-900 border border-stone-800 rounded-3xl p-6 space-y-4 shadow-xl">
           <div className="flex items-center gap-2 pb-2 border-b border-stone-800">
             <Store className="w-5 h-5 text-amber-500" />
@@ -717,22 +840,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </span>
             </div>
 
-            <div className="sm:col-span-2">
-              <label className="text-xs font-bold text-stone-300 mb-1 block">
-                URL Gambar QRIS Warung (Opsional)
-              </label>
-              <input
-                type="url"
-                value={formData.qrisImageUrl || ''}
-                onChange={(e) => handleInputChange('qrisImageUrl', e.target.value)}
-                placeholder="https://... (jika kosong akan dibuat QRIS otomatis)"
-                className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500 font-mono"
-              />
+            <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-stone-950 border border-stone-800">
+              <div className="flex items-center gap-2.5">
+                <QrCode className="w-4 h-4 text-amber-400 shrink-0" />
+                <div className="text-xs">
+                  <span className="font-bold text-stone-200">Gambar QRIS Pembayaran: </span>
+                  <span className={formData.qrisImageUrl ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>
+                    {formData.qrisImageUrl ? 'Sudah Diatur & Tersimpan di Cloud' : 'Belum Diatur'}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSettingsSection('qris');
+                  const el = document.getElementById('settings-qris-payment');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-extrabold transition cursor-pointer"
+              >
+                Kelola di Menu QRIS →
+              </button>
             </div>
           </div>
         </div>
+        )}
 
         {/* Section 2: Realtime Cloud Database (Firebase Firestore) */}
+        {(activeSettingsSection === 'all' || activeSettingsSection === 'database') && (
+        <>
         <div className="bg-stone-900 border border-orange-500/30 rounded-3xl p-6 space-y-4 shadow-xl relative overflow-hidden">
           <div className="flex items-center justify-between pb-3 border-b border-stone-800">
             <div className="flex items-center gap-2.5">
@@ -1162,6 +1298,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </button>
           </div>
         </div>
+        </>
+        )}
 
         {/* Sticky Bottom Action Bar for Quick Saving & Status */}
         <div className="sticky bottom-4 z-20 p-4 rounded-2xl bg-stone-900/95 backdrop-blur-md border border-stone-800 shadow-2xl flex flex-wrap items-center justify-between gap-3">

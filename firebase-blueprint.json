@@ -550,6 +550,43 @@
         "taxPercent": {
           "type": "number",
           "description": "Tax percentage"
+        },
+        "qrisImageUrl": {
+          "type": "string",
+          "description": "Firebase Storage or Data URL for store QRIS payment code"
+        },
+        "qrisUrl": {
+          "type": "string",
+          "description": "Alias for QRIS payment image URL"
+        },
+        "qrisMerchantName": {
+          "type": "string",
+          "description": "Merchant name displayed on QRIS payment card",
+          "maxLength": 150
+        },
+        "qrisNmid": {
+          "type": "string",
+          "description": "National Merchant ID (NMID) for QRIS",
+          "maxLength": 64
+        },
+        "qrisEnabled": {
+          "type": "boolean",
+          "description": "Whether QRIS payment is enabled"
+        },
+        "qrisInstruction": {
+          "type": "string",
+          "description": "Custom instruction text for scanning QRIS",
+          "maxLength": 400
+        },
+        "qrisStoragePath": {
+          "type": "string",
+          "description": "Firebase Storage object path for QRIS image",
+          "maxLength": 300
+        },
+        "qrisUpdatedAt": {
+          "type": "string",
+          "description": "ISO timestamp when QRIS was last updated",
+          "maxLength": 64
         }
       },
       "required": ["id", "storeName"]

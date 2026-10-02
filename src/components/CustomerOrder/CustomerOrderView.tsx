@@ -1628,8 +1628,36 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                   </div>
                 )}
                 {paymentMethod === 'QRIS' && (
-                  <div className="p-2.5 bg-stone-950 rounded-xl border border-stone-800 text-[11px] text-stone-300">
-                    Kode QRIS akan dikirimkan otomatis oleh kasir warung melalui balasan WhatsApp.
+                  <div className="p-3 bg-stone-950 rounded-xl border border-amber-500/30 text-[11px] text-stone-300 space-y-2.5">
+                    {(settings.qrisImageUrl || settings.qrisUrl) ? (
+                      <div className="flex flex-col sm:flex-row items-center gap-3">
+                        <div className="p-2 bg-white rounded-xl shrink-0 shadow-md">
+                          <img
+                            src={settings.qrisImageUrl || settings.qrisUrl}
+                            alt="QRIS Warung Bang Kobra"
+                            className="w-28 h-28 object-contain"
+                          />
+                        </div>
+                        <div className="space-y-1 text-center sm:text-left">
+                          <div className="font-extrabold text-xs text-amber-400">
+                            {settings.qrisMerchantName || settings.storeName || 'WARUNG BANG KOBRA'}
+                          </div>
+                          {settings.qrisNmid && (
+                            <div className="text-[10px] font-mono text-stone-400">
+                              NMID: {settings.qrisNmid}
+                            </div>
+                          )}
+                          <p className="text-[11px] text-stone-300 leading-relaxed">
+                            {settings.qrisInstruction ||
+                              'Scan kode QRIS di samping menggunakan aplikasi e-Wallet atau Mobile Banking, lalu kirim bukti bayar via WhatsApp.'}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        Kode QRIS akan dikirimkan otomatis oleh kasir warung melalui balasan WhatsApp.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

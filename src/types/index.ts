@@ -277,6 +277,13 @@ export interface StoreSettings {
   autoSync: boolean;
   stockControl: boolean;
   qrisImageUrl: string;
+  qrisUrl?: string;
+  qrisMerchantName?: string;
+  qrisNmid?: string;
+  qrisEnabled?: boolean;
+  qrisInstruction?: string;
+  qrisStoragePath?: string;
+  qrisUpdatedAt?: string;
   activeCashier: string;
   role: UserRole;
   theme: 'dark' | 'light';

@@ -374,23 +374,39 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           {/* QRIS Display View */}
           {method === 'QRIS' && (
             <div className="p-4 rounded-2xl bg-stone-950 border border-amber-500/30 text-center space-y-3">
+              <div className="flex items-center justify-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-[10px] font-black text-amber-300 uppercase tracking-wider">
+                  {(settings.qrisImageUrl || settings.qrisUrl) ? 'QRIS Resmi Toko' : 'QRIS Standar'}
+                </span>
+                {settings.qrisNmid && (
+                  <span className="px-2 py-0.5 rounded-md bg-stone-900 border border-stone-800 text-[10px] font-mono text-stone-400">
+                    NMID: {settings.qrisNmid}
+                  </span>
+                )}
+              </div>
               <div className="inline-block p-3 rounded-2xl bg-white shadow-xl">
                 <img
                   src={
                     settings.qrisImageUrl ||
+                    settings.qrisUrl ||
                     `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=QRIS_WARUNG_BANG_KOBRA_${total}`
                   }
                   alt="QRIS Warung Bang Kobra"
-                  className="w-44 h-44 object-contain mx-auto"
+                  className="w-48 h-48 object-contain mx-auto"
                 />
               </div>
               <div>
                 <div className="font-extrabold text-sm text-stone-100">
-                  {settings.storeName}
+                  {settings.qrisMerchantName || settings.storeName}
                 </div>
                 <div className="text-xs text-stone-400 mt-1">
-                  Scan QRIS untuk menyelesaikan pembayaran
+                  {settings.qrisInstruction || 'Scan QRIS untuk menyelesaikan pembayaran'}
                 </div>
+                {!(settings.qrisImageUrl || settings.qrisUrl) && (
+                  <div className="text-[11px] text-amber-400/90 mt-2 bg-amber-950/30 border border-amber-500/20 rounded-lg px-2.5 py-1.5">
+                    Tips: Unggah gambar QRIS resmi toko di menu <strong>Pengaturan → QRIS</strong>
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -2010,17 +2010,25 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                 )}
 
                 {/* QRIS Info Box */}
-                {paymentMethod === 'QRIS' && settings.qrisImageUrl && (
-                  <div className="p-3 bg-stone-950 border border-stone-800 rounded-2xl flex items-center gap-3">
+                {paymentMethod === 'QRIS' && (settings.qrisImageUrl || settings.qrisUrl) && (
+                  <div className="p-3 bg-stone-950 border border-amber-500/30 rounded-2xl flex items-center gap-3">
                     <img
-                      src={settings.qrisImageUrl}
+                      src={settings.qrisImageUrl || settings.qrisUrl}
                       alt="QRIS Warung"
-                      className="w-16 h-16 rounded-xl bg-white p-1 object-contain"
+                      className="w-20 h-20 rounded-xl bg-white p-1.5 object-contain shrink-0"
                     />
                     <div className="text-xs space-y-1">
-                      <span className="font-bold text-amber-400 block">Scan QRIS Resmi</span>
-                      <p className="text-[11px] text-stone-400">
-                        Bisa menggunakan GoPay, OVO, Dana, ShopeePay, BCA, Mandiri, BRI, dll.
+                      <span className="font-bold text-amber-400 block">
+                        {settings.qrisMerchantName || settings.storeName || 'Scan QRIS Resmi'}
+                      </span>
+                      {settings.qrisNmid && (
+                        <span className="text-[10px] font-mono text-stone-400 block">
+                          NMID: {settings.qrisNmid}
+                        </span>
+                      )}
+                      <p className="text-[11px] text-stone-300">
+                        {settings.qrisInstruction ||
+                          'Bisa menggunakan GoPay, OVO, Dana, ShopeePay, BCA, Mandiri, BRI, dll.'}
                       </p>
                     </div>
                   </div>

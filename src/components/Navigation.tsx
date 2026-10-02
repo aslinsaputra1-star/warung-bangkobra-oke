@@ -145,7 +145,7 @@ export const Navigation: React.FC<NavigationProps> = ({
     { id: 'public_menu', label: 'Menu Online', icon: Globe, desc: 'Tautan menu web & pesanan WA', badgeText: 'Web' },
     { id: 'menu_ads', label: 'Iklan Menu', icon: Megaphone, desc: 'Banner promo, diskon & running text', badgeText: 'Promo' },
     { id: 'login', label: 'Menu Login', icon: LogIn, desc: 'Portal masuk kasir & switch akun', badgeText: 'Akses' },
-    { id: 'settings', label: 'Pengaturan', icon: SettingsIcon, desc: 'Biaya Delivery DQM, data warung & struk' },
+    { id: 'settings', label: 'Pengaturan & QRIS', icon: SettingsIcon, desc: 'Upload QRIS, Biaya Delivery DQM, data warung & struk', badgeText: 'QRIS' },
     { id: 'ai_bot', label: 'Asisten AI', icon: Bot, desc: 'Analisis cerdas Warung KobraBot', badgeText: 'AI' },
   ];
 
@@ -299,15 +299,32 @@ export const Navigation: React.FC<NavigationProps> = ({
             </div>
 
             {onOpenLogoEditor && (role === 'ADMIN' || effectiveRole === 'Owner' || effectiveRole === 'Admin') && (
-              <button
-                type="button"
-                id="btn-sidebar-edit-logo"
-                onClick={onOpenLogoEditor}
-                className="w-full min-h-[36px] flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl bg-stone-950 hover:bg-stone-800 text-stone-200 hover:text-orange-400 border border-stone-800 text-xs font-bold transition cursor-pointer"
-              >
-                <ImageIcon className="w-3.5 h-3.5 text-orange-400" />
-                <span>Ubah Logo Warung</span>
-              </button>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  id="btn-sidebar-edit-logo"
+                  onClick={onOpenLogoEditor}
+                  className="w-full min-h-[36px] flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl bg-stone-950 hover:bg-stone-800 text-stone-200 hover:text-orange-400 border border-stone-800 text-[11px] font-bold transition cursor-pointer whitespace-nowrap"
+                >
+                  <ImageIcon className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                  <span>Logo</span>
+                </button>
+                <button
+                  type="button"
+                  id="btn-sidebar-qris-settings"
+                  onClick={() => {
+                    handleSelectTab('settings');
+                    setTimeout(() => {
+                      const tabBtn = document.getElementById('tab-settings-qris');
+                      if (tabBtn) tabBtn.click();
+                    }, 80);
+                  }}
+                  className="w-full min-h-[36px] flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl bg-stone-950 hover:bg-stone-800 text-amber-300 hover:text-amber-200 border border-amber-500/30 text-[11px] font-bold transition cursor-pointer whitespace-nowrap"
+                >
+                  <QrCode className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>Upload QRIS</span>
+                </button>
+              </div>
             )}
           </div>
         </div>

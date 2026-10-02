@@ -28,6 +28,7 @@ import {
   uploadBytes,
   uploadString,
   getDownloadURL,
+  deleteObject,
 } from 'firebase/storage';
 import {
   auth,
@@ -158,6 +159,167 @@ export async function uploadLogoToFirebaseStorage(
   } catch (err) {
     console.warn('Logo upload helper notice:', err);
     return typeof fileOrDataUrl === 'string' ? fileOrDataUrl : '';
+  }
+}
+
+/**
+ * UPLOAD QRIS IMAGE TO FIREBASE STORAGE & RETURN DOWNLOAD URL + STORAGE PATH
+ * Supports PNG, JPG, JPEG files or edited canvas Data URLs.
+ */
+export async function uploadQRISImageToFirebase(
+  fileOrDataUrl: File | string,
+  storeName = 'WARUNG_BANG_KOBRA',
+  fallbackDataUrl?: string
+): Promise<{ downloadUrl: string; storagePath: string }> {
+  const safeStore = String(storeName || 'WARUNG_BANG_KOBRA')
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]/g, '_');
+
+  let ext = 'png';
+  if (fileOrDataUrl instanceof File) {
+    const lower = fileOrDataUrl.name.toLowerCase();
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg') || fileOrDataUrl.type === 'image/jpeg') {
+      ext = 'jpg';
+    }
+  } else if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:image/jpeg')) {
+    ext = 'jpg';
+  }
+
+  const storagePath = `qris/qris_${safeStore}_${Date.now()}.${ext}`;
+  const fallbackUrl =
+    fallbackDataUrl || (typeof fileOrDataUrl === 'string' ? fileOrDataUrl : '');
+
+  try {
+    await ensureFirebaseAuth();
+    const fileRef = storageRef(storage, storagePath);
+
+    const uploadTask = async (): Promise<string> => {
+      if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
+        await uploadString(fileRef, fileOrDataUrl, 'data_url');
+        return await getDownloadURL(fileRef);
+      } else if (fileOrDataUrl instanceof File) {
+        await uploadBytes(fileRef, fileOrDataUrl, {
+          contentType: fileOrDataUrl.type || (ext === 'jpg' ? 'image/jpeg' : 'image/png'),
+        });
+        return await getDownloadURL(fileRef);
+      }
+      return fallbackUrl;
+    };
+
+    // Race with 2.5s timeout so QRIS upload succeeds immediately even if Storage CORS is restricted
+    const timeoutPromise = new Promise<string>((resolve) => {
+      setTimeout(() => {
+        resolve(fallbackUrl);
+      }, 2500);
+    });
+
+    const resolvedUrl = await Promise.race([uploadTask(), timeoutPromise]);
+    const finalUrl = resolvedUrl || fallbackUrl;
+
+    logAuditActivity(
+      'UPLOAD_QRIS',
+      `Mengunggah/memperbarui gambar QRIS pembayaran (${storagePath})`,
+      auth.currentUser?.email || 'Owner',
+      'SETTINGS_QRIS'
+    ).catch(() => {});
+
+    return {
+      downloadUrl: finalUrl,
+      storagePath,
+    };
+  } catch (err) {
+    console.warn('QRIS Firebase Storage upload fallback to optimized DataURL:', err);
+    logAuditActivity(
+      'UPLOAD_QRIS',
+      `Memperbarui gambar QRIS pembayaran di Firestore`,
+      auth.currentUser?.email || 'Owner',
+      'SETTINGS_QRIS'
+    ).catch(() => {});
+    return {
+      downloadUrl: fallbackUrl,
+      storagePath,
+    };
+  }
+}
+
+/**
+ * DELETE QRIS IMAGE FROM FIREBASE STORAGE & CLEAR URL IN FIRESTORE
+ */
+export async function deleteQRISImageFromFirebase(
+  currentUrl?: string,
+  storagePath?: string
+): Promise<boolean> {
+  try {
+    await ensureFirebaseAuth();
+
+    // 1. Attempt to remove file from Firebase Storage if storagePath or Firebase Storage URL exists
+    if (storagePath && storagePath.trim() !== '') {
+      try {
+        const fileRef = storageRef(storage, storagePath.trim());
+        await Promise.race([
+          deleteObject(fileRef),
+          new Promise((resolve) => setTimeout(resolve, 1500)),
+        ]);
+      } catch (storageErr) {
+        console.warn('Notice removing QRIS object by storagePath:', storageErr);
+      }
+    } else if (
+      currentUrl &&
+      (currentUrl.includes('firebasestorage.googleapis.com') || currentUrl.startsWith('gs://'))
+    ) {
+      try {
+        const fileRef = storageRef(storage, currentUrl);
+        await Promise.race([
+          deleteObject(fileRef),
+          new Promise((resolve) => setTimeout(resolve, 1500)),
+        ]);
+      } catch (storageErr) {
+        console.warn('Notice removing QRIS object by URL:', storageErr);
+      }
+    }
+
+    // 2. Clear QRIS URL in Firestore settings/warung and settings/qris
+    const nowIso = new Date().toISOString();
+    const warungRef = doc(db, 'settings', 'warung');
+    const qrisDocRef = doc(db, 'settings', 'qris');
+
+    await setDoc(
+      warungRef,
+      {
+        id: 'warung',
+        qrisImageUrl: '',
+        qrisUrl: '',
+        qrisStoragePath: '',
+        qrisUpdatedAt: nowIso,
+        updated_at: nowIso,
+      },
+      { merge: true }
+    );
+
+    await setDoc(
+      qrisDocRef,
+      {
+        id: 'qris',
+        qrisImageUrl: '',
+        qrisUrl: '',
+        qrisStoragePath: '',
+        qrisUpdatedAt: nowIso,
+        updated_at: nowIso,
+      },
+      { merge: true }
+    );
+
+    logAuditActivity(
+      'DELETE_QRIS',
+      `Menghapus gambar QRIS dari pengaturan pembayaran warung`,
+      auth.currentUser?.email || 'Owner',
+      'SETTINGS_QRIS'
+    ).catch(() => {});
+
+    return true;
+  } catch (err) {
+    console.warn('Error deleting QRIS from Firebase:', err);
+    return false;
   }
 }
 
@@ -2098,7 +2260,12 @@ export async function saveSettingsToFirebase(settings: StoreSettings): Promise<b
       await ensureFirebaseAuth();
     }
     const docRef = doc(db, 'settings', 'warung');
+    const qrisDocRef = doc(db, 'settings', 'qris');
     const storeAddr = String(settings.address || settings.storeAddress || '').trim();
+    const resolvedQrisUrl = String(
+      settings.qrisImageUrl !== undefined ? settings.qrisImageUrl : settings.qrisUrl || ''
+    );
+    const nowIso = new Date().toISOString();
     const payload = {
       id: 'warung',
       storeName: String(settings.storeName || 'Warung Bang Kobra'),
@@ -2112,7 +2279,19 @@ export async function saveSettingsToFirebase(settings: StoreSettings): Promise<b
       receiptPaperSize: settings.receiptPaperSize || '58mm',
       taxPercent: Number(settings.taxPercent ?? 0),
       currency: String(settings.currency || 'Rp'),
-      qrisImageUrl: String(settings.qrisImageUrl || ''),
+      qrisImageUrl: resolvedQrisUrl,
+      qrisUrl: resolvedQrisUrl,
+      qrisMerchantName: String(
+        settings.qrisMerchantName || settings.storeName || 'WARUNG BANG KOBRA'
+      ),
+      qrisNmid: String(settings.qrisNmid || ''),
+      qrisEnabled: settings.qrisEnabled !== undefined ? Boolean(settings.qrisEnabled) : true,
+      qrisInstruction: String(
+        settings.qrisInstruction ||
+          'Scan QRIS menggunakan GoPay, OVO, DANA, ShopeePay, LinkAja, atau Mobile Banking.'
+      ),
+      qrisStoragePath: String(settings.qrisStoragePath || ''),
+      qrisUpdatedAt: String(settings.qrisUpdatedAt || nowIso),
       onlineMenuEnabled: Boolean(settings.onlineMenuEnabled ?? true),
       onlineMenuBannerText: String(settings.onlineMenuBannerText || ''),
       onlineMenuHours: String(settings.onlineMenuHours || ''),
@@ -2124,9 +2303,26 @@ export async function saveSettingsToFirebase(settings: StoreSettings): Promise<b
       deliveryFeeType: settings.deliveryFeeType || 'FREE',
       deliveryFeeAmount: Number(settings.deliveryFeeAmount ?? 2000),
       deliveryDqmNote: String(settings.deliveryDqmNote || ''),
-      updated_at: new Date().toISOString(),
+      updated_at: nowIso,
     };
     await setDoc(docRef, payload, { merge: true });
+    await setDoc(
+      qrisDocRef,
+      {
+        id: 'qris',
+        storeName: payload.storeName,
+        qrisImageUrl: payload.qrisImageUrl,
+        qrisUrl: payload.qrisUrl,
+        qrisMerchantName: payload.qrisMerchantName,
+        qrisNmid: payload.qrisNmid,
+        qrisEnabled: payload.qrisEnabled,
+        qrisInstruction: payload.qrisInstruction,
+        qrisStoragePath: payload.qrisStoragePath,
+        qrisUpdatedAt: payload.qrisUpdatedAt,
+        updated_at: nowIso,
+      },
+      { merge: true }
+    );
     return true;
   } catch (err) {
     console.warn('Gagal menyimpan settings ke Firebase:', err);
@@ -2149,6 +2345,13 @@ export function subscribeToFirebaseSettings(
           const remote = docSnap.data() as Partial<StoreSettings>;
           if (!remote.logoUrl || remote.logoUrl.trim() === '') {
             remote.logoUrl = '/icon.svg';
+          }
+          if (remote.qrisImageUrl !== undefined) {
+            remote.qrisImageUrl = String(remote.qrisImageUrl || '');
+            remote.qrisUrl = remote.qrisImageUrl;
+          } else if (remote.qrisUrl !== undefined) {
+            remote.qrisImageUrl = String(remote.qrisUrl || '');
+            remote.qrisUrl = remote.qrisImageUrl;
           }
           const addr = String(remote.address || remote.storeAddress || '').trim();
           if (addr) {
