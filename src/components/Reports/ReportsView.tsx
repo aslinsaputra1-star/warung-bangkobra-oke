@@ -770,12 +770,18 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                       <div className="flex items-center gap-1.5 mt-0.5">
                         <span
                           className={`px-1.5 py-0.5 rounded text-[9px] font-black border ${
-                            resolveOrderType(tx) === 'DELIVERY_DQM'
+                            tx.orderType === 'PRE_ORDER' || Boolean(tx.poNumber)
+                              ? 'bg-red-500/20 text-red-300 border-red-500/40'
+                              : resolveOrderType(tx) === 'DELIVERY_DQM'
                               ? 'bg-teal-500/20 text-teal-300 border-teal-500/40'
                               : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                           }`}
                         >
-                          {resolveOrderType(tx) === 'DELIVERY_DQM' ? '[DELIVERY DQM]' : '[BUNGKUS]'}
+                          {tx.orderType === 'PRE_ORDER' || Boolean(tx.poNumber)
+                            ? '[PRE-ORDER]'
+                            : resolveOrderType(tx) === 'DELIVERY_DQM'
+                            ? '[DELIVERY DQM]'
+                            : '[BUNGKUS]'}
                         </span>
                         <span className="text-[10px] text-stone-400 font-semibold">
                           {getOrderStatusLabel(tx)}

@@ -750,3 +750,124 @@ export function exportVariantSalesReportToExcel(
     filename || `Laporan_Penjualan_Varian_WarungBangKobra_${new Date().toISOString().split('T')[0]}.xlsx`;
   downloadBlob(blob, name);
 }
+
+/**
+ * EXPORT PRE-ORDER (PO) KE EXCEL (.xlsx)
+ */
+export function exportPreOrdersToExcel(
+  orders: Transaction[],
+  filename?: string
+) {
+  const data = orders.map((o, idx) => {
+    const isDelivery = o.deliveryType === 'DELIVERY_DQM' || o.deliveryType === 'DELIVERY';
+    return {
+      'No': idx + 1,
+      'No. PO': o.poNumber || o.id_transaksi,
+      'Nama Pemesan': o.nama_pelanggan,
+      'No. WhatsApp': o.no_whatsapp,
+      'Email': o.email_pelanggan || '-',
+      'Jenis Acara': o.eventType || 'Acara',
+      'Jadwal Siap': `${o.eventDate || o.tanggal} ${o.eventTime || o.jam}`,
+      'Estimasi Tamu': o.guestCount ? `${o.guestCount} Org` : '-',
+      'Metode Ambil': isDelivery ? 'Delivery DQM' : 'Bungkus (Warung)',
+      'Lokasi Pengantaran': isDelivery ? (o.eventLocation || o.deliveryLocation || 'DQM') : '-',
+      'Daftar Menu': (o.items || []).map((it) => `${it.nama_produk} (${it.qty}x)`).join('; '),
+      'Subtotal (Rp)': o.subtotal,
+      'Biaya Delivery (Rp)': o.biaya || o.deliveryFee || 0,
+      'Total Nilai PO (Rp)': o.total,
+      'Kewajiban DP (Rp)': o.dpRequired || 0,
+      'DP Dibayar (Rp)': o.dpPaid || 0,
+      'Sisa Tagihan (Rp)': o.remainingPayment !== undefined ? o.remainingPayment : Math.max(0, o.total - (o.dpPaid || 0)),
+      'Status Pembayaran': o.paymentStatus || 'BELUM_BAYAR',
+      'Status PO': o.poStatus || o.status,
+      'Metode Bayar': o.metode_pembayaran,
+      'Catatan': o.notes || o.catatan_pesanan || '',
+      'Tanggal Dibuat': o.created_at,
+    };
+  });
+
+  const worksheet = XLSX.utils.json_to_sheet(data);
+  worksheet['!cols'] = [
+    { wch: 5 },  // No
+    { wch: 22 }, // No PO
+    { wch: 20 }, // Nama Pemesan
+    { wch: 15 }, // WhatsApp
+    { wch: 20 }, // Email
+    { wch: 18 }, // Jenis Acara
+    { wch: 18 }, // Jadwal Siap
+    { wch: 14 }, // Estimasi Tamu
+    { wch: 16 }, // Metode Ambil
+    { wch: 25 }, // Lokasi
+    { wch: 35 }, // Daftar Menu
+    { wch: 15 }, // Subtotal
+    { wch: 15 }, // Delivery Fee
+    { wch: 18 }, // Total
+    { wch: 16 }, // DP Required
+    { wch: 16 }, // DP Paid
+    { wch: 16 }, // Sisa
+    { wch: 18 }, // Status Bayar
+    { wch: 20 }, // Status PO
+    { wch: 14 }, // Metode Bayar
+    { wch: 30 }, // Catatan
+    { wch: 20 }, // Tanggal Dibuat
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Data Pre-Order');
+
+  const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([excelBuffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8',
+  });
+
+  const name =
+    filename || `Laporan_PreOrder_WarungBangKobra_${new Date().toISOString().split('T')[0]}.xlsx`;
+  downloadBlob(blob, name);
+}
+
+/**
+ * EXPORT PRE-ORDER (PO) KE CSV
+ */
+export function exportPreOrdersToCSV(orders: Transaction[], filename?: string) {
+  const headers = [
+    'No PO',
+    'Nama Pemesan',
+    'WhatsApp',
+    'Email',
+    'Jenis Acara',
+    'Jadwal Siap',
+    'Metode Ambil',
+    'Lokasi',
+    'Total (Rp)',
+    'DP Dibayar (Rp)',
+    'Sisa (Rp)',
+    'Status Bayar',
+    'Status PO',
+  ];
+
+  const rows = orders.map((o) => {
+    const isDelivery = o.deliveryType === 'DELIVERY_DQM' || o.deliveryType === 'DELIVERY';
+    const sisa = o.remainingPayment !== undefined ? o.remainingPayment : Math.max(0, o.total - (o.dpPaid || 0));
+    return [
+      `"${o.poNumber || o.id_transaksi}"`,
+      `"${(o.nama_pelanggan || '').replace(/"/g, '""')}"`,
+      `"${o.no_whatsapp}"`,
+      `"${o.email_pelanggan || ''}"`,
+      `"${(o.eventType || 'Acara').replace(/"/g, '""')}"`,
+      `"${o.eventDate || o.tanggal} ${o.eventTime || o.jam}"`,
+      `"${isDelivery ? 'Delivery DQM' : 'Bungkus'}"`,
+      `"${(o.eventLocation || o.deliveryLocation || '').replace(/"/g, '""')}"`,
+      o.total,
+      o.dpPaid || 0,
+      sisa,
+      `"${o.paymentStatus || 'BELUM_BAYAR'}"`,
+      `"${o.poStatus || o.status}"`,
+    ].join(',');
+  });
+
+  const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const name = filename || `PreOrder_WarungBangKobra_${new Date().toISOString().split('T')[0]}.csv`;
+  downloadBlob(blob, name);
+}
+

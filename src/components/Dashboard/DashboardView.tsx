@@ -198,6 +198,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <span>+ Pesanan WhatsApp</span>
         </button>
         <button
+          onClick={() => onNavigate('preorders')}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-stone-900 border border-stone-800 hover:bg-stone-800 text-stone-200 font-bold text-xs whitespace-nowrap active:scale-95 transition"
+        >
+          <Calendar className="w-4 h-4 text-red-500" />
+          <span>Pre-Order (PO)</span>
+        </button>
+        <button
           onClick={() => onNavigate('products')}
           className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-stone-900 border border-stone-800 hover:bg-stone-800 text-stone-200 font-bold text-xs whitespace-nowrap active:scale-95 transition"
         >
@@ -627,12 +634,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         </span>
                         <span
                           className={`px-1.5 py-0.5 rounded text-[9px] font-black border ${
-                            resolveOrderType(tx) === 'DELIVERY_DQM'
+                            tx.orderType === 'PRE_ORDER' || Boolean(tx.poNumber)
+                              ? 'bg-red-500/20 text-red-300 border-red-500/40'
+                              : resolveOrderType(tx) === 'DELIVERY_DQM'
                               ? 'bg-teal-500/20 text-teal-300 border-teal-500/40'
                               : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                           }`}
                         >
-                          {resolveOrderType(tx) === 'DELIVERY_DQM' ? '[DELIVERY DQM]' : '[BUNGKUS]'}
+                          {tx.orderType === 'PRE_ORDER' || Boolean(tx.poNumber)
+                            ? '[PRE-ORDER]'
+                            : resolveOrderType(tx) === 'DELIVERY_DQM'
+                            ? '[DELIVERY DQM]'
+                            : '[BUNGKUS]'}
                         </span>
                       </div>
                       <div className="text-[11px] text-stone-400">

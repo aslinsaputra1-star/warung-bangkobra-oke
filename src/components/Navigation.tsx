@@ -26,6 +26,7 @@ import {
   Globe,
   Megaphone,
   Truck,
+  Calendar,
 } from 'lucide-react';
 import { ActiveTab, UserRole, WarungUser } from '../types';
 import { hasTabAccess, normalizeRole, getRoleBadgeInfo } from '../utils/rbac';
@@ -38,6 +39,7 @@ interface NavigationProps {
   onTabChange?: (tab: ActiveTab) => void;
   role: UserRole;
   lowStockCount: number;
+  pendingPOCount?: number;
   currentUser?: WarungUser | null;
   onOpenProfile?: () => void;
   onOpenLogoEditor?: () => void;
@@ -52,6 +54,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   onTabChange,
   role,
   lowStockCount,
+  pendingPOCount = 0,
   currentUser,
   onOpenProfile,
   onOpenLogoEditor,
@@ -85,6 +88,7 @@ export const Navigation: React.FC<NavigationProps> = ({
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'pos', label: 'Kasir', icon: ShoppingCart },
     { id: 'orders', label: 'Antrian Kasir', icon: ShoppingBag },
+    { id: 'preorders', label: 'Pre-Order (PO)', icon: Calendar, badge: pendingPOCount, badgeText: 'PO' },
     { id: 'delivery_dqm', label: 'Delivery DQM', icon: Truck, badgeText: 'DQM' },
     { id: 'products', label: 'Produk', icon: Package },
     { id: 'categories', label: 'Kategori', icon: Tags },
@@ -133,6 +137,7 @@ export const Navigation: React.FC<NavigationProps> = ({
     badge?: number;
     badgeText?: string;
   }> = [
+    { id: 'preorders', label: 'Pre-Order (PO) Acara', icon: Calendar, desc: 'Pemesanan katering acara, DP & kalender', badge: pendingPOCount, badgeText: 'PO' },
     { id: 'delivery_dqm', label: 'Delivery DQM', icon: Truck, desc: 'Antrian & status pengantaran Pesantren DQM', badgeText: 'DQM' },
     { id: 'products', label: 'Produk', icon: Package, desc: 'Kelola katalog makanan & minuman' },
     { id: 'categories', label: 'Kategori', icon: Tags, desc: 'Kelompok menu makanan & minuman' },

@@ -12,6 +12,9 @@ export const DQM_LOCATIONS = [
 ];
 
 export function resolveOrderType(tx: Partial<Transaction>): OrderType {
+  if (tx.orderType === 'PRE_ORDER' || tx.tipe_pesanan === 'PRE_ORDER' || tx.poNumber) {
+    return 'PRE_ORDER';
+  }
   if (tx.orderType === 'DELIVERY_DQM' || tx.tipe_pesanan === 'DELIVERY_DQM' || tx.tipe_pesanan === 'Delivery') {
     return 'DELIVERY_DQM';
   }
@@ -260,7 +263,7 @@ export function sanitizeWhatsAppNumber(phone: string): string {
 export interface OnlineQRCodeOrderPayload {
   orderId: string;
   storeName: string;
-  orderType: 'BUNGKUS' | 'DELIVERY_DQM' | 'Takeaway' | 'Delivery';
+  orderType: OrderType | string;
   customerName: string;
   customerPhone: string;
   pickupTime?: string;
@@ -452,13 +455,333 @@ export function openWhatsAppChat(phoneNumber: string, message: string): void {
     ? `https://wa.me/${sanitized}?text=${encodedText}`
     : `https://api.whatsapp.com/send?text=${encodedText}`;
   try {
-    const win = window.open(url, '_blank');
-    if (!win || win.closed || typeof win.closed === 'undefined') {
-      window.location.href = url;
-    }
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      if (document.body.contains(link)) {
+        document.body.removeChild(link);
+      }
+    }, 100);
   } catch {
     window.location.href = url;
   }
+}
+
+/**
+ * Format Pesan Otomatis Chat Kasir WhatsApp Warung Bang Kobra
+ * Menyertakan informasi pesanan lengkap jika tersedia.
+ */
+export function buildChatKasirWhatsAppMessage(params: {
+  storeName?: string;
+  order?: Partial<Transaction> | null;
+  cartItems?: Array<{ name: string; qty: number; price: number; notes?: string }>;
+  customerName?: string;
+  orderType?: string;
+}): string {
+  const store = params.storeName || 'WARUNG BANG KOBRA';
+  let msg = `Halo Kasir *${store}* 👋\n\n`;
+
+  // Kasus 1: Pelanggan sudah memiliki pesanan / tiket antrian aktif
+  if (params.order && params.order.id_transaksi) {
+    const queueNo = getTakeawayQueueNumber(params.order as any);
+    msg += `Saya ingin menanyakan informasi pesanan saya:\n`;
+    msg += `• *No. Antrian:* ${queueNo}\n`;
+    msg += `• *No. Transaksi:* ${params.order.id_transaksi}\n`;
+    if (params.order.nama_pelanggan) {
+      msg += `• *Nama Pemesan:* ${params.order.nama_pelanggan}\n`;
+    }
+    if (params.order.tipe_pesanan || params.order.orderType) {
+      const typeStr =
+        (params.order.tipe_pesanan || params.order.orderType) === 'DELIVERY_DQM'
+          ? 'Delivery Area DQM'
+          : 'Bungkus (Takeaway)';
+      msg += `• *Layanan:* ${typeStr}\n`;
+    }
+    if (params.order.status) {
+      msg += `• *Status Pesanan:* ${params.order.status}\n`;
+    }
+    if (params.order.total) {
+      msg += `• *Total Pembayaran:* ${formatRupiah(params.order.total)}\n`;
+    }
+    if (params.order.items && params.order.items.length > 0) {
+      msg += `\n*Daftar Menu:*\n`;
+      params.order.items.forEach((item, idx) => {
+        msg += `${idx + 1}. *${item.nama_produk}* x${item.qty}\n`;
+        if (item.catatan) {
+          msg += `   _Catatan: ${item.catatan}_\n`;
+        }
+      });
+    }
+    msg += `\nMohon bantuannya ya Kasir. Terima kasih! 🙏`;
+    return msg;
+  }
+
+  // Kasus 2: Pelanggan sedang memilih menu di keranjang belanja
+  if (params.cartItems && params.cartItems.length > 0) {
+    msg += `Saya sedang memilih menu di Pesanan Online *${store}*:\n`;
+    if (params.customerName && params.customerName.trim()) {
+      msg += `• *Nama Pemesan:* ${params.customerName.trim()}\n`;
+    }
+    msg += `\n*Menu di Keranjang:*\n`;
+    let subtotal = 0;
+    params.cartItems.forEach((item, idx) => {
+      const lineTotal = item.qty * item.price;
+      subtotal += lineTotal;
+      msg += `${idx + 1}. *${item.name}* x${item.qty} = ${formatRupiah(lineTotal)}\n`;
+      if (item.notes && item.notes.trim()) {
+        msg += `   _Catatan: ${item.notes.trim()}_\n`;
+      }
+    });
+    msg += `\n*Subtotal:* ${formatRupiah(subtotal)}\n`;
+    msg += `\nSaya mau tanya ketersediaan menu / info pesanan ini ke Kasir. Terima kasih! 🙏`;
+    return msg;
+  }
+
+  // Kasus 3: Pertanyaan umum ke Kasir
+  msg += `Saya pelanggan, ingin bertanya mengenai menu dan pesanan di *${store}*. Mohon informasinya ya Kasir. Terima kasih! 🙏`;
+  return msg;
+}
+
+/**
+ * Normalisasi Status Pre-Order (PO)
+ */
+export function normalizePOStatus(status?: string): import('../types').POStatus {
+  if (!status) return 'MENUNGGU_KONFIRMASI';
+  const s = status.toUpperCase().trim().replace(/[\s-]+/g, '_');
+  if (s === 'MENUNGGU_KONFIRMASI' || s === 'MENUNGGU' || s === 'PENDING') return 'MENUNGGU_KONFIRMASI';
+  if (s === 'DIKONFIRMASI' || s === 'CONFIRMED') return 'DIKONFIRMASI';
+  if (s === 'MENUNGGU_DP') return 'MENUNGGU_DP';
+  if (s === 'DP_DITERIMA') return 'DP_DITERIMA';
+  if (s === 'DIPROSES' || s === 'DIMASAK') return 'DIPROSES';
+  if (s === 'SIAP_DIAMBIL' || s === 'SIAP') return 'SIAP_DIAMBIL';
+  if (s === 'DALAM_PENGIRIMAN' || s === 'DIANTAR') return 'DALAM_PENGIRIMAN';
+  if (s === 'SELESAI') return 'SELESAI';
+  if (s === 'DIBATALKAN') return 'DIBATALKAN';
+  return 'MENUNGGU_KONFIRMASI';
+}
+
+/**
+ * Label Bahasa Indonesia untuk Status Pre-Order
+ */
+export function getPOStatusLabel(status?: string): string {
+  const norm = normalizePOStatus(status);
+  const map: Record<import('../types').POStatus, string> = {
+    MENUNGGU_KONFIRMASI: 'Menunggu Konfirmasi',
+    DIKONFIRMASI: 'Dikonfirmasi Kasir',
+    MENUNGGU_DP: 'Menunggu Pembayaran DP',
+    DP_DITERIMA: 'DP Diterima',
+    DIPROSES: 'Sedang Dimasak / Diproses',
+    SIAP_DIAMBIL: 'Siap Diambil di Warung',
+    DALAM_PENGIRIMAN: 'Dalam Pengiriman DQM',
+    SELESAI: 'Selesai',
+    DIBATALKAN: 'Dibatalkan',
+  };
+  return map[norm] || 'Menunggu Konfirmasi';
+}
+
+/**
+ * Badge styling untuk Status PO
+ */
+export function getPOStatusBadge(status?: string): { bg: string; text: string; border: string } {
+  const norm = normalizePOStatus(status);
+  switch (norm) {
+    case 'MENUNGGU_KONFIRMASI':
+      return { bg: 'bg-amber-500/15', text: 'text-amber-400', border: 'border-amber-500/30' };
+    case 'DIKONFIRMASI':
+      return { bg: 'bg-sky-500/15', text: 'text-sky-400', border: 'border-sky-500/30' };
+    case 'MENUNGGU_DP':
+      return { bg: 'bg-orange-500/15', text: 'text-orange-400', border: 'border-orange-500/30' };
+    case 'DP_DITERIMA':
+      return { bg: 'bg-indigo-500/15', text: 'text-indigo-400', border: 'border-indigo-500/30' };
+    case 'DIPROSES':
+      return { bg: 'bg-purple-500/15', text: 'text-purple-400', border: 'border-purple-500/30' };
+    case 'SIAP_DIAMBIL':
+    case 'DALAM_PENGIRIMAN':
+      return { bg: 'bg-teal-500/15', text: 'text-teal-400', border: 'border-teal-500/30' };
+    case 'SELESAI':
+      return { bg: 'bg-emerald-500/15', text: 'text-emerald-400', border: 'border-emerald-500/30' };
+    case 'DIBATALKAN':
+      return { bg: 'bg-rose-500/15', text: 'text-rose-400', border: 'border-rose-500/30' };
+    default:
+      return { bg: 'bg-stone-800', text: 'text-stone-300', border: 'border-stone-700' };
+  }
+}
+
+/**
+ * Hitung ketentuan Uang Muka (DP) Pre-Order sesuai pengaturan Owner
+ */
+export function calculateRequiredDP(total: number, settings?: import('../types').StoreSettings): number {
+  if (total <= 0) return 0;
+  const dpType = settings?.poDpType || 'PERCENT';
+  if (dpType === 'FIXED') {
+    const fixed = Math.max(0, Number(settings?.poDpFixedAmount ?? 100000));
+    return Math.min(total, fixed);
+  }
+  const percent = Math.min(100, Math.max(1, Number(settings?.poDpPercent ?? 50)));
+  return Math.round((total * percent) / 100);
+}
+
+/**
+ * Validasi Tanggal Pre-Order (minimal 1 hari sebelum tanggal pesanan siap, tidak boleh di masa lalu)
+ */
+export function validatePODate(targetDateStr: string, minDaysAhead = 1): { valid: boolean; message?: string } {
+  if (!targetDateStr) {
+    return { valid: false, message: 'Tanggal pesanan siap wajib diisi!' };
+  }
+  const parts = targetDateStr.split('-');
+  if (parts.length !== 3) {
+    return { valid: false, message: 'Format tanggal tidak valid!' };
+  }
+  const targetYear = parseInt(parts[0], 10);
+  const targetMonth = parseInt(parts[1], 10) - 1;
+  const targetDay = parseInt(parts[2], 10);
+
+  const targetDateOnly = new Date(targetYear, targetMonth, targetDay);
+  const now = new Date();
+  const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const diffMs = targetDateOnly.getTime() - todayOnly.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return { valid: false, message: 'Tanggal PO tidak boleh di masa lalu!' };
+  }
+  if (diffDays < minDaysAhead) {
+    return {
+      valid: false,
+      message: `Pemesanan Pre-Order minimal ${minDaysAhead} hari sebelum tanggal pesanan siap (Minimal: ${new Date(
+        todayOnly.getTime() + minDaysAhead * 24 * 60 * 60 * 1000
+      ).toISOString().split('T')[0]})`,
+    };
+  }
+  return { valid: true };
+}
+
+/**
+ * Format Pesan WhatsApp Formulir Pre-Order (PO) dari Pelanggan ke Kasir
+ */
+export function buildPreOrderCustomerWhatsAppMessage(params: {
+  storeName?: string;
+  poNumber: string;
+  customerName: string;
+  customerPhone: string;
+  customerEmail?: string;
+  eventType: string;
+  eventDate: string;
+  eventTime: string;
+  guestCount?: number;
+  deliveryType: 'BUNGKUS' | 'DELIVERY_DQM' | string;
+  eventLocation?: string;
+  items: Array<{ name: string; qty: number; price: number; notes?: string }>;
+  subtotal: number;
+  deliveryFee?: number;
+  total: number;
+  dpRequired: number;
+  dpPaid?: number;
+  remainingPayment: number;
+  paymentMethod: string;
+  notes?: string;
+  hasDpProof?: boolean;
+}): string {
+  const store = params.storeName || 'WARUNG BANG KOBRA';
+  const isDelivery = params.deliveryType === 'DELIVERY_DQM' || params.deliveryType === 'DELIVERY';
+
+  let text = `*FORMULIR PRE-ORDER (PO) — ${store.toUpperCase()}*\n`;
+  text += `=====================================\n\n`;
+  text += `Halo Kasir *${store}*, saya ingin mengajukan pesanan Pre-Order acara dengan rincian berikut:\n\n`;
+
+  text += `📋 *DATA PEMESAN & ACARA:*\n`;
+  text += `• *No. PO:* ${params.poNumber}\n`;
+  text += `• *Nama Pelanggan:* ${params.customerName}\n`;
+  text += `• *No. WhatsApp:* ${params.customerPhone}\n`;
+  if (params.customerEmail) {
+    text += `• *Email:* ${params.customerEmail}\n`;
+  }
+  text += `• *Jenis Acara:* ${params.eventType}\n`;
+  if (params.guestCount && params.guestCount > 0) {
+    text += `• *Perkiraan Tamu / Porsi:* ±${params.guestCount} Orang\n`;
+  }
+  text += `• *Jadwal Pesanan Siap:* 🗓️ *${params.eventDate}* pukul ⏰ *${params.eventTime} WIB*\n`;
+  text += `• *Metode Pengambilan:* ${isDelivery ? '🛵 Delivery Khusus Area Pesantren DQM' : '🥡 Bungkus (Ambil di Warung)'}\n`;
+  if (isDelivery && params.eventLocation) {
+    text += `• *Alamat / Lokasi DQM:* ${params.eventLocation}\n`;
+  }
+
+  text += `\n🍱 *RINCIAN MENU & VARIAN:* \n`;
+  params.items.forEach((it, idx) => {
+    const lineTotal = it.qty * it.price;
+    text += `${idx + 1}. *${it.name}* x${it.qty} = ${formatRupiah(lineTotal)}\n`;
+    if (it.notes && it.notes.trim()) {
+      text += `   _Catatan: ${it.notes.trim()}_\n`;
+    }
+  });
+
+  text += `\n💰 *RINGKASAN PEMBAYARAN:*\n`;
+  text += `• *Subtotal Menu:* ${formatRupiah(params.subtotal)}\n`;
+  if (isDelivery && params.deliveryFee && params.deliveryFee > 0) {
+    text += `• *Biaya Pengantaran DQM:* ${formatRupiah(params.deliveryFee)}\n`;
+  }
+  text += `• *TOTAL KESELURUHAN:* *${formatRupiah(params.total)}*\n`;
+  text += `• *Kewajiban DP:* *${formatRupiah(params.dpRequired)}*\n`;
+  if (params.dpPaid && params.dpPaid > 0) {
+    text += `• *DP Sudah Dibayar:* *${formatRupiah(params.dpPaid)}*\n`;
+  }
+  text += `• *Sisa Pembayaran:* *${formatRupiah(params.remainingPayment)}*\n`;
+  text += `• *Metode Bayar:* ${params.paymentMethod.toUpperCase()}\n`;
+  if (params.hasDpProof) {
+    text += `• *Bukti Transfer DP:* Terlampir di sistem (foto diunggah)\n`;
+  }
+
+  if (params.notes && params.notes.trim()) {
+    text += `\n📝 *Catatan Khusus:* \n"${params.notes.trim()}"\n`;
+  }
+
+  text += `\n=====================================\n`;
+  text += `Mohon konfirmasi pesanan dan verifikasi DP kami ya Kasir. Terima kasih! 🙏`;
+
+  return text;
+}
+
+/**
+ * Format Pesan WhatsApp Konfirmasi / Update Status PO dari Kasir ke Pelanggan
+ */
+export function buildPOStatusNotificationWhatsAppMessage(params: {
+  storeName?: string;
+  poNumber: string;
+  customerName: string;
+  newStatus: import('../types').POStatus | string;
+  eventDate: string;
+  eventTime: string;
+  total: number;
+  dpPaid: number;
+  remainingPayment: number;
+  noteFromCashier?: string;
+}): string {
+  const store = params.storeName || 'WARUNG BANG KOBRA';
+  const statusLabel = getPOStatusLabel(params.newStatus);
+
+  let msg = `*KONFIRMASI PRE-ORDER (PO) — ${store.toUpperCase()}*\n`;
+  msg += `=====================================\n\n`;
+  msg += `Halo Kak *${params.customerName}*,\n`;
+  msg += `Status pesanan Pre-Order acara Anda telah diperbarui:\n\n`;
+
+  msg += `• *No. PO:* ${params.poNumber}\n`;
+  msg += `• *Status Terkini:* 🔔 *${statusLabel.toUpperCase()}*\n`;
+  msg += `• *Jadwal Siap:* 🗓️ *${params.eventDate}* jam ⏰ *${params.eventTime} WIB*\n`;
+  msg += `• *Total Nilai PO:* ${formatRupiah(params.total)}\n`;
+  msg += `• *DP Diterima:* ${formatRupiah(params.dpPaid)}\n`;
+  msg += `• *Sisa Tagihan:* *${formatRupiah(params.remainingPayment)}* (${params.remainingPayment <= 0 ? 'LUNAS' : 'Belum Lunas'})\n`;
+
+  if (params.noteFromCashier && params.noteFromCashier.trim()) {
+    msg += `\n💬 *Pesan dari Kasir:* \n"${params.noteFromCashier.trim()}"\n`;
+  }
+
+  msg += `\nTerima kasih atas kepercayaan Anda memesan di *${store}*! 🙏`;
+  return msg;
 }
 
 /**

@@ -251,8 +251,69 @@
         },
         "orderType": {
           "type": "string",
-          "description": "Order service type: BUNGKUS or DELIVERY_DQM",
-          "enum": ["BUNGKUS", "DELIVERY_DQM"]
+          "description": "Order service type: BUNGKUS, DELIVERY_DQM, or PRE_ORDER",
+          "enum": ["BUNGKUS", "DELIVERY_DQM", "PRE_ORDER"]
+        },
+        "poNumber": {
+          "type": "string",
+          "description": "Unique Pre-Order number format PO-WBK-YYYYMMDD-XXXX",
+          "maxLength": 64
+        },
+        "eventType": {
+          "type": "string",
+          "description": "Event type (Pengajian, Rapat, Ulang Tahun, dll)",
+          "maxLength": 100
+        },
+        "eventDate": {
+          "type": "string",
+          "description": "Target event date when order must be ready (YYYY-MM-DD)",
+          "maxLength": 32
+        },
+        "eventTime": {
+          "type": "string",
+          "description": "Target event time when order must be ready (HH:mm)",
+          "maxLength": 32
+        },
+        "guestCount": {
+          "type": "number",
+          "description": "Guest or portion count"
+        },
+        "deliveryType": {
+          "type": "string",
+          "description": "BUNGKUS or DELIVERY_DQM",
+          "maxLength": 32
+        },
+        "eventLocation": {
+          "type": "string",
+          "description": "Event location or DQM delivery location",
+          "maxLength": 300
+        },
+        "dpRequired": {
+          "type": "number",
+          "description": "Required DP amount in IDR"
+        },
+        "dpPaid": {
+          "type": "number",
+          "description": "Paid DP amount in IDR"
+        },
+        "remainingPayment": {
+          "type": "number",
+          "description": "Remaining payment balance in IDR"
+        },
+        "paymentStatus": {
+          "type": "string",
+          "description": "Payment status (BELUM_BAYAR, DP, LUNAS, REFUND)",
+          "enum": ["BELUM_BAYAR", "DP", "LUNAS", "REFUND"]
+        },
+        "poStatus": {
+          "type": "string",
+          "description": "PO workflow status",
+          "enum": ["MENUNGGU_KONFIRMASI", "DIKONFIRMASI", "MENUNGGU_DP", "DP_DITERIMA", "DIPROSES", "SIAP_DIAMBIL", "DALAM_PENGIRIMAN", "SELESAI", "DIBATALKAN"]
+        },
+        "dpProofUrl": {
+          "type": "string",
+          "description": "Uploaded DP transfer proof image URL",
+          "maxLength": 500000
         },
         "deliveryArea": {
           "type": "string",

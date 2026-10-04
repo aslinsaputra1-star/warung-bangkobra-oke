@@ -53,6 +53,7 @@ interface ProductsViewProps {
   onUpdateVariant?: (v: ProductVariant) => void;
   onDeleteVariant?: (variantId: string) => void;
   onBulkSaveProductsAndVariants?: (newProducts: Product[], newVariants: ProductVariant[]) => void;
+  onSyncAllPrices?: () => void;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
@@ -70,6 +71,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   onUpdateVariant,
   onDeleteVariant,
   onBulkSaveProductsAndVariants,
+  onSyncAllPrices,
   showToast,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'all' | 'variants'>('all');
@@ -80,6 +82,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [syncVariantsOnEdit, setSyncVariantsOnEdit] = useState(true);
   const [quickImageProduct, setQuickImageProduct] = useState<Product | null>(null);
   const [isQuickImageModalOpen, setIsQuickImageModalOpen] = useState(false);
   const [isSyncingFirebase, setIsSyncingFirebase] = useState(false);
@@ -220,6 +223,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
   const openEditModal = (product: Product) => {
     setEditingProduct(product);
+    setSyncVariantsOnEdit(true);
     setFormData({
       ...product,
       foto: product.foto || product.gambar_url || '',
@@ -237,15 +241,42 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
     if (editingProduct) {
       const photo = formData.foto || editingProduct.foto || editingProduct.gambar_url || '';
+      const newPrice = Math.max(0, Number(formData.harga_jual || 0));
+      const newCost = Math.max(0, Number(formData.harga_modal || 0));
       const updated: Product = {
         ...editingProduct,
         ...(formData as Product),
+        harga_jual: newPrice,
+        harga_modal: newCost,
         foto: photo,
         gambar_url: photo,
         updated_at: new Date().toISOString(),
       };
-      onUpdateProduct(updated);
-      showToast(`Produk ${updated.nama} berhasil diperbarui!`, 'success');
+
+      if (syncVariantsOnEdit && onBulkSaveProductsAndVariants) {
+        const cleanId = String(editingProduct.id).trim();
+        const cleanSku = String(editingProduct.sku || '').trim();
+        const pName = String(editingProduct.nama || '').trim().toLowerCase();
+        const updatedVariants = variants.map((v) => {
+          const isMatch =
+            String(v.productId).trim() === cleanId ||
+            (cleanSku && String(v.productId).trim() === cleanSku) ||
+            (v.productName && String(v.productName).trim().toLowerCase() === pName);
+          if (!isMatch) return v;
+          return {
+            ...v,
+            price: newPrice,
+            costPrice: newCost,
+            updatedAt: updated.updated_at,
+          };
+        });
+        const updatedProducts = products.map((p) => (p.id === updated.id ? updated : p));
+        onBulkSaveProductsAndVariants(updatedProducts, updatedVariants);
+      } else {
+        onUpdateProduct(updated);
+      }
+
+      showToast(`Produk "${updated.nama}" berhasil diperbarui!`, 'success');
     } else {
       const photo =
         formData.foto ||
@@ -460,13 +491,47 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     reader.readAsText(file);
   };
 
+  // Map active variants by product id, sku, and name (ensures perfect consistency with cashier)
+  const variantsByProduct = useMemo(() => {
+    const map = new Map<string, ProductVariant[]>();
+    products.forEach((p) => {
+      const pId = String(p.id).trim();
+      const pSku = String(p.sku || '').trim();
+      const pName = String(p.nama || '').trim().toLowerCase();
+      const matched = variants.filter(
+        (v) =>
+          v &&
+          v.isActive !== false &&
+          (String(v.productId).trim() === pId ||
+            (pSku && String(v.productId).trim() === pSku) ||
+            (v.productName && String(v.productName).trim().toLowerCase() === pName))
+      );
+      if (matched.length > 0) {
+        map.set(pId, matched);
+        if (pSku) map.set(pSku, matched);
+      }
+    });
+    variants.forEach((v) => {
+      if (!v || v.isActive === false) return;
+      const pid = String(v.productId || '').trim();
+      if (pid && !map.has(pid)) {
+        map.set(pid, [v]);
+      }
+    });
+    return map;
+  }, [products, variants]);
+
   const variantCountByProductId = useMemo(() => {
     const counts = new Map<string, number>();
-    variants.forEach((v) => {
-      counts.set(v.productId, (counts.get(v.productId) || 0) + 1);
+    products.forEach((p) => {
+      const prodVars = variantsByProduct.get(p.id) || [];
+      if (prodVars.length > 0) {
+        counts.set(p.id, prodVars.length);
+        if (p.sku) counts.set(p.sku, prodVars.length);
+      }
     });
     return counts;
-  }, [variants]);
+  }, [products, variantsByProduct]);
 
   const totalProductsWithVariants = useMemo(() => {
     return products.filter(
@@ -563,6 +628,19 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {onSyncAllPrices && (
+            <button
+              id="btn-sync-all-prices-toolbar"
+              type="button"
+              onClick={onSyncAllPrices}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/20 border border-amber-500/50 text-amber-300 hover:bg-amber-500/30 text-xs font-bold transition shadow-sm cursor-pointer"
+              title="Selaraskan harga seluruh varian rasa dengan harga produk utama agar harga di kasir dan menu produk 100% sama"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
+              <span>Selaraskan Harga Kasir</span>
+            </button>
+          )}
+
           <button
             id="btn-sync-firebase-products-toolbar"
             onClick={handleSyncFirebase}
@@ -856,7 +934,21 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                     <div>
                       <span className="text-[10px] text-stone-400 block">Harga Jual</span>
                       <span className="text-sm font-black font-mono text-amber-400">
-                        {formatRupiah(p.harga_jual)}
+                        {(() => {
+                          const prodVars = variantsByProduct.get(p.id) || [];
+                          const hasVars = Boolean(p.hasVariants) || prodVars.length > 0;
+                          if (hasVars && prodVars.length > 0) {
+                            const prices = prodVars.map((v) => Number(v.price || 0)).filter((n) => n > 0);
+                            if (prices.length > 0) {
+                              const minP = Math.min(...prices);
+                              const maxP = Math.max(...prices);
+                              return minP !== maxP
+                                ? `${formatRupiah(minP)} - ${formatRupiah(maxP)}`
+                                : formatRupiah(minP);
+                            }
+                          }
+                          return formatRupiah(p.harga_jual);
+                        })()}
                       </span>
                     </div>
 
@@ -1015,7 +1107,26 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
                         {/* 5. Harga Jual (Rp) */}
                         <td className="py-3 px-3 font-mono font-bold text-amber-400 whitespace-nowrap">
-                          {Number(p.harga_jual).toLocaleString('id-ID')}
+                          {(() => {
+                            const prodVars = variantsByProduct.get(p.id) || [];
+                            const hasVars = Boolean(p.hasVariants) || prodVars.length > 0;
+                            if (hasVars && prodVars.length > 0) {
+                              const prices = prodVars.map((v) => Number(v.price || 0)).filter((n) => n > 0);
+                              if (prices.length > 0) {
+                                const minP = Math.min(...prices);
+                                const maxP = Math.max(...prices);
+                                return minP !== maxP ? (
+                                  <div>
+                                    <span>{minP.toLocaleString('id-ID')} - {maxP.toLocaleString('id-ID')}</span>
+                                    <span className="block text-[9px] font-normal text-amber-400/80">({prodVars.length} rasa)</span>
+                                  </div>
+                                ) : (
+                                  <span>{minP.toLocaleString('id-ID')}</span>
+                                );
+                              }
+                            }
+                            return Number(p.harga_jual).toLocaleString('id-ID');
+                          })()}
                         </td>
 
                         {/* 6. Satuan */}
@@ -1234,6 +1345,25 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                     className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
                   />
                 </div>
+
+                {editingProduct && (variantsByProduct.get(editingProduct.id)?.length || 0) > 0 && (
+                  <div className="col-span-1 sm:col-span-2 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 space-y-1.5">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-amber-300">
+                      <input
+                        type="checkbox"
+                        checked={syncVariantsOnEdit}
+                        onChange={(e) => setSyncVariantsOnEdit(e.target.checked)}
+                        className="rounded accent-amber-500 w-4 h-4 cursor-pointer"
+                      />
+                      <span>
+                        Sinkronkan harga ke seluruh {variantsByProduct.get(editingProduct.id)?.length} varian rasa di Kasir
+                      </span>
+                    </label>
+                    <p className="text-[11px] text-stone-400 pl-6 leading-relaxed">
+                      Harga jual ({formatRupiah(Number(formData.harga_jual || 0))}) dan harga modal akan otomatis diperbarui ke semua varian rasa agar harga di kasir dan menu produk 100% sama.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="pt-2 border-t border-stone-800/80">

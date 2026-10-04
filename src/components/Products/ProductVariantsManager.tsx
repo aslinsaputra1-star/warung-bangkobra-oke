@@ -474,13 +474,15 @@ export const ProductVariantsManager: React.FC<ProductVariantsManagerProps> = ({
     const nowIso = new Date().toISOString();
 
     if (editingMainProduct) {
+      const newPrice = Math.max(0, Number(mainProductForm.harga_jual || 0));
+      const newCost = Math.max(0, Number(mainProductForm.harga_modal || 0));
       const updatedProd: Product = {
         ...editingMainProduct,
         nama: mainProductForm.nama.trim(),
         sku: mainProductForm.sku.trim() || editingMainProduct.sku,
         kategori: mainProductForm.kategori,
-        harga_modal: Math.max(0, Number(mainProductForm.harga_modal || 0)),
-        harga_jual: Math.max(0, Number(mainProductForm.harga_jual || 0)),
+        harga_modal: newCost,
+        harga_jual: newPrice,
         satuan: mainProductForm.satuan.trim() || 'Cup',
         stok_minimum: Math.max(0, Number(mainProductForm.stok_minimum || 5)),
         foto: mainProductForm.foto.trim(),
@@ -489,8 +491,28 @@ export const ProductVariantsManager: React.FC<ProductVariantsManagerProps> = ({
         hasVariants: true,
         updated_at: nowIso,
       };
-      onUpdateProduct(updatedProd);
-      showToast(`Produk utama "${updatedProd.nama}" berhasil diperbarui!`, 'success');
+
+      const cleanId = String(editingMainProduct.id).trim();
+      const cleanSku = String(editingMainProduct.sku || '').trim();
+      const pName = String(editingMainProduct.nama || '').trim().toLowerCase();
+
+      const updatedVariants = variants.map((v) => {
+        const isMatch =
+          String(v.productId).trim() === cleanId ||
+          (cleanSku && String(v.productId).trim() === cleanSku) ||
+          (v.productName && String(v.productName).trim().toLowerCase() === pName);
+        if (!isMatch) return v;
+        return {
+          ...v,
+          price: newPrice,
+          costPrice: newCost,
+          updatedAt: nowIso,
+        };
+      });
+
+      const updatedProducts = products.map((p) => (p.id === updatedProd.id ? updatedProd : p));
+      onBulkSaveProductsAndVariants(updatedProducts, updatedVariants);
+      showToast(`Produk utama "${updatedProd.nama}" & varian rasa berhasil diperbarui!`, 'success');
       setIsProductModalOpen(false);
       return;
     }

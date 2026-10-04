@@ -715,16 +715,15 @@ export async function saveOrderToFirebase(order: Transaction): Promise<{ success
     }
     const orderDocRef = doc(db, 'orders', order.id_transaksi);
 
-    const resolvedOrderType: 'BUNGKUS' | 'DELIVERY_DQM' = resolveOrderType(order);
-    const isDeliveryDqm = resolvedOrderType === 'DELIVERY_DQM';
+    const resolvedOrderType = resolveOrderType(order);
+    const isDeliveryDqm = resolvedOrderType === 'DELIVERY_DQM' || order.deliveryType === 'DELIVERY_DQM' || order.deliveryType === 'DELIVERY';
+    const isPreOrder = resolvedOrderType === 'PRE_ORDER' || Boolean(order.poNumber);
     const normalizedStatus = normalizeOrderStatus(order.status);
     const normalizedDelivStatus = isDeliveryDqm
       ? normalizeDeliveryStatus(order.deliveryStatus, normalizedStatus)
       : null;
 
     // Sanitize data for Firestore according to strict Database Order rules:
-    // For BUNGKUS: deliveryArea = null, deliveryLocation = null, deliveryDetail = null, deliveryFee = 0
-    // For DELIVERY_DQM: deliveryArea = 'DQM', deliveryLocation, deliveryDetail, deliveryNote, deliveryFee, deliveryStatus
     const firestorePayload = {
       id_transaksi: String(order.id_transaksi || `WKB-${Date.now()}`).trim(),
       tanggal: order.tanggal || new Date().toISOString().split('T')[0],
@@ -769,6 +768,33 @@ export async function saveOrderToFirebase(order: Transaction): Promise<{ success
       catatan_pesanan: order.catatan_pesanan || order.deliveryNote || '',
       created_at: order.created_at || new Date().toISOString(),
       ...(order.stockRestored ? { stockRestored: true } : {}),
+      ...(isPreOrder
+        ? {
+            poNumber: String(order.poNumber || order.id_transaksi).trim(),
+            eventType: String(order.eventType || 'Acara Umum'),
+            eventDate: String(order.eventDate || order.tanggal),
+            eventTime: String(order.eventTime || order.jam),
+            guestCount: Number(order.guestCount || 0),
+            deliveryType: String(order.deliveryType || (isDeliveryDqm ? 'DELIVERY_DQM' : 'BUNGKUS')),
+            eventLocation: String(order.eventLocation || order.deliveryLocation || ''),
+            dpRequired: Number(order.dpRequired || 0),
+            dpPaid: Number(order.dpPaid || 0),
+            remainingPayment: Number(order.remainingPayment ?? (order.total - (order.dpPaid || 0))),
+            paymentStatus: String(
+              order.paymentStatus ||
+                (order.dpPaid && order.dpPaid >= order.total
+                  ? 'LUNAS'
+                  : order.dpPaid && order.dpPaid > 0
+                  ? 'DP'
+                  : 'BELUM_BAYAR')
+            ),
+            poStatus: String(order.poStatus || 'MENUNGGU_KONFIRMASI'),
+            ...(order.dpProofUrl ? { dpProofUrl: String(order.dpProofUrl) } : {}),
+            ...(order.paymentHistory ? { paymentHistory: order.paymentHistory } : {}),
+            notes: String(order.notes || order.catatan_pesanan || ''),
+            poStockDeducted: Boolean(order.poStockDeducted),
+          }
+        : {}),
       items: (order.items || []).map((item) => ({
         id_detail: item.id_detail || '',
         id_transaksi: item.id_transaksi || order.id_transaksi,
@@ -905,6 +931,22 @@ export function subscribeToFirebaseOrders(
               deliveryStatus: isDelivery ? normalizeDeliveryStatus(data as Partial<Transaction>) : null,
               created_at: String(data.created_at || new Date().toISOString()),
               stockRestored: Boolean(data.stockRestored),
+              poNumber: data.poNumber ? String(data.poNumber) : undefined,
+              eventType: data.eventType ? String(data.eventType) : undefined,
+              eventDate: data.eventDate ? String(data.eventDate) : undefined,
+              eventTime: data.eventTime ? String(data.eventTime) : undefined,
+              guestCount: data.guestCount !== undefined ? Number(data.guestCount) : undefined,
+              deliveryType: data.deliveryType || undefined,
+              eventLocation: data.eventLocation ? String(data.eventLocation) : undefined,
+              dpRequired: data.dpRequired !== undefined ? Number(data.dpRequired) : undefined,
+              dpPaid: data.dpPaid !== undefined ? Number(data.dpPaid) : undefined,
+              remainingPayment: data.remainingPayment !== undefined ? Number(data.remainingPayment) : undefined,
+              paymentStatus: data.paymentStatus || undefined,
+              paymentHistory: Array.isArray(data.paymentHistory) ? data.paymentHistory : undefined,
+              poStatus: data.poStatus || undefined,
+              dpProofUrl: data.dpProofUrl ? String(data.dpProofUrl) : undefined,
+              notes: data.notes ? String(data.notes) : undefined,
+              poStockDeducted: Boolean(data.poStockDeducted),
               items: rawItems.map((item: any) => ({
                 id_detail: String(item?.id_detail || ''),
                 id_transaksi: String(item?.id_transaksi || txId),

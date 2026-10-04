@@ -12,7 +12,31 @@ export type UserRole =
   | 'DELIVERY';
 export type ExpenseCategory = 'Pembelian bahan' | 'Listrik' | 'Gas' | 'Operasional' | 'Gaji' | 'Lainnya';
 
-export type OrderType = 'BUNGKUS' | 'DELIVERY_DQM';
+export type OrderType = 'BUNGKUS' | 'DELIVERY_DQM' | 'PRE_ORDER';
+
+export type POStatus =
+  | 'MENUNGGU_KONFIRMASI'
+  | 'DIKONFIRMASI'
+  | 'MENUNGGU_DP'
+  | 'DP_DITERIMA'
+  | 'DIPROSES'
+  | 'SIAP_DIAMBIL'
+  | 'DALAM_PENGIRIMAN'
+  | 'SELESAI'
+  | 'DIBATALKAN';
+
+export type POPaymentStatus = 'BELUM_BAYAR' | 'DP' | 'LUNAS' | 'REFUND';
+
+export interface POPaymentRecord {
+  id: string;
+  amount: number;
+  type: 'DP' | 'PELUNASAN' | 'REFUND';
+  method: PaymentMethod | string;
+  date: string;
+  note?: string;
+  verifiedBy?: string;
+  proofUrl?: string;
+}
 
 export type DeliveryStatus =
   | 'MENUNGGU'
@@ -194,7 +218,7 @@ export interface Transaction {
   proofPhotoUrl?: string;
   updated_at?: string;
   queueNumber?: string;
-  tipe_pesanan?: 'BUNGKUS' | 'DELIVERY_DQM' | 'Takeaway' | 'Delivery';
+  tipe_pesanan?: 'BUNGKUS' | 'DELIVERY_DQM' | 'Takeaway' | 'Delivery' | 'PRE_ORDER';
   alamat_pengantaran?: string;
   catatan_pesanan?: string;
   receiptSharedAt?: string;
@@ -206,6 +230,23 @@ export interface Transaction {
   emailReceiptError?: string;
   emailReceiptAttempts?: number;
   stockRestored?: boolean;
+  // Pre-Order (PO) Specific Fields
+  poNumber?: string;
+  eventType?: string;
+  eventDate?: string; // YYYY-MM-DD
+  eventTime?: string; // HH:mm
+  guestCount?: number;
+  deliveryType?: 'BUNGKUS' | 'DELIVERY_DQM' | 'TAKEAWAY' | 'DELIVERY';
+  eventLocation?: string;
+  dpRequired?: number;
+  dpPaid?: number;
+  remainingPayment?: number;
+  paymentStatus?: POPaymentStatus;
+  paymentHistory?: POPaymentRecord[];
+  poStatus?: POStatus;
+  dpProofUrl?: string;
+  notes?: string;
+  poStockDeducted?: boolean;
 }
 
 export interface StockMutation {
@@ -309,6 +350,15 @@ export interface StoreSettings {
   menuAdButtonText?: string;
   menuAdTheme?: 'fire' | 'amber' | 'emerald' | 'purple';
   menuAdImageUrl?: string;
+  // Pre-Order (PO) Store Settings
+  poEnabled?: boolean;
+  poMinDaysAhead?: number;
+  poDpType?: 'PERCENT' | 'FIXED';
+  poDpPercent?: number;
+  poDpFixedAmount?: number;
+  poTermsAndConditions?: string;
+  poBankTransferInfo?: string;
+  poQrisInfo?: string;
 }
 
 export interface SyncState {
@@ -323,6 +373,7 @@ export type ActiveTab =
   | 'dashboard'
   | 'pos'
   | 'orders'
+  | 'preorders'
   | 'delivery_dqm'
   | 'whatsapp_order'
   | 'products'

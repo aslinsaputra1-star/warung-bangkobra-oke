@@ -15,6 +15,7 @@ import {
   getTakeawayQueueNumber,
   resolveOrderType,
   buildDigitalReceiptUrl,
+  getPOStatusLabel,
 } from '../../utils/formatters';
 
 interface ReceiptModalProps {
@@ -88,18 +89,50 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             <div className="py-2.5 border-b border-dashed border-stone-700 space-y-1 text-[11px]">
               <div className="flex justify-between">
                 <span className="text-stone-400">No Transaksi:</span>
-                <span className="font-bold text-stone-100">{transaction.id_transaksi}</span>
+                <span className="font-bold text-stone-100">{transaction.poNumber || transaction.id_transaksi}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-stone-400">Jenis Pesanan:</span>
                 <span className="font-black text-amber-400">
-                  {resolveOrderType(transaction) === 'DELIVERY_DQM' ? '[DELIVERY DQM]' : '[BUNGKUS]'}
+                  {transaction.orderType === 'PRE_ORDER' || Boolean(transaction.poNumber)
+                    ? '[PRE-ORDER ACARA]'
+                    : resolveOrderType(transaction) === 'DELIVERY_DQM'
+                    ? '[DELIVERY DQM]'
+                    : '[BUNGKUS]'}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-stone-400">Tanggal:</span>
-                <span>{transaction.tanggal} {transaction.jam}</span>
-              </div>
+              {transaction.orderType === 'PRE_ORDER' || Boolean(transaction.poNumber) ? (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-stone-400">Jadwal Siap:</span>
+                    <span className="font-bold text-amber-300">
+                      {transaction.eventDate || transaction.tanggal} {transaction.eventTime || transaction.jam} WIB
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-400">Acara:</span>
+                    <span className="text-stone-200">
+                      {transaction.eventType || 'Acara'} {transaction.guestCount ? `(±${transaction.guestCount} Tamu)` : ''}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-400">Layanan:</span>
+                    <span className="text-stone-200">
+                      {transaction.deliveryType === 'DELIVERY_DQM' ? 'Delivery DQM' : 'Ambil di Warung'}
+                    </span>
+                  </div>
+                  {transaction.deliveryType === 'DELIVERY_DQM' && transaction.eventLocation && (
+                    <div className="pt-0.5 text-[10px] text-teal-300">
+                      Lokasi: {transaction.eventLocation}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="flex justify-between">
+                  <span className="text-stone-400">Tanggal:</span>
+                  <span>{transaction.tanggal} {transaction.jam}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-stone-400">Kasir:</span>
                 <span>{transaction.kasir}</span>
@@ -107,10 +140,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               {transaction.nama_pelanggan && (
                 <div className="flex justify-between">
                   <span className="text-stone-400">Pemesan:</span>
-                  <span>{transaction.nama_pelanggan}</span>
+                  <span>{transaction.nama_pelanggan} ({transaction.no_whatsapp})</span>
                 </div>
               )}
-              {resolveOrderType(transaction) === 'DELIVERY_DQM' && (
+              {resolveOrderType(transaction) === 'DELIVERY_DQM' && !transaction.poNumber && (
                 <div className="pt-1 text-[10px] text-teal-300">
                   Lokasi: Pesantren DQM • {transaction.deliveryLocation || ''}{' '}
                   {transaction.deliveryDetail ? `(${transaction.deliveryDetail})` : ''}
@@ -118,16 +151,22 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               )}
             </div>
 
-            {/* Queue Highlight on Receipt */}
+            {/* Queue / PO Highlight on Receipt */}
             <div className="py-2.5 my-1.5 px-3 bg-stone-900 border border-amber-500/40 rounded-xl text-center space-y-0.5">
               <span className="text-[10px] text-amber-400 uppercase tracking-widest font-sans font-bold block">
-                NOMOR ANTRIAN {resolveOrderType(transaction) === 'DELIVERY_DQM' ? 'DELIVERY DQM' : 'BUNGKUS'}
+                {transaction.orderType === 'PRE_ORDER' || Boolean(transaction.poNumber)
+                  ? 'STATUS PRE-ORDER (PO)'
+                  : `NOMOR ANTRIAN ${resolveOrderType(transaction) === 'DELIVERY_DQM' ? 'DELIVERY DQM' : 'BUNGKUS'}`}
               </span>
-              <span className="text-2xl font-black text-white font-mono tracking-wider">
-                {getTakeawayQueueNumber(transaction)}
+              <span className="text-xl sm:text-2xl font-black text-white font-mono tracking-wider">
+                {transaction.orderType === 'PRE_ORDER' || Boolean(transaction.poNumber)
+                  ? getPOStatusLabel(transaction.poStatus || transaction.status)
+                  : getTakeawayQueueNumber(transaction)}
               </span>
               <span className="text-[9px] text-stone-400 font-sans block">
-                {resolveOrderType(transaction) === 'DELIVERY_DQM'
+                {transaction.orderType === 'PRE_ORDER' || Boolean(transaction.poNumber)
+                  ? `Nomor PO: ${transaction.poNumber || transaction.id_transaksi}`
+                  : resolveOrderType(transaction) === 'DELIVERY_DQM'
                   ? 'Pesanan diantar khusus area Pesantren DQM'
                   : 'Pesanan akan disiapkan untuk diambil'}
               </span>
@@ -182,6 +221,26 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 <span>TOTAL:</span>
                 <span>{formatRupiah(transaction.total)}</span>
               </div>
+              {Boolean(transaction.orderType === 'PRE_ORDER' || transaction.poNumber) && (
+                <>
+                  <div className="flex justify-between text-stone-300 pt-1 border-t border-stone-800/80">
+                    <span>Kewajiban DP:</span>
+                    <span>{formatRupiah(transaction.dpRequired || 0)}</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-400 font-bold">
+                    <span>DP Diterima:</span>
+                    <span>{formatRupiah(transaction.dpPaid || 0)}</span>
+                  </div>
+                  <div className="flex justify-between text-amber-400 font-bold">
+                    <span>Sisa Pembayaran:</span>
+                    <span>
+                      {(transaction.remainingPayment ?? (transaction.total - (transaction.dpPaid || 0))) <= 0
+                        ? 'LUNAS (Rp 0)'
+                        : formatRupiah(transaction.remainingPayment ?? (transaction.total - (transaction.dpPaid || 0)))}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Payment & Change */}
@@ -192,6 +251,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   {transaction.metode_pembayaran}
                 </span>
               </div>
+              {Boolean(transaction.orderType === 'PRE_ORDER' || transaction.poNumber) && (
+                <div className="flex justify-between text-stone-300">
+                  <span>Status Bayar:</span>
+                  <span className="font-bold text-amber-400">
+                    {transaction.paymentStatus || 'BELUM_BAYAR'}
+                  </span>
+                </div>
+              )}
               {transaction.metode_pembayaran === 'Cash' && (
                 <>
                   <div className="flex justify-between text-stone-300">

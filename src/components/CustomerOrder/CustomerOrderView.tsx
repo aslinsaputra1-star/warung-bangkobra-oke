@@ -28,7 +28,10 @@ import {
   Layers,
   RefreshCw,
   Check,
+  Calendar,
 } from 'lucide-react';
+import { CustomerPreOrderModal } from '../PreOrder/CustomerPreOrderModal';
+import { CustomerPOTrackingModal } from '../PreOrder/CustomerPOTrackingModal';
 import {
   Product,
   ProductVariant,
@@ -43,6 +46,7 @@ import {
   formatRupiah,
   sanitizeWhatsAppNumber,
   buildOnlineQRCodeOrderWhatsAppMessage,
+  buildChatKasirWhatsAppMessage,
   openWhatsAppChat,
   getTakeawayQueueNumber,
   DQM_LOCATIONS,
@@ -127,6 +131,11 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
 
   // UI States
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isPOModalOpen, setIsPOModalOpen] = useState(false);
+  const [isPOTrackingOpen, setIsPOTrackingOpen] = useState(false);
+  const [allTransactionsForTracking, setAllTransactionsForTracking] = useState<Transaction[]>(() =>
+    StorageService.getTransactions()
+  );
   const [activeNoteItemId, setActiveNoteItemId] = useState<string | null>(null);
   const [tempNoteText, setTempNoteText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -601,6 +610,36 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
     setGeneralNotes('');
   };
 
+  // Direct WhatsApp Chat with Kasir WARUNG BANG KOBRA
+  const handleChatKasir = () => {
+    const waNumber = settings.whatsappNumber || '';
+    if (!waNumber) {
+      if (showToast) {
+        showToast('Nomor WhatsApp kasir belum diatur di Pengaturan.', 'error');
+      }
+      return;
+    }
+
+    const cartItemList = cartItems.map((ci) => ({
+      name: ci.variant
+        ? formatVariantDisplayName(ci.product.nama, ci.variant.variantName)
+        : ci.product.nama,
+      qty: ci.qty,
+      price: ci.variant ? ci.variant.price : ci.product.harga_jual,
+      notes: ci.notes,
+    }));
+
+    const message = buildChatKasirWhatsAppMessage({
+      storeName: settings.storeName || 'WARUNG BANG KOBRA',
+      order: completedOrder ? completedOrder.createdOrder : null,
+      cartItems: cartItemList.length > 0 ? cartItemList : undefined,
+      customerName: customerName.trim() || undefined,
+      orderType,
+    });
+
+    openWhatsAppChat(waNumber, message);
+  };
+
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col font-sans antialiased selection:bg-orange-500 selection:text-stone-950">
       {/* Sleek Sticky Glassmorphic Top Bar */}
@@ -630,24 +669,49 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
             </div>
           </div>
 
-          {/* Right Cart Trigger */}
-          <button
-            type="button"
-            onClick={() => setIsCartOpen(true)}
-            className={`relative h-10 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
-              totalCartCount > 0
-                ? 'bg-orange-500 hover:bg-orange-400 text-stone-950 shadow-lg shadow-orange-950/50'
-                : 'bg-stone-900 hover:bg-stone-800 text-stone-300 border border-stone-800'
-            }`}
-          >
-            <ShoppingBag className="w-4 h-4" />
-            <span className="hidden sm:inline">Keranjang</span>
-            {totalCartCount > 0 && (
-              <span className="px-1.5 py-0.5 rounded-md bg-stone-950 text-orange-400 font-mono font-extrabold text-[11px] tabular-nums">
-                {totalCartCount}
-              </span>
-            )}
-          </button>
+          {/* Right Action Buttons: PO + Chat Kasir & Cart Trigger */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              id="btn-preorder-header"
+              onClick={() => setIsPOModalOpen(true)}
+              className="h-10 px-3 rounded-xl font-extrabold text-xs flex items-center gap-1.5 bg-gradient-to-r from-red-600/30 to-amber-600/30 hover:from-red-600/50 hover:to-amber-600/50 border border-red-500/40 text-amber-300 transition-all active:scale-95 cursor-pointer shadow-sm"
+              title="Formulir Pemesanan Pre-Order Acara & Porsi Besar"
+            >
+              <Calendar className="w-4 h-4 text-amber-400" />
+              <span className="hidden md:inline">Pre-Order Acara</span>
+              <span className="md:hidden">PO</span>
+            </button>
+
+            <button
+              type="button"
+              id="btn-chat-kasir-header"
+              onClick={handleChatKasir}
+              className="h-10 px-3 sm:px-3.5 rounded-xl font-extrabold text-xs flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 hover:text-emerald-300 transition-all active:scale-95 cursor-pointer shadow-sm"
+              title="Chat Kasir WARUNG BANG KOBRA via WhatsApp"
+            >
+              <MessageCircle className="w-4 h-4 text-emerald-400" />
+              <span className="hidden sm:inline">Chat Kasir</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsCartOpen(true)}
+              className={`relative h-10 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
+                totalCartCount > 0
+                  ? 'bg-orange-500 hover:bg-orange-400 text-stone-950 shadow-lg shadow-orange-950/50'
+                  : 'bg-stone-900 hover:bg-stone-800 text-stone-300 border border-stone-800'
+              }`}
+            >
+              <ShoppingBag className="w-4 h-4" />
+              <span className="hidden sm:inline">Keranjang</span>
+              {totalCartCount > 0 && (
+                <span className="px-1.5 py-0.5 rounded-md bg-stone-950 text-orange-400 font-mono font-extrabold text-[11px] tabular-nums">
+                  {totalCartCount}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -790,6 +854,45 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                 deliveryFee={deliveryFee}
               />
             )}
+
+            {/* Pre-Order Acara Banner */}
+            <div className="p-3 sm:p-4 rounded-2xl bg-gradient-to-r from-red-950/60 via-stone-900 to-amber-950/60 border border-red-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-red-600/20 border border-red-500/40 text-red-400 flex items-center justify-center shrink-0">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="font-extrabold text-xs sm:text-sm text-white flex items-center gap-2 flex-wrap">
+                    <span>Pesanan Acara / Katering Porsi Besar?</span>
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-red-600/30 text-amber-300 border border-red-500/40">
+                      Pre-Order (PO)
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-stone-400 truncate mt-0.5">
+                    Pesan H-1 untuk pengajian, rapat kantor, santri DQM, ulang tahun & katering.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsPOModalOpen(true)}
+                  className="py-2 px-3.5 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-black text-xs transition shadow-md cursor-pointer whitespace-nowrap"
+                >
+                  Formulir PO
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAllTransactionsForTracking(StorageService.getTransactions());
+                    setIsPOTrackingOpen(true);
+                  }}
+                  className="py-2 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-xs transition border border-stone-700 cursor-pointer whitespace-nowrap"
+                >
+                  Lacak PO
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1089,14 +1192,20 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                     {/* Price & Action Row */}
                     <div className="flex items-end justify-between gap-2 mt-3 pt-2 border-t border-stone-800/60">
                       <div>
-                        {hasVars && minPrice !== maxPrice && (
-                          <span className="text-[10px] text-stone-500 font-semibold block leading-none mb-0.5">
-                            Mulai dari
+                        {hasVars && minPrice !== maxPrice ? (
+                          <>
+                            <span className="text-[10px] text-stone-500 font-semibold block leading-none mb-0.5">
+                              Harga Varian
+                            </span>
+                            <span className="font-mono font-extrabold text-amber-400 text-sm sm:text-base tabular-nums">
+                              {formatRupiah(minPrice)} - {formatRupiah(maxPrice)}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="font-mono font-extrabold text-amber-400 text-sm sm:text-base tabular-nums">
+                            {formatRupiah(minPrice)}
                           </span>
                         )}
-                        <span className="font-mono font-extrabold text-amber-400 text-sm sm:text-base tabular-nums">
-                          {formatRupiah(minPrice)}
-                        </span>
                       </div>
 
                       {isOutOfStock ? (
@@ -1386,6 +1495,22 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
           </div>
         );
       })()}
+
+      {/* Floating Chat Kasir Widget */}
+      {!isCartOpen && !completedOrder && (
+        <button
+          type="button"
+          id="btn-chat-kasir-fab"
+          onClick={handleChatKasir}
+          className={`fixed right-4 sm:right-6 z-30 flex items-center gap-2 px-3.5 py-2.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-black text-xs shadow-xl shadow-emerald-950/60 border border-emerald-300/40 transition-all duration-200 active:scale-95 cursor-pointer ${
+            totalCartCount > 0 ? 'bottom-24' : 'bottom-6'
+          }`}
+          title="Chat Kasir WARUNG BANG KOBRA via WhatsApp"
+        >
+          <MessageCircle className="w-4 h-4 fill-stone-950" />
+          <span>Chat Kasir</span>
+        </button>
+      )}
 
       {/* Floating Bottom Cart Bar */}
       {totalCartCount > 0 && !isCartOpen && !completedOrder && (
@@ -2156,6 +2281,32 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
           showToast={showToast}
         />
       )}
+
+      {/* Customer Pre-Order Form Modal */}
+      <CustomerPreOrderModal
+        isOpen={isPOModalOpen}
+        onClose={() => setIsPOModalOpen(false)}
+        products={products}
+        variants={variants}
+        settings={settings}
+        onOrderCreated={(newTx) => {
+          if (onOrderCreated) onOrderCreated(newTx);
+          setAllTransactionsForTracking((prev) => [newTx, ...prev]);
+        }}
+        showToast={showToast}
+        onOpenTracking={(poNum) => {
+          setIsPOModalOpen(false);
+          setIsPOTrackingOpen(true);
+        }}
+      />
+
+      {/* Customer Pre-Order Live Tracking Modal */}
+      <CustomerPOTrackingModal
+        isOpen={isPOTrackingOpen}
+        onClose={() => setIsPOTrackingOpen(false)}
+        transactions={allTransactionsForTracking}
+        settings={settings}
+      />
     </div>
   );
 };

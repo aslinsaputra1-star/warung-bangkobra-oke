@@ -27,6 +27,7 @@ import {
   Check,
   QrCode,
   CreditCard,
+  Calendar,
 } from 'lucide-react';
 import { StoreSettings, Product } from '../../types';
 import { formatRupiah } from '../../utils/formatters';
@@ -118,7 +119,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [showGuideModal, setShowGuideModal] = useState(false);
   const [activeSettingsSection, setActiveSettingsSection] = useState<
-    'all' | 'qris' | 'delivery' | 'profile' | 'database'
+    'all' | 'qris' | 'delivery' | 'po' | 'profile' | 'database'
   >('all');
 
   // Firebase testing and sync states
@@ -420,6 +421,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         <button
           type="button"
+          id="tab-settings-po"
+          onClick={() => setActiveSettingsSection('po')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer whitespace-nowrap shrink-0 ${
+            activeSettingsSection === 'po'
+              ? 'bg-amber-500 text-stone-950 shadow-md'
+              : 'text-stone-300 hover:text-white hover:bg-stone-800'
+          }`}
+        >
+          <Calendar className="w-3.5 h-3.5" />
+          <span>Pre-Order (PO)</span>
+        </button>
+
+        <button
+          type="button"
           id="tab-settings-profile"
           onClick={() => setActiveSettingsSection('profile')}
           className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer whitespace-nowrap shrink-0 ${
@@ -693,6 +708,167 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs transition cursor-pointer shadow-md"
             >
               Simpan Pengaturan Delivery DQM
+            </button>
+          </div>
+        </div>
+        )}
+
+        {/* Section: Pengaturan Pre-Order (PO) Acara & DP */}
+        {(activeSettingsSection === 'all' || activeSettingsSection === 'po') && (
+        <div className="bg-stone-900 border border-stone-800 rounded-3xl p-6 space-y-5 shadow-xl">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-stone-800">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-red-600/20 text-red-400 border border-red-500/30 flex items-center justify-center">
+                <Calendar className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-stone-100 text-base flex items-center gap-2">
+                  <span>Pengaturan Pre-Order (PO) & Uang Muka (DP)</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">
+                    Owner Exclusive
+                  </span>
+                </h3>
+                <p className="text-xs text-stone-400">
+                  Konfigurasi syarat pemesanan katering acara, batasan hari H-x, dan skema kewajiban DP
+                </p>
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 cursor-pointer bg-stone-950 px-3 py-1.5 rounded-xl border border-stone-800">
+              <input
+                type="checkbox"
+                checked={formData.poEnabled !== false}
+                onChange={(e) => handleInputChange('poEnabled', e.target.checked)}
+                className="w-4 h-4 accent-red-600 rounded"
+              />
+              <span className="text-xs font-bold text-stone-200">
+                {formData.poEnabled !== false ? 'Layanan PO Aktif' : 'Layanan PO Nonaktif'}
+              </span>
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            {/* Minimal Hari Pemesanan */}
+            <div className="p-4 rounded-2xl bg-stone-950 border border-stone-800 space-y-2">
+              <label className="block font-bold text-stone-200 uppercase tracking-wider text-[11px]">
+                Minimal Hari Pemesanan (H-x)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  max="30"
+                  value={formData.poMinDaysAhead ?? 1}
+                  onChange={(e) => handleInputChange('poMinDaysAhead', Math.max(1, Number(e.target.value)))}
+                  className="w-24 py-2 px-3 bg-stone-900 border border-stone-700 rounded-xl text-white font-mono text-sm focus:outline-none focus:border-red-500"
+                />
+                <span className="text-stone-400">Hari sebelum pesanan harus siap</span>
+              </div>
+              <p className="text-[11px] text-stone-500">
+                Pelanggan wajib memesan minimal 1 hari sebelumnya (H-1) untuk persiapan dapur warung.
+              </p>
+            </div>
+
+            {/* Skema Uang Muka (DP) */}
+            <div className="p-4 rounded-2xl bg-stone-950 border border-stone-800 space-y-2">
+              <label className="block font-bold text-stone-200 uppercase tracking-wider text-[11px]">
+                Skema Ketentuan Uang Muka (DP)
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleInputChange('poDpType', 'PERCENT')}
+                  className={`py-2 px-2.5 rounded-xl font-bold text-xs border transition cursor-pointer text-center ${
+                    (formData.poDpType || 'PERCENT') === 'PERCENT'
+                      ? 'bg-red-600 border-red-500 text-white'
+                      : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-white'
+                  }`}
+                >
+                  Persentase (%)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleInputChange('poDpType', 'FIXED')}
+                  className={`py-2 px-2.5 rounded-xl font-bold text-xs border transition cursor-pointer text-center ${
+                    formData.poDpType === 'FIXED'
+                      ? 'bg-red-600 border-red-500 text-white'
+                      : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-white'
+                  }`}
+                >
+                  Nominal Tetap (Rp)
+                </button>
+              </div>
+
+              {(formData.poDpType || 'PERCENT') === 'PERCENT' ? (
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="number"
+                    min="5"
+                    max="100"
+                    value={formData.poDpPercent ?? 50}
+                    onChange={(e) => handleInputChange('poDpPercent', Math.max(1, Math.min(100, Number(e.target.value))))}
+                    className="w-24 py-2 px-3 bg-stone-900 border border-stone-700 rounded-xl text-white font-mono text-sm focus:outline-none focus:border-red-500"
+                  />
+                  <span className="text-stone-300 font-bold">% dari total pesanan</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="number"
+                    min="10000"
+                    step="5000"
+                    value={formData.poDpFixedAmount ?? 100000}
+                    onChange={(e) => handleInputChange('poDpFixedAmount', Math.max(0, Number(e.target.value)))}
+                    className="w-36 py-2 px-3 bg-stone-900 border border-stone-700 rounded-xl text-white font-mono text-sm focus:outline-none focus:border-red-500"
+                  />
+                  <span className="text-stone-300 font-bold">Rupiah per pesanan</span>
+                </div>
+              )}
+            </div>
+
+            {/* Info Rekening Transfer Bank & E-Wallet */}
+            <div className="md:col-span-2 p-4 rounded-2xl bg-stone-950 border border-stone-800 space-y-2">
+              <label className="block font-bold text-stone-200 uppercase tracking-wider text-[11px]">
+                Info Rekening Transfer Bank & E-Wallet untuk Pembayaran DP
+              </label>
+              <textarea
+                rows={2}
+                value={formData.poBankTransferInfo ?? 'BCA: 1234567890 a/n WARUNG BANG KOBRA\nMandiri: 987654321 a/n BANG KOBRA'}
+                onChange={(e) => handleInputChange('poBankTransferInfo', e.target.value)}
+                placeholder="Tuliskan nomor rekening BCA, Mandiri, BRI, BSI, atau akun E-Wallet..."
+                className="w-full py-2 px-3 bg-stone-900 border border-stone-700 rounded-xl text-white text-xs resize-none"
+              />
+              <p className="text-[11px] text-stone-500">
+                Informasi ini ditampilkan kepada pelanggan pada formulir konfirmasi Pre-Order.
+              </p>
+            </div>
+
+            {/* Syarat & Ketentuan PO */}
+            <div className="md:col-span-2 p-4 rounded-2xl bg-stone-950 border border-stone-800 space-y-2">
+              <label className="block font-bold text-stone-200 uppercase tracking-wider text-[11px]">
+                Ketentuan &amp; Kebijakan Pembatalan Pre-Order
+              </label>
+              <textarea
+                rows={2}
+                value={formData.poTermsAndConditions ?? '1. Pesanan Pre-Order masuk daftar antrean masak setelah DP diverifikasi Kasir.\n2. Pembatalan H-1 dikenakan penyesuaian bahan baku yang telah dibeli.'}
+                onChange={(e) => handleInputChange('poTermsAndConditions', e.target.value)}
+                placeholder="Tuliskan syarat dan ketentuan pemesanan acara..."
+                className="w-full py-2 px-3 bg-stone-900 border border-stone-700 rounded-xl text-white text-xs resize-none"
+              />
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-stone-950 border border-stone-800 flex flex-wrap items-center justify-between gap-3">
+            <span className="text-xs text-stone-400">
+              Perubahan ketentuan DP otomatis diterapkan pada formulir Pre-Order pelanggan & kasir.
+            </span>
+            <button
+              type="button"
+              onClick={() => handleSave()}
+              disabled={isSaving}
+              className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-xs transition cursor-pointer shadow-md"
+            >
+              Simpan Pengaturan Pre-Order (PO)
             </button>
           </div>
         </div>

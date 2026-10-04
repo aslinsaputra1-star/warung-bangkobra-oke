@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Search,
   Plus,
@@ -22,6 +22,7 @@ import {
   StoreSettings,
   Transaction,
   ProductCategory,
+  OrderType,
 } from '../../types';
 import { formatRupiah } from '../../utils/formatters';
 import { StorageService } from '../../services/storage';
@@ -60,17 +61,36 @@ export const POSView: React.FC<POSViewProps> = ({
 
   const categories: Array<string> = ['Semua', 'Makanan', 'Minuman', 'Snack', 'Tambahan', 'Lainnya'];
 
-  // Map active variants by productId
+  // Map active variants by product id, sku, and name (ensures variants are always found)
   const variantsByProduct = useMemo(() => {
     const map = new Map<string, ProductVariant[]>();
+    products.forEach((p) => {
+      const pId = String(p.id).trim();
+      const pSku = String(p.sku || '').trim();
+      const pName = String(p.nama || '').trim().toLowerCase();
+      const matched = variants.filter(
+        (v) =>
+          v &&
+          v.isActive !== false &&
+          (String(v.productId).trim() === pId ||
+            (pSku && String(v.productId).trim() === pSku) ||
+            (v.productName && String(v.productName).trim().toLowerCase() === pName))
+      );
+      if (matched.length > 0) {
+        map.set(pId, matched);
+        if (pSku) map.set(pSku, matched);
+      }
+    });
+    // Also include any variants keyed directly by their own productId
     variants.forEach((v) => {
-      if (!v || !v.isActive) return;
-      const list = map.get(v.productId) || [];
-      list.push(v);
-      map.set(v.productId, list);
+      if (!v || v.isActive === false) return;
+      const pid = String(v.productId || '').trim();
+      if (pid && !map.has(pid)) {
+        map.set(pid, [v]);
+      }
     });
     return map;
-  }, [variants]);
+  }, [products, variants]);
 
   // Filtered Products (search also matches variant flavor names!)
   const filteredProducts = useMemo(() => {
@@ -103,6 +123,68 @@ export const POSView: React.FC<POSViewProps> = ({
     return cart.reduce((sum, item) => sum + item.qty, 0);
   }, [cart]);
 
+  // Real-time synchronization of cart item prices when products or variants are updated
+  useEffect(() => {
+    setCart((prevCart) => {
+      if (!prevCart || prevCart.length === 0) return prevCart;
+      let hasPriceOrDataChange = false;
+      const updatedCart = prevCart.map((item) => {
+        const pId = String(item.product.id).trim();
+        const pSku = String(item.product.sku || '').trim();
+        const pName = String(item.product.nama || '').trim().toLowerCase();
+
+        const latestProd =
+          products.find(
+            (p) =>
+              String(p.id).trim() === pId ||
+              (pSku && String(p.sku || '').trim() === pSku) ||
+              String(p.nama || '').trim().toLowerCase() === pName
+          ) || item.product;
+
+        let latestVar = item.variant;
+        let effectiveUnitPrice = Number(latestProd.harga_jual || 0);
+
+        if (item.variant) {
+          const prodVars = variantsByProduct.get(latestProd.id) || [];
+          const foundVar = prodVars.find(
+            (v) =>
+              v.variantId === item.variant?.variantId ||
+              (item.variant?.sku && v.sku === item.variant?.sku) ||
+              v.variantName.toLowerCase() === item.variant?.variantName.toLowerCase()
+          );
+          if (foundVar) {
+            latestVar = foundVar;
+            effectiveUnitPrice =
+              Number(foundVar.price) > 0 ? Number(foundVar.price) : Number(latestProd.harga_jual || 0);
+          } else {
+            effectiveUnitPrice =
+              Number(item.variant.price) > 0
+                ? Number(item.variant.price)
+                : Number(latestProd.harga_jual || 0);
+          }
+        }
+
+        const newSubtotal = item.qty * effectiveUnitPrice;
+        if (
+          item.subtotal !== newSubtotal ||
+          item.product.harga_jual !== latestProd.harga_jual ||
+          (item.variant && latestVar && item.variant.price !== latestVar.price)
+        ) {
+          hasPriceOrDataChange = true;
+          return {
+            ...item,
+            product: latestProd,
+            variant: latestVar,
+            subtotal: newSubtotal,
+          };
+        }
+        return item;
+      });
+
+      return hasPriceOrDataChange ? updatedCart : prevCart;
+    });
+  }, [products, variants, variantsByProduct]);
+
   const formatVariantDisplayName = (productName: string, variantName: string): string => {
     const pName = String(productName || '').trim();
     const vName = String(variantName || '').trim();
@@ -119,6 +201,12 @@ export const POSView: React.FC<POSViewProps> = ({
       showToast(`Stok varian ${product.nama} - ${variant.variantName} habis!`, 'error');
       return;
     }
+
+    const effectivePrice = Number(variant.price) > 0 ? Number(variant.price) : Number(product.harga_jual);
+    const resolvedVariant: ProductVariant = {
+      ...variant,
+      price: effectivePrice,
+    };
 
     // Mode: Edit Variant of an existing cart item
     if (editingCartVariantIndex !== null) {
@@ -155,7 +243,7 @@ export const POSView: React.FC<POSViewProps> = ({
           next[adjIdx] = {
             ...next[adjIdx],
             qty: combinedQty,
-            subtotal: combinedQty * variant.price,
+            subtotal: combinedQty * effectivePrice,
           };
           return next;
         }
@@ -163,8 +251,8 @@ export const POSView: React.FC<POSViewProps> = ({
         updated[editingCartVariantIndex] = {
           ...targetItem,
           product,
-          variant,
-          subtotal: desiredQty * variant.price,
+          variant: resolvedVariant,
+          subtotal: desiredQty * effectivePrice,
         };
         return updated;
       });
@@ -196,8 +284,9 @@ export const POSView: React.FC<POSViewProps> = ({
         const newQty = item.qty + 1;
         updated[existingIdx] = {
           ...item,
+          variant: resolvedVariant,
           qty: newQty,
-          subtotal: newQty * variant.price,
+          subtotal: newQty * effectivePrice,
         };
         return updated;
       } else {
@@ -206,9 +295,9 @@ export const POSView: React.FC<POSViewProps> = ({
           ...prev,
           {
             product,
-            variant,
+            variant: resolvedVariant,
             qty: 1,
-            subtotal: variant.price,
+            subtotal: effectivePrice,
           },
         ];
       }
@@ -336,7 +425,7 @@ export const POSView: React.FC<POSViewProps> = ({
 
   const handleCompletePayment = (data: {
     method: any;
-    orderType?: 'BUNGKUS' | 'DELIVERY_DQM';
+    orderType?: OrderType;
     deliveryArea?: 'DQM' | null;
     deliveryLocation?: string | null;
     deliveryDetail?: string | null;

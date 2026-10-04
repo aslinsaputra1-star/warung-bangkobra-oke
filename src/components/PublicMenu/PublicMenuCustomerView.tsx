@@ -34,7 +34,10 @@ import {
   Lock,
   Layers,
   RefreshCw,
+  Calendar,
 } from 'lucide-react';
+import { CustomerPreOrderModal } from '../PreOrder/CustomerPreOrderModal';
+import { CustomerPOTrackingModal } from '../PreOrder/CustomerPOTrackingModal';
 import {
   Product,
   ProductVariant,
@@ -50,6 +53,7 @@ import {
   sanitizeWhatsAppNumber,
   buildOnlineQRCodeOrderWhatsAppMessage,
   openWhatsAppChat,
+  buildChatKasirWhatsAppMessage,
   DQM_LOCATIONS,
   getEffectiveDeliveryFee,
   normalizeOrderStatus,
@@ -129,6 +133,13 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedBank, setCopiedBank] = useState(false);
+
+  // Pre-Order Modal States
+  const [isPOModalOpen, setIsPOModalOpen] = useState(false);
+  const [isPOTrackingOpen, setIsPOTrackingOpen] = useState(false);
+  const [allTransactionsForTracking, setAllTransactionsForTracking] = useState<Transaction[]>(() =>
+    StorageService.getTransactions()
+  );
 
   // Completed Order State & Live Real-time Listener
   const [completedOrder, setCompletedOrder] = useState<{
@@ -669,6 +680,35 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
     openWhatsAppChat(settings.whatsappNumber, completedOrder.whatsappMessage);
   };
 
+  const handleChatKasir = () => {
+    const waNumber = settings.whatsappNumber || '';
+    if (!waNumber) {
+      if (showToast) {
+        showToast('Nomor WhatsApp kasir belum diatur di Pengaturan.', 'error');
+      }
+      return;
+    }
+
+    const cartItemList = cartItems.map((ci) => ({
+      name: ci.variant
+        ? formatVariantDisplayName(ci.product.nama, ci.variant.variantName)
+        : ci.product.nama,
+      qty: ci.qty,
+      price: ci.variant ? ci.variant.price : ci.product.harga_jual,
+      notes: ci.notes,
+    }));
+
+    const message = buildChatKasirWhatsAppMessage({
+      storeName: settings.storeName || 'WARUNG BANG KOBRA',
+      order: completedOrder ? completedOrder.createdOrder : null,
+      cartItems: cartItemList.length > 0 ? cartItemList : undefined,
+      customerName: customerName.trim() || undefined,
+      orderType,
+    });
+
+    openWhatsAppChat(waNumber, message);
+  };
+
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col antialiased selection:bg-orange-500 selection:text-stone-950">
       {/* Clean 3-Zone Sticky Glass Top Bar */}
@@ -692,18 +732,60 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
           <a href="#keunggulan" className="hover:text-stone-100 transition-colors whitespace-nowrap">
             Standar Dapur
           </a>
-          <a
-            href={`https://wa.me/${sanitizeWhatsAppNumber(settings.whatsappNumber)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-emerald-400 transition-colors whitespace-nowrap"
+          <button
+            type="button"
+            onClick={() => setIsPOModalOpen(true)}
+            className="hover:text-amber-400 transition-colors whitespace-nowrap flex items-center gap-1 cursor-pointer"
           >
-            Hubungi Warung
-          </a>
+            <Calendar className="w-3.5 h-3.5 text-amber-400" />
+            <span>Pre-Order Acara</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAllTransactionsForTracking(StorageService.getTransactions());
+              setIsPOTrackingOpen(true);
+            }}
+            className="hover:text-sky-400 transition-colors whitespace-nowrap flex items-center gap-1 cursor-pointer"
+          >
+            <Search className="w-3.5 h-3.5 text-sky-400" />
+            <span>Lacak PO</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleChatKasir}
+            className="hover:text-emerald-400 transition-colors whitespace-nowrap flex items-center gap-1 cursor-pointer"
+          >
+            <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Chat Kasir</span>
+          </button>
         </nav>
 
-        {/* Zone 3: Primary Actions (Share + Live Cart Trigger) */}
+        {/* Zone 3: Primary Actions (PO + Chat Kasir + Share + Live Cart Trigger) */}
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            id="btn-preorder-public-header"
+            onClick={() => setIsPOModalOpen(true)}
+            className="min-h-[38px] px-3 sm:px-3.5 rounded-xl font-bold text-xs flex items-center gap-1.5 bg-gradient-to-r from-red-600/30 to-amber-600/30 hover:from-red-600/50 hover:to-amber-600/50 border border-red-500/40 text-amber-300 transition-all active:scale-95 cursor-pointer shadow-sm whitespace-nowrap"
+            title="Formulir Pemesanan Pre-Order Acara & Porsi Besar"
+          >
+            <Calendar className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">Pre-Order Acara</span>
+            <span className="sm:hidden">PO</span>
+          </button>
+
+          <button
+            type="button"
+            id="btn-chat-kasir-public-header"
+            onClick={handleChatKasir}
+            className="min-h-[38px] px-3 sm:px-3.5 rounded-xl font-bold text-xs flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 hover:text-emerald-300 transition-all active:scale-95 cursor-pointer shadow-sm whitespace-nowrap"
+            title="Chat Kasir WARUNG BANG KOBRA via WhatsApp"
+          >
+            <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Chat Kasir</span>
+          </button>
+
           <button
             type="button"
             onClick={handleCopyLink}
@@ -2446,6 +2528,49 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
           showToast={showToast}
         />
       )}
+
+      {/* Floating Chat Kasir Widget */}
+      <div className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-40">
+        <button
+          type="button"
+          id="btn-chat-kasir-public-floating"
+          onClick={handleChatKasir}
+          className="h-12 px-4 rounded-full bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-black text-xs sm:text-sm flex items-center gap-2 shadow-2xl shadow-emerald-950/80 border-2 border-emerald-300/40 transition-all hover:scale-105 active:scale-95 cursor-pointer group"
+          title="Chat Kasir WARUNG BANG KOBRA via WhatsApp"
+        >
+          <div className="w-6 h-6 rounded-full bg-stone-950/20 flex items-center justify-center">
+            <MessageCircle className="w-4 h-4 text-stone-950" />
+          </div>
+          <span>Chat Kasir</span>
+          <span className="w-2 h-2 rounded-full bg-stone-950 animate-pulse" />
+        </button>
+      </div>
+
+      {/* Customer Pre-Order Form Modal */}
+      <CustomerPreOrderModal
+        isOpen={isPOModalOpen}
+        onClose={() => setIsPOModalOpen(false)}
+        products={products}
+        variants={variants}
+        settings={settings}
+        onOrderCreated={(newTx) => {
+          if (onOrderCreated) onOrderCreated(newTx);
+          setAllTransactionsForTracking((prev) => [newTx, ...prev]);
+        }}
+        showToast={showToast}
+        onOpenTracking={(poNum) => {
+          setIsPOModalOpen(false);
+          setIsPOTrackingOpen(true);
+        }}
+      />
+
+      {/* Customer Pre-Order Live Tracking Modal */}
+      <CustomerPOTrackingModal
+        isOpen={isPOTrackingOpen}
+        onClose={() => setIsPOTrackingOpen(false)}
+        transactions={allTransactionsForTracking}
+        settings={settings}
+      />
 
       {/* Quiet Editorial Footer */}
       <footer className="mt-auto border-t border-white/[0.07] bg-stone-950 py-8 px-4 text-center text-xs text-stone-400">

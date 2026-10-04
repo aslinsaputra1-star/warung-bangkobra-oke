@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   StoreSettings,
   ActiveTab,
@@ -46,6 +46,9 @@ import { UsersManagementView } from './components/Users/UsersManagementView';
 import { OrdersManagementView } from './components/Orders/OrdersManagementView';
 import { DeliveryDQMDashboard } from './components/Orders/DeliveryDQMDashboard';
 import { DeliveryProofModal } from './components/Orders/DeliveryProofModal';
+import { PreOrderDashboardView } from './components/PreOrder/PreOrderDashboardView';
+import { CustomerPreOrderModal } from './components/PreOrder/CustomerPreOrderModal';
+import { CustomerPOTrackingModal } from './components/PreOrder/CustomerPOTrackingModal';
 import { ProtectedRoute } from './components/Auth/ProtectedRoute';
 import { LoginModal } from './components/Auth/LoginModal';
 import { LoginView } from './components/Auth/LoginView';
@@ -266,6 +269,11 @@ export default function App() {
   // Global Receipt Modal (e.g. from Dashboard / Reports)
   const [receiptTx, setReceiptTx] = useState<Transaction | null>(null);
 
+  // Pre-Order (PO) Modals State
+  const [isCreatePOModalOpen, setIsCreatePOModalOpen] = useState(false);
+  const [isPOTrackingModalOpen, setIsPOTrackingModalOpen] = useState(false);
+  const [poTrackingInitialNumber, setPoTrackingInitialNumber] = useState('');
+
   // Shared Digital Receipt / Delivery Proof Link Viewer (/receipt/:id, /delivery-proof/:id, ?receipt=..., ?proof=...)
   const [sharedReceiptRoute, setSharedReceiptRoute] = useState<{
     orderId: string;
@@ -368,6 +376,16 @@ export default function App() {
           .finally(() => {
             isSeedingVariants = false;
           });
+      }
+
+      // One-time auto-harmonize prices (ensures cashier and menu prices match 100%)
+      if (localStorage.getItem('wkb_app_prices_harmonized_v2') !== 'true') {
+        localStorage.setItem('wkb_app_prices_harmonized_v2', 'true');
+        const { updatedVariants, changedCount } = StorageService.syncAllVariantPricesWithProducts();
+        if (changedCount > 0) {
+          setProductVariants(updatedVariants);
+          syncProductVariantsToFirebase(updatedVariants, false).catch(() => {});
+        }
       }
     } catch {
       isSeedingProducts = false;
@@ -559,10 +577,18 @@ export default function App() {
             playOrderChime();
             const latestOrder = newOrders[0];
             setNewOrderAlert(latestOrder);
-            showToast(
-              `🔔 PESANAN BARU MASUK KE ANTRIAN KASIR! ${latestOrder.nama_pelanggan} [${latestOrder.orderType === 'DELIVERY_DQM' || latestOrder.tipe_pesanan === 'DELIVERY_DQM' ? 'DELIVERY DQM' : 'BUNGKUS'}] - Total: ${formatRupiah(latestOrder.total)}`,
-              'success'
-            );
+            const isPO = latestOrder.orderType === 'PRE_ORDER' || Boolean(latestOrder.poNumber);
+            if (isPO) {
+              showToast(
+                `🎉 PRE-ORDER ACARA BARU MASUK! ${latestOrder.poNumber || latestOrder.id_transaksi} • ${latestOrder.nama_pelanggan} (${latestOrder.eventType || 'Acara'}) - Total: ${formatRupiah(latestOrder.total)}`,
+                'success'
+              );
+            } else {
+              showToast(
+                `🔔 PESANAN BARU MASUK KE ANTRIAN KASIR! ${latestOrder.nama_pelanggan} [${latestOrder.orderType === 'DELIVERY_DQM' || latestOrder.tipe_pesanan === 'DELIVERY_DQM' ? 'DELIVERY DQM' : 'BUNGKUS'}] - Total: ${formatRupiah(latestOrder.total)}`,
+                'success'
+              );
+            }
           }
         }
         isInitialOrdersLoad.current = false;
@@ -1021,12 +1047,40 @@ export default function App() {
     saveProductToFirebase(savedProd).catch(() => {});
   };
 
-  const handleUpdateProduct = (prod: Product) => {
-    const updated = StorageService.updateProduct(prod);
+  const handleUpdateProduct = (prod: Product, syncVariants = true) => {
+    const updated = StorageService.updateProduct(prod, syncVariants);
     setProducts(updated);
     const savedProd =
       updated.find((p) => p.id === prod.id || (prod.sku && p.sku === prod.sku)) || prod;
     saveProductToFirebase(savedProd).catch(() => {});
+
+    if (syncVariants) {
+      const updatedVars = StorageService.getProductVariants();
+      setProductVariants(updatedVars);
+      const cleanId = String(prod.id).trim();
+      const cleanSku = String(prod.sku || '').trim();
+      const pName = String(prod.nama || '').trim().toLowerCase();
+      const affectedVars = updatedVars.filter(
+        (v) =>
+          String(v.productId).trim() === cleanId ||
+          (cleanSku && String(v.productId).trim() === cleanSku) ||
+          (v.productName && String(v.productName).trim().toLowerCase() === pName)
+      );
+      if (affectedVars.length > 0) {
+        syncProductVariantsToFirebase(updatedVars, false).catch(() => {});
+      }
+    }
+  };
+
+  const handleSyncAllPrices = () => {
+    const { updatedVariants, changedCount } = StorageService.syncAllVariantPricesWithProducts();
+    if (changedCount > 0) {
+      setProductVariants(updatedVariants);
+      syncProductVariantsToFirebase(updatedVariants, false).catch(() => {});
+      showToast(`Berhasil menyelaraskan harga ${changedCount} varian rasa dengan harga jual produk utama!`, 'success');
+    } else {
+      showToast('Seluruh harga kasir dan menu produk sudah 100% selaras!', 'info');
+    }
   };
 
   const handleDeleteProduct = (id: string) => {
@@ -1464,6 +1518,14 @@ export default function App() {
   const effectiveRole = currentUser.role;
   const isTabAuthorized = hasTabAccess(effectiveRole, activeTab);
 
+  const pendingPOCount = useMemo(() => {
+    return transactions.filter(
+      (tx) =>
+        (tx.orderType === 'PRE_ORDER' || Boolean(tx.poNumber)) &&
+        (tx.poStatus === 'MENUNGGU_KONFIRMASI' || tx.poStatus === 'MENUNGGU_DP')
+    ).length;
+  }, [transactions]);
+
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col antialiased selection:bg-amber-500 selection:text-black">
       {/* Top Application Header */}
@@ -1510,7 +1572,13 @@ export default function App() {
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => {
-                setActiveTab('orders');
+                if (newOrderAlert.orderType === 'PRE_ORDER' || Boolean(newOrderAlert.poNumber)) {
+                  setActiveTab('preorders');
+                } else if (newOrderAlert.orderType === 'DELIVERY_DQM' || newOrderAlert.deliveryType === 'DELIVERY_DQM') {
+                  setActiveTab('delivery_dqm');
+                } else {
+                  setActiveTab('orders');
+                }
                 setNewOrderAlert(null);
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-stone-950 hover:bg-stone-100 rounded-xl font-black text-xs shadow-md transition active:scale-95 cursor-pointer"
@@ -1538,6 +1606,7 @@ export default function App() {
           onTabChange={setActiveTab}
           role={effectiveRole}
           lowStockCount={lowStockCount}
+          pendingPOCount={pendingPOCount}
           currentUser={currentUser}
           onOpenProfile={() => setIsProfileModalOpen(true)}
           onOpenLogoEditor={() => setIsLogoEditorOpen(true)}
@@ -1593,6 +1662,19 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'preorders' && (
+            <PreOrderDashboardView
+              transactions={transactions}
+              products={products}
+              variants={productVariants}
+              settings={settings}
+              onUpdateTransaction={handleUpdateTransaction}
+              onPrintReceipt={setReceiptTx}
+              showToast={showToast}
+              onOpenCreatePOModal={() => setIsCreatePOModalOpen(true)}
+            />
+          )}
+
           {activeTab === 'delivery_dqm' && (
             <DeliveryDQMDashboard
               transactions={transactions}
@@ -1643,6 +1725,7 @@ export default function App() {
               onUpdateVariant={handleUpdateVariant}
               onDeleteVariant={handleDeleteVariant}
               onBulkSaveProductsAndVariants={handleBulkSaveProductsAndVariants}
+              onSyncAllPrices={handleSyncAllPrices}
               showToast={showToast}
             />
           )}
@@ -1755,6 +1838,34 @@ export default function App() {
         settings={settings}
         onSaveSettings={handleSaveSettings}
         showToast={showToast}
+      />
+
+      {/* Customer Pre-Order Form Modal */}
+      <CustomerPreOrderModal
+        isOpen={isCreatePOModalOpen}
+        onClose={() => setIsCreatePOModalOpen(false)}
+        products={products}
+        variants={productVariants}
+        settings={settings}
+        onOrderCreated={(newTx) => {
+          handleUpdateTransaction(newTx);
+          setReceiptTx(newTx);
+        }}
+        showToast={showToast}
+        onOpenTracking={(poNum) => {
+          setPoTrackingInitialNumber(poNum);
+          setIsPOTrackingModalOpen(true);
+        }}
+      />
+
+      {/* Customer Pre-Order Live Tracking Modal */}
+      <CustomerPOTrackingModal
+        isOpen={isPOTrackingModalOpen}
+        onClose={() => setIsPOTrackingModalOpen(false)}
+        transactions={transactions}
+        settings={settings}
+        initialPONumber={poTrackingInitialNumber}
+        onPrintReceipt={setReceiptTx}
       />
 
       {/* Global Receipt Modal Popup (when clicked from Dashboard or Reports) */}

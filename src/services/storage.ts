@@ -349,7 +349,7 @@ export class StorageService {
     return sorted;
   }
 
-  static updateProduct(product: Product): Product[] {
+  static updateProduct(product: Product, syncVariants = true): Product[] {
     const stamped: Product = {
       ...product,
       updated_at: new Date().toISOString(),
@@ -366,7 +366,74 @@ export class StorageService {
       : [...products, stamped];
     const updated = sortProductsBySkuOrder(nextList);
     this.saveProducts(updated);
+
+    if (syncVariants) {
+      const cleanId = String(stamped.id || '').trim();
+      const cleanSku = String(stamped.sku || '').trim();
+      const cleanName = String(stamped.nama || '').trim().toLowerCase();
+      const allVariants = this.getProductVariants();
+      let varChanged = false;
+      const updatedVariants = allVariants.map((v) => {
+        const isMatch =
+          String(v.productId || '').trim() === cleanId ||
+          (cleanSku && String(v.productId || '').trim() === cleanSku) ||
+          (v.productName && String(v.productName).trim().toLowerCase() === cleanName);
+        if (!isMatch) return v;
+        varChanged = true;
+        return {
+          ...v,
+          price: Number(stamped.harga_jual) || v.price,
+          costPrice: Number(stamped.harga_modal) || v.costPrice,
+          updatedAt: stamped.updated_at,
+        };
+      });
+      if (varChanged) {
+        this.saveProductVariants(updatedVariants);
+      }
+    }
+
     return updated;
+  }
+
+  static syncAllVariantPricesWithProducts(): {
+    updatedVariants: ProductVariant[];
+    changedCount: number;
+  } {
+    const products = this.getProducts();
+    const variants = this.getProductVariants();
+    let changedCount = 0;
+    const nowIso = new Date().toISOString();
+
+    const productMap = new Map<string, Product>();
+    products.forEach((p) => {
+      productMap.set(String(p.id).trim(), p);
+      if (p.sku) productMap.set(String(p.sku).trim(), p);
+      if (p.nama) productMap.set(String(p.nama).trim().toLowerCase(), p);
+    });
+
+    const updatedVariants = variants.map((v) => {
+      const parent =
+        productMap.get(String(v.productId).trim()) ||
+        (v.sku ? productMap.get(String(v.sku).trim()) : undefined) ||
+        (v.productName ? productMap.get(String(v.productName).trim().toLowerCase()) : undefined);
+
+      if (parent && (v.price !== parent.harga_jual || v.costPrice !== parent.harga_modal)) {
+        changedCount++;
+        return {
+          ...v,
+          price: Number(parent.harga_jual) || v.price,
+          costPrice: Number(parent.harga_modal) || v.costPrice,
+          updatedAt: nowIso,
+        };
+      }
+      return v;
+    });
+
+    if (changedCount > 0) {
+      this.saveProductVariants(updatedVariants);
+    }
+
+    return { updatedVariants, changedCount };
   }
 
   static deleteProductsBulk(productIds: string[]): {
@@ -502,6 +569,33 @@ export class StorageService {
         );
         if (missingIndomieVars.length > 0 && !deletedProdIds.has(INDOMIE_PARENT_PRODUCT.id)) {
           stored = [...missingIndomieVars, ...stored];
+          safeSetItem(STORAGE_KEYS.PRODUCT_VARIANTS, stored);
+        }
+      }
+    } catch {
+      // ignore
+    }
+    try {
+      if (localStorage.getItem('wkb_harmonize_prices_v4') !== 'true') {
+        localStorage.setItem('wkb_harmonize_prices_v4', 'true');
+        let fixedAny = false;
+        stored = stored.map((v) => {
+          if (!v) return v;
+          const isIndomie =
+            v.productId === 'SKU-0034' ||
+            (v.productName && v.productName.toUpperCase() === 'INDOMIE') ||
+            (v.variantName && v.variantName.toLowerCase().includes('indomie'));
+          if (isIndomie && (v.price === 7000 || v.costPrice === 5000)) {
+            fixedAny = true;
+            return {
+              ...v,
+              price: 6000,
+              costPrice: 4500,
+            };
+          }
+          return v;
+        });
+        if (fixedAny) {
           safeSetItem(STORAGE_KEYS.PRODUCT_VARIANTS, stored);
         }
       }
@@ -771,6 +865,22 @@ export class StorageService {
           deliveryFee: isDelivery ? Number(tx.deliveryFee ?? tx.biaya ?? 0) : 0,
           deliveryStatus: isDelivery ? normalizeDeliveryStatus(tx) : null,
           created_at: String(tx.created_at || new Date().toISOString()),
+          poNumber: tx.poNumber ? String(tx.poNumber) : undefined,
+          eventType: tx.eventType ? String(tx.eventType) : undefined,
+          eventDate: tx.eventDate ? String(tx.eventDate) : undefined,
+          eventTime: tx.eventTime ? String(tx.eventTime) : undefined,
+          guestCount: tx.guestCount !== undefined ? Number(tx.guestCount) : undefined,
+          deliveryType: tx.deliveryType || undefined,
+          eventLocation: tx.eventLocation ? String(tx.eventLocation) : undefined,
+          dpRequired: tx.dpRequired !== undefined ? Number(tx.dpRequired) : undefined,
+          dpPaid: tx.dpPaid !== undefined ? Number(tx.dpPaid) : undefined,
+          remainingPayment: tx.remainingPayment !== undefined ? Number(tx.remainingPayment) : undefined,
+          paymentStatus: tx.paymentStatus || undefined,
+          paymentHistory: Array.isArray(tx.paymentHistory) ? tx.paymentHistory : undefined,
+          poStatus: tx.poStatus || undefined,
+          dpProofUrl: tx.dpProofUrl ? String(tx.dpProofUrl) : undefined,
+          notes: tx.notes ? String(tx.notes) : undefined,
+          poStockDeducted: Boolean(tx.poStockDeducted),
           items: rawItems.map((item: any) => ({
             id_detail: String(item?.id_detail || ''),
             id_transaksi: String(item?.id_transaksi || tx.id_transaksi || ''),
@@ -821,6 +931,33 @@ export class StorageService {
     return `${todayPrefix}${nextSeq}`;
   }
 
+  static generatePONumber(prefix = 'PO-WBK'): string {
+    const cleanPrefix = prefix || 'PO-WBK';
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const dateStr = `${year}${month}${day}`;
+
+    const transactions = this.getTransactions();
+    const todayPrefix = `${cleanPrefix}-${dateStr}-`;
+
+    let maxSeq = 0;
+    transactions.forEach((tx) => {
+      const idToCheck = tx.poNumber || (tx.id_transaksi && tx.id_transaksi.startsWith(todayPrefix) ? tx.id_transaksi : '');
+      if (idToCheck && idToCheck.startsWith(todayPrefix)) {
+        const seqPart = idToCheck.replace(todayPrefix, '');
+        const num = parseInt(seqPart, 10);
+        if (!isNaN(num) && num > maxSeq) {
+          maxSeq = num;
+        }
+      }
+    });
+
+    const nextSeq = String(maxSeq + 1).padStart(4, '0');
+    return `${todayPrefix}${nextSeq}`;
+  }
+
   static completeTransaction(transaction: Transaction): {
     transactions: Transaction[];
     products: Product[];
@@ -830,6 +967,19 @@ export class StorageService {
     // 1. Save Transaction
     const transactions = [transaction, ...this.getTransactions()];
     this.saveTransactions(transactions);
+
+    // If this is a PRE_ORDER not yet in DIPROSES or SELESAI status, do not deduct stock yet to prevent premature stock locks
+    const isPreOrder = transaction.orderType === 'PRE_ORDER' || Boolean(transaction.poNumber);
+    const shouldDeductStock = !isPreOrder || transaction.status === 'DIPROSES' || transaction.status === 'SELESAI' || transaction.poStatus === 'DIPROSES' || transaction.poStatus === 'SELESAI';
+
+    if (!shouldDeductStock) {
+      return {
+        transactions,
+        products: this.getProducts(),
+        variants: this.getProductVariants(),
+        customers: this.getCustomers(),
+      };
+    }
 
     // 2. Reduce Stock (for both Product Variants and Main Products) & Record Mutations
     const products = this.getProducts();
