@@ -277,8 +277,29 @@
   box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(249, 115, 22, 0.35);
 }
 
+:root {
+  font-family: 'Inter', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  color-scheme: dark;
+}
+
+body {
+  font-family: 'Inter', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .font-display {
-  font-family: 'Syne', 'Plus Jakarta Sans', sans-serif;
+  font-family: 'Poppins', 'Inter', 'Plus Jakarta Sans', sans-serif;
+}
+
+/* Mobile Safe-Area padding utilities */
+.pb-safe-nav {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 5rem);
+}
+
+.bottom-safe-cart {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 4.5rem);
 }
 
 .no-scrollbar::-webkit-scrollbar,

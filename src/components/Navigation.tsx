@@ -177,7 +177,7 @@ export const Navigation: React.FC<NavigationProps> = ({
               onClick={() => handleSelectTab(item.id)}
               className={`w-full min-h-[44px] flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-sm font-extrabold transition-all cursor-pointer ${
                 isActive
-                  ? 'bg-gradient-to-r from-amber-600 via-amber-500 to-orange-600 text-stone-950 font-black shadow-lg shadow-amber-950/60 border border-amber-400/50 scale-[1.01]'
+                  ? 'bg-gradient-to-r from-red-600 via-red-500 to-orange-500 text-white font-black shadow-lg shadow-red-950/60 border border-red-400/50 scale-[1.01]'
                   : isAllowed
                   ? 'text-stone-300 hover:text-white hover:bg-stone-900 border border-transparent'
                   : 'text-stone-500 hover:text-stone-300 hover:bg-stone-900/50 border border-transparent opacity-75'
@@ -187,9 +187,9 @@ export const Navigation: React.FC<NavigationProps> = ({
                 <Icon
                   className={`w-5 h-5 shrink-0 ${
                     isActive
-                      ? 'text-stone-950 stroke-[2.5]'
+                      ? 'text-white stroke-[2.5]'
                       : isAllowed
-                      ? 'text-amber-500 group-hover:text-amber-400'
+                      ? 'text-red-500 group-hover:text-orange-400'
                       : 'text-stone-500'
                   }`}
                 />
@@ -207,7 +207,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                 )}
                 {item.badge && item.badge > 0 ? (
                   <span className={`px-2 py-0.5 text-[10px] font-black rounded-full shadow-sm animate-pulse ${
-                    isActive ? 'bg-stone-950 text-amber-400' : 'bg-amber-500 text-stone-950'
+                    isActive ? 'bg-white text-red-600' : 'bg-red-600 text-white'
                   }`}>
                     {item.badge}
                   </span>
@@ -215,8 +215,8 @@ export const Navigation: React.FC<NavigationProps> = ({
                   <span
                     className={`px-2 py-0.5 text-[10px] font-black rounded-full uppercase ${
                       isActive
-                        ? 'bg-stone-950/30 text-stone-950 border border-stone-950/20'
-                        : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                        ? 'bg-white/20 text-white border border-white/30'
+                        : 'bg-red-500/15 text-red-400 border border-red-500/30'
                     }`}
                   >
                     {item.badgeText}
@@ -369,23 +369,23 @@ export const Navigation: React.FC<NavigationProps> = ({
             >
               {/* Active Highlight Pill */}
               <div
-                className={`relative flex items-center justify-center w-10 h-7 rounded-xl transition-all ${
+                className={`relative flex items-center justify-center w-11 h-7 rounded-xl transition-all ${
                   isCurrentActive
-                    ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-stone-950 shadow-md shadow-amber-950/60'
+                    ? 'bg-gradient-to-r from-red-600 to-orange-500 text-white shadow-md shadow-red-950/70'
                     : isMenuTrigger && mobileDrawerOpen
-                    ? 'bg-stone-800 text-amber-400'
+                    ? 'bg-stone-800 text-red-400'
                     : 'text-stone-400'
                 }`}
               >
                 <Icon className={`w-5 h-5 shrink-0 ${isCurrentActive ? 'stroke-[2.5]' : ''}`} />
                 {item.id === 'stock' && lowStockCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-amber-500 rounded-full animate-ping" />
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-600 rounded-full animate-ping" />
                 )}
               </div>
 
               <span
                 className={`text-[11px] font-black tracking-tight mt-0.5 truncate max-w-full ${
-                  isCurrentActive ? 'text-amber-400 font-extrabold' : 'text-stone-400'
+                  isCurrentActive ? 'text-red-400 font-extrabold' : 'text-stone-400'
                 }`}
               >
                 {item.label}
@@ -393,7 +393,7 @@ export const Navigation: React.FC<NavigationProps> = ({
 
               {/* Indicator dot */}
               {isCurrentActive && (
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 absolute bottom-0.5" />
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] absolute bottom-0.5" />
               )}
             </button>
           );
@@ -410,7 +410,7 @@ export const Navigation: React.FC<NavigationProps> = ({
           <div
             id="mobile-navigation-drawer"
             onClick={(e) => e.stopPropagation()}
-            className="bg-stone-900 border-t-2 border-amber-500/50 rounded-t-[32px] p-5 max-h-[85vh] overflow-y-auto space-y-4 shadow-2xl animate-in slide-in-from-bottom-5"
+            className="bg-stone-900 border-t-2 border-red-500/60 rounded-t-[32px] p-5 max-h-[85vh] overflow-y-auto space-y-4 shadow-2xl animate-in slide-in-from-bottom-5"
           >
             {/* Drawer Header */}
             <div className="flex items-center justify-between pb-3 border-b border-stone-800">
@@ -436,13 +436,13 @@ export const Navigation: React.FC<NavigationProps> = ({
                     className="shadow-md shadow-red-900/40 shrink-0 group-hover:ring-2 group-hover:ring-orange-500/50 transition-all"
                   />
                   {onOpenLogoEditor && (role === 'ADMIN' || effectiveRole === 'Owner' || effectiveRole === 'Admin') && (
-                    <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-amber-500 text-stone-950 flex items-center justify-center shadow-md">
+                    <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center shadow-md">
                       <ImageIcon className="w-2.5 h-2.5 stroke-[3]" />
                     </div>
                   )}
                 </div>
                 <div>
-                  <h3 className="font-black text-white text-base leading-tight group-hover:text-amber-400 transition-colors">
+                  <h3 className="font-black text-white text-base leading-tight group-hover:text-red-400 transition-colors">
                     {storeName || 'Warung Bang Kobra'}
                   </h3>
                   <div className="flex items-center gap-2">
@@ -450,7 +450,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                       POS &amp; Order Management
                     </p>
                     {onOpenLogoEditor && (role === 'ADMIN' || effectiveRole === 'Owner' || effectiveRole === 'Admin') && (
-                      <span className="text-[10px] bg-amber-500/20 text-amber-300 font-extrabold px-1.5 py-0.2 rounded border border-amber-500/30">
+                      <span className="text-[10px] bg-red-500/20 text-red-300 font-extrabold px-1.5 py-0.2 rounded border border-red-500/30">
                         Edit Logo
                       </span>
                     )}
@@ -487,7 +487,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                     }}
                     className={`w-full min-h-[58px] flex items-center justify-between p-3.5 rounded-2xl text-left border-2 transition-all cursor-pointer active:scale-98 ${
                       isActive
-                        ? 'bg-amber-500/15 border-amber-500 text-white shadow-md'
+                        ? 'bg-red-500/15 border-red-500 text-white shadow-md'
                         : isAllowed
                         ? 'bg-stone-950 hover:bg-stone-850 border-stone-800 text-stone-200'
                         : 'bg-stone-950/60 hover:bg-stone-900 border-stone-850 text-stone-400 opacity-70'
@@ -497,9 +497,9 @@ export const Navigation: React.FC<NavigationProps> = ({
                       <div
                         className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                           isActive
-                            ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-stone-950 shadow-md shadow-amber-950/50 font-bold'
+                            ? 'bg-gradient-to-r from-red-600 to-orange-500 text-white shadow-md shadow-red-950/50 font-bold'
                             : isAllowed
-                            ? 'bg-stone-900 text-amber-400 border border-stone-800'
+                            ? 'bg-stone-900 text-red-400 border border-stone-800'
                             : 'bg-stone-900 text-stone-500 border border-stone-800'
                         }`}
                       >

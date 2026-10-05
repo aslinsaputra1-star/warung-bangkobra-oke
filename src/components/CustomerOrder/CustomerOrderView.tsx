@@ -198,20 +198,9 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
     return list.filter((v) => v && v.isActive !== false);
   }, [variants]);
 
-  // Only active products (ensuring non-deleted variant parent products are always present)
+  // Only active products directly from current products state
   const activeProducts = useMemo(() => {
-    const deletedProdIds = StorageService.getDeletedProductIds();
-    const baseList = [...products];
-    VARIANT_PARENT_PRODUCTS.forEach((vp) => {
-      if (deletedProdIds.has(vp.id) || deletedProdIds.has(vp.sku)) return;
-      const exists = baseList.some(
-        (p) => p.id === vp.id || p.sku === vp.sku || p.nama.toUpperCase() === vp.nama.toUpperCase()
-      );
-      if (!exists) {
-        baseList.push(vp);
-      }
-    });
-    return baseList.filter((p) => p && p.status === 'Aktif');
+    return products.filter((p) => p && p.status === 'Aktif');
   }, [products]);
 
   // Map active variants by product.id

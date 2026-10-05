@@ -227,56 +227,18 @@ export class StorageService {
   static getProducts(): Product[] {
     const deletedIds = this.getDeletedProductIds();
     try {
-      if (localStorage.getItem(STORAGE_KEYS.PRODUCTS_SEEDED_V2) !== 'true') {
-        localStorage.setItem(STORAGE_KEYS.PRODUCTS_SEEDED_V2, 'true');
-        localStorage.setItem(STORAGE_KEYS.INDOMIE_PRODUCT_SEEDED, 'true');
-        localStorage.removeItem(STORAGE_KEYS.PRODUCTS_ADMIN_CLEARED);
-        const seeded = sortProductsBySkuOrder(
-          INITIAL_PRODUCTS.filter((p) => !deletedIds.has(p.id) && !deletedIds.has(p.sku))
-        );
-        safeSetItem(STORAGE_KEYS.PRODUCTS, seeded);
-        return seeded;
-      }
       if (localStorage.getItem(STORAGE_KEYS.PRODUCTS_ADMIN_CLEARED) === 'true') {
         return safeGetItem<Product[]>(STORAGE_KEYS.PRODUCTS, []);
       }
     } catch {
       // ignore storage errors
     }
-    let stored = safeGetItem<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
+    const stored = safeGetItem<Product[]>(STORAGE_KEYS.PRODUCTS, []);
     if (!Array.isArray(stored) || stored.length === 0) {
       if (deletedIds.size > 0) {
         return [];
       }
-      const seeded = sortProductsBySkuOrder(INITIAL_PRODUCTS);
-      safeSetItem(STORAGE_KEYS.PRODUCTS, seeded);
-      return seeded;
-    }
-    try {
-      const VAR_PARENTS_SEED_KEY = 'wkb_pos_variant_parents_seeded_v2';
-      if (localStorage.getItem(VAR_PARENTS_SEED_KEY) !== 'true') {
-        localStorage.setItem(VAR_PARENTS_SEED_KEY, 'true');
-        localStorage.setItem(STORAGE_KEYS.INDOMIE_PRODUCT_SEEDED, 'true');
-        let addedAny = false;
-        VARIANT_PARENT_PRODUCTS.forEach((vp) => {
-          const exists = stored.some(
-            (p) =>
-              p &&
-              (p.id === vp.id ||
-                p.sku === vp.sku ||
-                String(p.nama || '').toLowerCase() === vp.nama.toLowerCase())
-          );
-          if (!exists && !deletedIds.has(vp.id) && !deletedIds.has(vp.sku)) {
-            stored = [...stored, vp];
-            addedAny = true;
-          }
-        });
-        if (addedAny) {
-          safeSetItem(STORAGE_KEYS.PRODUCTS, sortProductsBySkuOrder(stored));
-        }
-      }
-    } catch {
-      // ignore
+      return sortProductsBySkuOrder(INITIAL_PRODUCTS);
     }
     const filtered = stored.filter(
       (p) => p && !deletedIds.has(String(p.id).trim()) && !deletedIds.has(String(p.sku || '').trim())
@@ -535,81 +497,30 @@ export class StorageService {
     const deletedVarIds = this.getDeletedVariantIds();
     const deletedProdIds = this.getDeletedProductIds();
     try {
-      if (localStorage.getItem(STORAGE_KEYS.PRODUCT_VARIANTS_SEEDED) !== 'true') {
-        localStorage.setItem(STORAGE_KEYS.PRODUCT_VARIANTS_SEEDED, 'true');
-        localStorage.setItem(STORAGE_KEYS.INDOMIE_VARIANTS_SEEDED, 'true');
-        const normalizedInit = INITIAL_PRODUCT_VARIANTS.map((v, i) =>
-          normalizeProductVariant(v, `VAR-${i + 1}`)
-        ).filter(
-          (v) =>
-            !deletedVarIds.has(v.variantId) &&
-            !deletedVarIds.has(v.sku) &&
-            !deletedProdIds.has(v.productId)
-        );
-        safeSetItem(STORAGE_KEYS.PRODUCT_VARIANTS, normalizedInit);
-        return normalizedInit;
-      }
       if (localStorage.getItem(STORAGE_KEYS.PRODUCTS_ADMIN_CLEARED) === 'true') {
         return safeGetItem<ProductVariant[]>(STORAGE_KEYS.PRODUCT_VARIANTS, []);
       }
     } catch {
       // ignore
     }
-    let stored = safeGetItem<ProductVariant[]>(
+    const stored = safeGetItem<ProductVariant[]>(
       STORAGE_KEYS.PRODUCT_VARIANTS,
-      INITIAL_PRODUCT_VARIANTS
+      []
     );
-    if (!Array.isArray(stored)) return INITIAL_PRODUCT_VARIANTS;
-    try {
-      if (localStorage.getItem(STORAGE_KEYS.INDOMIE_VARIANTS_SEEDED) !== 'true') {
-        localStorage.setItem(STORAGE_KEYS.INDOMIE_VARIANTS_SEEDED, 'true');
-        const existingIds = new Set(stored.map((v) => v?.variantId));
-        const missingIndomieVars = INDOMIE_INITIAL_VARIANTS.filter(
-          (iv) => !existingIds.has(iv.variantId) && !deletedVarIds.has(iv.variantId)
-        );
-        if (missingIndomieVars.length > 0 && !deletedProdIds.has(INDOMIE_PARENT_PRODUCT.id)) {
-          stored = [...missingIndomieVars, ...stored];
-          safeSetItem(STORAGE_KEYS.PRODUCT_VARIANTS, stored);
-        }
+    if (!Array.isArray(stored) || stored.length === 0) {
+      if (deletedVarIds.size > 0 || deletedProdIds.size > 0) {
+        return [];
       }
-    } catch {
-      // ignore
-    }
-    try {
-      if (localStorage.getItem('wkb_harmonize_prices_v4') !== 'true') {
-        localStorage.setItem('wkb_harmonize_prices_v4', 'true');
-        let fixedAny = false;
-        stored = stored.map((v) => {
-          if (!v) return v;
-          const isIndomie =
-            v.productId === 'SKU-0034' ||
-            (v.productName && v.productName.toUpperCase() === 'INDOMIE') ||
-            (v.variantName && v.variantName.toLowerCase().includes('indomie'));
-          if (isIndomie && (v.price === 7000 || v.costPrice === 5000)) {
-            fixedAny = true;
-            return {
-              ...v,
-              price: 6000,
-              costPrice: 4500,
-            };
-          }
-          return v;
-        });
-        if (fixedAny) {
-          safeSetItem(STORAGE_KEYS.PRODUCT_VARIANTS, stored);
-        }
-      }
-    } catch {
-      // ignore
+      return INITIAL_PRODUCT_VARIANTS.map((v, idx) => normalizeProductVariant(v, `VAR-${idx + 1}`));
     }
     return stored
       .filter((v) => v && typeof v === 'object')
       .map((v, idx) => normalizeProductVariant(v, `VAR-${idx + 1}`))
       .filter(
         (v) =>
-          !deletedVarIds.has(v.variantId) &&
-          !deletedVarIds.has(v.sku) &&
-          !deletedProdIds.has(v.productId)
+          !deletedVarIds.has(String(v.variantId || '').trim()) &&
+          !deletedVarIds.has(String(v.sku || '').trim()) &&
+          !deletedProdIds.has(String(v.productId || '').trim())
       );
   }
 

@@ -14,8 +14,14 @@ import {
   ArrowRight,
   QrCode,
   Bike,
+  Camera,
+  ShoppingBag,
+  Clock,
+  Sparkles,
+  Flame,
+  CheckCircle2,
 } from 'lucide-react';
-import { Transaction, Product, ActiveTab } from '../../types';
+import { Transaction, Product, ActiveTab, StoreSettings, WarungUser } from '../../types';
 import {
   formatRupiah,
   formatDateIndo,
@@ -24,19 +30,26 @@ import {
   resolveOrderType,
   getOrderStatusLabel,
 } from '../../utils/formatters';
+import { BrandLogo } from '../Common/BrandLogo';
 
 interface DashboardViewProps {
   transactions: Transaction[];
   products: Product[];
+  settings?: StoreSettings;
+  currentUser?: WarungUser | null;
   onNavigate: (tab: ActiveTab) => void;
   onSelectTransaction: (tx: Transaction) => void;
+  onOpenLogoEditor?: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   transactions,
   products,
+  settings,
+  currentUser,
   onNavigate,
   onSelectTransaction,
+  onOpenLogoEditor,
 }) => {
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -57,6 +70,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       0
     );
   }, [todayTransactions]);
+
+  // Pesanan Aktif (Menunggu, Diproses, Siap)
+  const activeOrdersCount = useMemo(() => {
+    return transactions.filter((tx) => {
+      const st = normalizeOrderStatus(tx.status);
+      return st === 'MENUNGGU' || st === 'DIPROSES' || st === 'SIAP';
+    }).length;
+  }, [transactions]);
 
   // Total Estimated Profit Today: (Selling Price - Capital Price) * Qty
   const todayProfit = useMemo(() => {
@@ -164,30 +185,124 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     };
   }, [transactions, todayStr]);
 
+  const activeUserGreeting = useMemo(() => {
+    const hour = new Date().getHours();
+    let timeGreeting = 'Selamat Datang';
+    if (hour >= 4 && hour < 11) timeGreeting = 'Selamat Pagi';
+    else if (hour >= 11 && hour < 15) timeGreeting = 'Selamat Siang';
+    else if (hour >= 15 && hour < 18) timeGreeting = 'Selamat Sore';
+    else timeGreeting = 'Selamat Malam';
+
+    const userName = currentUser?.nama || 'Kasir';
+    return `${timeGreeting}, ${userName}!`;
+  }, [currentUser]);
+
   return (
-    <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
-      {/* Quick Action Bar as Requested */}
+    <div className="max-w-7xl mx-auto p-3 sm:p-5 lg:p-6 space-y-4 sm:space-y-6">
+      {/* 1. Header Hero Card: Logo yang dapat diganti, sapaan pengguna, tanggal & status realtime */}
+      <div className="relative overflow-hidden rounded-[22px] bg-gradient-to-br from-stone-900 via-stone-900 to-stone-950 border border-stone-800 shadow-xl p-4 sm:p-6">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-red-600/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+        <div className="absolute bottom-0 right-24 w-60 h-60 bg-orange-500/10 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 sm:gap-4">
+            {/* Clickable Logo with quick camera icon to change/upload logo */}
+            <div
+              onClick={onOpenLogoEditor}
+              title={onOpenLogoEditor ? 'Klik untuk mengganti logo warung' : 'Logo Warung Bang Kobra'}
+              className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-stone-950 border-2 border-red-600/40 shadow-lg shadow-red-950/60 shrink-0 overflow-hidden flex items-center justify-center group ${
+                onOpenLogoEditor ? 'cursor-pointer hover:border-orange-500 hover:scale-105 transition-all' : ''
+              }`}
+            >
+              <BrandLogo
+                src={settings?.logoUrl}
+                alt={settings?.storeName || 'Warung Bang Kobra'}
+                size="custom"
+                rounded="rounded-none"
+                border={false}
+                className="w-full h-full"
+                imgClassName="group-hover:scale-110 transition-transform duration-300"
+              />
+              {onOpenLogoEditor && (
+                <div className="absolute inset-0 bg-stone-950/70 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                  <Camera className="w-5 h-5 text-orange-400" />
+                </div>
+              )}
+              {onOpenLogoEditor && (
+                <div className="absolute bottom-0 right-0 w-4 h-4 rounded-tl-lg bg-orange-500 text-stone-950 flex items-center justify-center">
+                  <Camera className="w-2.5 h-2.5 stroke-[3]" />
+                </div>
+              )}
+            </div>
+
+            {/* User Greeting & Date */}
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-red-600/20 text-red-400 border border-red-500/30">
+                  {currentUser?.role || 'Staff POS'}
+                </span>
+                <span className="text-xs text-stone-400 flex items-center gap-1 font-medium">
+                  <Clock className="w-3.5 h-3.5 text-orange-400" />
+                  <span>{formatDateIndo(todayStr)}</span>
+                </span>
+              </div>
+              <h1 className="text-lg sm:text-2xl font-black text-white tracking-tight mt-1 leading-tight">
+                {activeUserGreeting}
+              </h1>
+              <p className="text-xs text-stone-300 mt-0.5">
+                Operasional {settings?.storeName || 'Warung Bang Kobra'} aktif &amp; realtime.
+              </p>
+            </div>
+          </div>
+
+          {/* Realtime Live Pulse Badge & Quick Action */}
+          <div className="flex items-center gap-2 sm:self-center">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-stone-950/80 border border-stone-800 text-xs font-semibold text-stone-300">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="text-[11px]">Database Cloud Aktif</span>
+            </div>
+
+            <button
+              onClick={() => onNavigate('pos')}
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-extrabold text-xs shadow-lg shadow-red-950/50 flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Buka Kasir</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Quick Action Bar (Akses Cepat) */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
         <button
           id="btn-quick-new-tx"
           onClick={() => onNavigate('pos')}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-extrabold text-xs shadow-lg shadow-amber-950/30 whitespace-nowrap active:scale-95 transition"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-extrabold text-xs shadow-lg shadow-red-950/50 whitespace-nowrap active:scale-95 transition cursor-pointer"
         >
           <PlusCircle className="w-4 h-4" />
           <span>+ Transaksi Baru</span>
         </button>
         <button
           onClick={() => onNavigate('orders')}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-stone-900 border border-amber-500/40 hover:bg-amber-950/40 text-amber-400 font-bold text-xs whitespace-nowrap active:scale-95 transition cursor-pointer"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-stone-900 border border-red-500/40 hover:bg-red-950/40 text-stone-100 hover:text-white font-bold text-xs whitespace-nowrap active:scale-95 transition cursor-pointer"
         >
-          <Receipt className="w-4 h-4" />
+          <Receipt className="w-4 h-4 text-red-500" />
           <span>Antrian Kasir</span>
+          {activeOrdersCount > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-red-600 text-white">
+              {activeOrdersCount}
+            </span>
+          )}
         </button>
         <button
           onClick={() => onNavigate('delivery_dqm')}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-stone-900 border border-teal-500/40 hover:bg-teal-950/40 text-teal-400 font-bold text-xs whitespace-nowrap active:scale-95 transition cursor-pointer"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-stone-900 border border-orange-500/40 hover:bg-orange-950/40 text-stone-100 hover:text-white font-bold text-xs whitespace-nowrap active:scale-95 transition cursor-pointer"
         >
-          <Bike className="w-4 h-4" />
+          <Bike className="w-4 h-4 text-orange-400" />
           <span>DELIVERY DQM</span>
         </button>
         <button
@@ -199,109 +314,102 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </button>
         <button
           onClick={() => onNavigate('preorders')}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-stone-900 border border-stone-800 hover:bg-stone-800 text-stone-200 font-bold text-xs whitespace-nowrap active:scale-95 transition"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-stone-900 border border-stone-800 hover:bg-stone-800 text-stone-200 font-bold text-xs whitespace-nowrap active:scale-95 transition cursor-pointer"
         >
           <Calendar className="w-4 h-4 text-red-500" />
           <span>Pre-Order (PO)</span>
         </button>
         <button
           onClick={() => onNavigate('products')}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-stone-900 border border-stone-800 hover:bg-stone-800 text-stone-200 font-bold text-xs whitespace-nowrap active:scale-95 transition"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-stone-900 border border-stone-800 hover:bg-stone-800 text-stone-200 font-bold text-xs whitespace-nowrap active:scale-95 transition cursor-pointer"
         >
-          <Package className="w-4 h-4 text-amber-500" />
-          <span>+ Tambah Produk</span>
+          <Package className="w-4 h-4 text-orange-400" />
+          <span>+ Tambah Menu</span>
         </button>
         <button
           onClick={() => onNavigate('stock')}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-stone-900 border border-stone-800 hover:bg-stone-800 text-stone-200 font-bold text-xs whitespace-nowrap active:scale-95 transition"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-stone-900 border border-stone-800 hover:bg-stone-800 text-stone-200 font-bold text-xs whitespace-nowrap active:scale-95 transition cursor-pointer"
         >
-          <Layers className="w-4 h-4 text-amber-500" />
+          <Layers className="w-4 h-4 text-amber-400" />
           <span>Kelola Stok</span>
         </button>
         <button
           onClick={() => onNavigate('reports')}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-stone-900 border border-stone-800 hover:bg-stone-800 text-stone-200 font-bold text-xs whitespace-nowrap active:scale-95 transition"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-stone-900 border border-stone-800 hover:bg-stone-800 text-stone-200 font-bold text-xs whitespace-nowrap active:scale-95 transition cursor-pointer"
         >
-          <BarChart2 className="w-4 h-4 text-amber-500" />
+          <BarChart2 className="w-4 h-4 text-amber-400" />
           <span>Laporan</span>
         </button>
       </div>
 
-      {/* KPI Cards Grid */}
+      {/* 3. Ringkasan KPI Cards Grid (Omzet, Transaksi, Pesanan Aktif, Keuntungan) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {/* Penjualan Hari Ini */}
-        <div className="p-4 sm:p-5 rounded-3xl bg-stone-900 border border-stone-800 shadow-xl space-y-2 relative overflow-hidden">
+        {/* Ringkasan Omzet Hari Ini */}
+        <div className="p-4 sm:p-5 rounded-[20px] bg-stone-900 border border-stone-800 shadow-xl space-y-2 relative overflow-hidden group hover:border-red-500/40 transition">
           <div className="flex items-center justify-between text-xs font-bold text-stone-400">
-            <span>Penjualan Hari Ini</span>
-            <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
+            <span>Omzet Hari Ini</span>
+            <div className="w-8 h-8 rounded-xl bg-red-600/15 text-red-500 flex items-center justify-center">
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl sm:text-2xl font-black text-stone-100 font-mono">
+          <div className="text-xl sm:text-2xl font-black text-white font-mono tracking-tight">
             {formatRupiah(todaySales)}
           </div>
           <div className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
             <TrendingUp className="w-3.5 h-3.5" />
-            <span>{todayTransactions.length} transaksi hari ini</span>
+            <span>{todayItemsSold} item terjual hari ini</span>
+          </div>
+        </div>
+
+        {/* Total Transaksi */}
+        <div className="p-4 sm:p-5 rounded-[20px] bg-stone-900 border border-stone-800 shadow-xl space-y-2 relative overflow-hidden group hover:border-orange-500/40 transition">
+          <div className="flex items-center justify-between text-xs font-bold text-stone-400">
+            <span>Total Transaksi</span>
+            <div className="w-8 h-8 rounded-xl bg-orange-500/15 text-orange-400 flex items-center justify-center">
+              <Receipt className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-xl sm:text-2xl font-black text-white font-mono tracking-tight">
+            {todayTransactions.length} <span className="text-sm font-normal text-stone-400">order</span>
+          </div>
+          <div className="text-[11px] text-stone-400 font-semibold">
+            Status non-dibatalkan
+          </div>
+        </div>
+
+        {/* Pesanan Aktif / Antrian Kasir */}
+        <div
+          onClick={() => onNavigate('orders')}
+          className="p-4 sm:p-5 rounded-[20px] bg-stone-900 border border-stone-800 hover:border-amber-500/50 shadow-xl space-y-2 relative overflow-hidden cursor-pointer group transition"
+        >
+          <div className="flex items-center justify-between text-xs font-bold text-stone-400">
+            <span>Pesanan Aktif</span>
+            <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center">
+              <ShoppingBag className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-xl sm:text-2xl font-black text-amber-400 font-mono tracking-tight">
+            {activeOrdersCount} <span className="text-sm font-normal text-stone-400">antrian</span>
+          </div>
+          <div className="text-[11px] text-stone-400 flex items-center justify-between">
+            <span>Menunggu &amp; diproses</span>
+            <ArrowRight className="w-3.5 h-3.5 text-stone-500 group-hover:text-amber-400 transition" />
           </div>
         </div>
 
         {/* Keuntungan Bersih Estimasi */}
-        <div className="p-4 sm:p-5 rounded-3xl bg-stone-900 border border-stone-800 shadow-xl space-y-2 relative overflow-hidden">
+        <div className="p-4 sm:p-5 rounded-[20px] bg-stone-900 border border-stone-800 shadow-xl space-y-2 relative overflow-hidden group hover:border-emerald-500/40 transition">
           <div className="flex items-center justify-between text-xs font-bold text-stone-400">
             <span>Estimasi Keuntungan</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl sm:text-2xl font-black text-emerald-400 font-mono">
+          <div className="text-xl sm:text-2xl font-black text-emerald-400 font-mono tracking-tight">
             {formatRupiah(todayProfit)}
           </div>
           <div className="text-[11px] text-stone-400 font-semibold">
-            Berdasarkan selisih modal
-          </div>
-        </div>
-
-        {/* Produk Terjual */}
-        <div className="p-4 sm:p-5 rounded-3xl bg-stone-900 border border-stone-800 shadow-xl space-y-2 relative overflow-hidden">
-          <div className="flex items-center justify-between text-xs font-bold text-stone-400">
-            <span>Produk Terjual</span>
-            <div className="w-8 h-8 rounded-xl bg-orange-500/10 text-orange-400 flex items-center justify-center">
-              <Package className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-xl sm:text-2xl font-black text-stone-100 font-mono">
-            {todayItemsSold} <span className="text-sm font-normal text-stone-400">item</span>
-          </div>
-          <div className="text-[11px] text-stone-400 font-semibold">
-            Dari seluruh transaksi kasir
-          </div>
-        </div>
-
-        {/* Stok Menipis Alert */}
-        <div
-          onClick={() => onNavigate('stock')}
-          className="p-4 sm:p-5 rounded-3xl bg-stone-900 border border-stone-800 hover:border-rose-500/40 shadow-xl space-y-2 cursor-pointer transition"
-        >
-          <div className="flex items-center justify-between text-xs font-bold text-stone-400">
-            <span>Stok Menipis</span>
-            <div
-              className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-                lowStockProducts.length > 0
-                  ? 'bg-rose-500/20 text-rose-400 animate-pulse'
-                  : 'bg-stone-800 text-stone-400'
-              }`}
-            >
-              <AlertTriangle className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-xl sm:text-2xl font-black text-rose-400 font-mono">
-            {lowStockProducts.length}{' '}
-            <span className="text-sm font-normal text-stone-400">menu</span>
-          </div>
-          <div className="text-[11px] text-stone-400 flex items-center justify-between">
-            <span>Perlu restok segera</span>
-            <ArrowRight className="w-3.5 h-3.5 text-stone-500" />
+            Selisih harga jual &amp; modal
           </div>
         </div>
       </div>

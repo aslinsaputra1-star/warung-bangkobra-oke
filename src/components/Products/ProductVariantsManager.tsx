@@ -17,6 +17,7 @@ import {
   Power,
   ChevronDown,
   ChevronUp,
+  RefreshCw,
 } from 'lucide-react';
 import { Product, ProductVariant, ProductCategory, UserRole } from '../../types';
 import { formatRupiah } from '../../utils/formatters';
@@ -65,6 +66,7 @@ export const ProductVariantsManager: React.FC<ProductVariantsManagerProps> = ({
 
   // Add/Edit Variant Modal
   const [isVariantModalOpen, setIsVariantModalOpen] = useState(false);
+  const [isSavingVariant, setIsSavingVariant] = useState(false);
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
   const [variantForm, setVariantForm] = useState<{
     productId: string;
@@ -92,6 +94,7 @@ export const ProductVariantsManager: React.FC<ProductVariantsManagerProps> = ({
 
   // Add/Edit Main Product with Variants Modal
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [isSavingMainProduct, setIsSavingMainProduct] = useState(false);
   const [editingMainProduct, setEditingMainProduct] = useState<Product | null>(null);
   const [mainProductForm, setMainProductForm] = useState<{
     nama: string;
@@ -248,7 +251,7 @@ export const ProductVariantsManager: React.FC<ProductVariantsManagerProps> = ({
     setIsVariantModalOpen(true);
   };
 
-  const handleSaveVariantSubmit = (e: React.FormEvent) => {
+  const handleSaveVariantSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canManageCatalog) {
       showToast('Hanya Owner/Admin yang dapat mengubah data varian.', 'error');
@@ -261,57 +264,72 @@ export const ProductVariantsManager: React.FC<ProductVariantsManagerProps> = ({
     const parentProd = products.find((p) => p.id === variantForm.productId);
     const nowIso = new Date().toISOString();
 
-    if (editingVariant) {
-      const updated: ProductVariant = {
-        ...editingVariant,
-        productId: variantForm.productId,
-        productName: parentProd?.nama || editingVariant.productName || '',
-        variantName: variantForm.variantName.trim(),
-        sku: variantForm.sku.trim() || editingVariant.sku,
-        costPrice: Math.max(0, Number(variantForm.costPrice || 0)),
-        price: Math.max(0, Number(variantForm.price || 0)),
-        stock: Math.max(0, Number(variantForm.stock || 0)),
-        minStock: Math.max(0, Number(variantForm.minStock || 0)),
-        unit: variantForm.unit.trim() || 'Cup',
-        imageUrl: variantForm.imageUrl.trim() || parentProd?.foto || '',
-        isActive: variantForm.isActive,
-        updatedAt: nowIso,
-      };
-      onUpdateVariant(updated);
-      logAuditActivity(
-        'EDIT_VARIAN',
-        `Memperbarui varian ${updated.productName} - ${updated.variantName} (Rp${updated.price}, Stok: ${updated.stock})`,
-        userRole,
-        'PRODUCTS'
-      ).catch(() => {});
-      showToast(`Varian "${updated.variantName}" berhasil diperbarui!`, 'success');
-    } else {
-      const newVar: ProductVariant = {
-        variantId: `VAR-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
-        productId: variantForm.productId,
-        productName: parentProd?.nama || '',
-        variantName: variantForm.variantName.trim(),
-        sku: variantForm.sku.trim() || `SKU-VAR-${Date.now().toString().slice(-4)}`,
-        costPrice: Math.max(0, Number(variantForm.costPrice || 0)),
-        price: Math.max(0, Number(variantForm.price || 0)),
-        stock: Math.max(0, Number(variantForm.stock || 0)),
-        minStock: Math.max(0, Number(variantForm.minStock || 0)),
-        unit: variantForm.unit.trim() || 'Cup',
-        imageUrl: variantForm.imageUrl.trim() || parentProd?.foto || '',
-        isActive: variantForm.isActive,
-        createdAt: nowIso,
-        updatedAt: nowIso,
-      };
-      onAddVariant(newVar);
-      logAuditActivity(
-        'TAMBAH_VARIAN',
-        `Menambahkan varian baru ${newVar.productName} - ${newVar.variantName}`,
-        userRole,
-        'PRODUCTS'
-      ).catch(() => {});
-      showToast(`Varian rasa "${newVar.variantName}" berhasil ditambahkan!`, 'success');
+    setIsSavingVariant(true);
+    try {
+      if (editingVariant) {
+        const updated: ProductVariant = {
+          ...editingVariant,
+          productId: variantForm.productId,
+          productName: parentProd?.nama || editingVariant.productName || '',
+          variantName: variantForm.variantName.trim(),
+          sku: variantForm.sku.trim() || editingVariant.sku,
+          costPrice: Math.max(0, Number(variantForm.costPrice || 0)),
+          price: Math.max(0, Number(variantForm.price || 0)),
+          stock: Math.max(0, Number(variantForm.stock || 0)),
+          minStock: Math.max(0, Number(variantForm.minStock || 0)),
+          unit: variantForm.unit.trim() || 'Cup',
+          imageUrl: variantForm.imageUrl.trim() || parentProd?.foto || '',
+          isActive: variantForm.isActive,
+          updatedAt: nowIso,
+        };
+        const res: any = await onUpdateVariant(updated);
+        if (res && res.success === false) {
+          showToast(res.error || `Gagal menyimpan varian "${updated.variantName}" ke Firestore`, 'error');
+          return;
+        }
+        logAuditActivity(
+          'EDIT_VARIAN',
+          `Memperbarui varian ${updated.productName} - ${updated.variantName} (Rp${updated.price}, Stok: ${updated.stock})`,
+          userRole,
+          'PRODUCTS'
+        ).catch(() => {});
+        showToast(`Varian "${updated.variantName}" berhasil diperbarui!`, 'success');
+      } else {
+        const newVar: ProductVariant = {
+          variantId: `VAR-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+          productId: variantForm.productId,
+          productName: parentProd?.nama || '',
+          variantName: variantForm.variantName.trim(),
+          sku: variantForm.sku.trim() || `SKU-VAR-${Date.now().toString().slice(-4)}`,
+          costPrice: Math.max(0, Number(variantForm.costPrice || 0)),
+          price: Math.max(0, Number(variantForm.price || 0)),
+          stock: Math.max(0, Number(variantForm.stock || 0)),
+          minStock: Math.max(0, Number(variantForm.minStock || 0)),
+          unit: variantForm.unit.trim() || 'Cup',
+          imageUrl: variantForm.imageUrl.trim() || parentProd?.foto || '',
+          isActive: variantForm.isActive,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        };
+        const res: any = await onAddVariant(newVar);
+        if (res && res.success === false) {
+          showToast(res.error || `Gagal menambahkan varian "${newVar.variantName}" ke Firestore`, 'error');
+          return;
+        }
+        logAuditActivity(
+          'TAMBAH_VARIAN',
+          `Menambahkan varian baru ${newVar.productName} - ${newVar.variantName}`,
+          userRole,
+          'PRODUCTS'
+        ).catch(() => {});
+        showToast(`Varian rasa "${newVar.variantName}" berhasil ditambahkan!`, 'success');
+      }
+      setIsVariantModalOpen(false);
+    } catch (err: any) {
+      showToast(err?.message || 'Terjadi kesalahan saat menyimpan varian ke Firestore', 'error');
+    } finally {
+      setIsSavingVariant(false);
     }
-    setIsVariantModalOpen(false);
   };
 
   // Duplicate Product + All Variants (Section 2: Duplikasi produk beserta semua variannya)
@@ -461,7 +479,7 @@ export const ProductVariantsManager: React.FC<ProductVariantsManagerProps> = ({
     }
   };
 
-  const handleSaveMainProductSubmit = (e: React.FormEvent) => {
+  const handleSaveMainProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canManageCatalog) {
       showToast('Hanya Owner/Admin yang dapat mengelola produk.', 'error');
@@ -473,110 +491,125 @@ export const ProductVariantsManager: React.FC<ProductVariantsManagerProps> = ({
     }
     const nowIso = new Date().toISOString();
 
-    if (editingMainProduct) {
-      const newPrice = Math.max(0, Number(mainProductForm.harga_jual || 0));
-      const newCost = Math.max(0, Number(mainProductForm.harga_modal || 0));
-      const updatedProd: Product = {
-        ...editingMainProduct,
-        nama: mainProductForm.nama.trim(),
-        sku: mainProductForm.sku.trim() || editingMainProduct.sku,
-        kategori: mainProductForm.kategori,
-        harga_modal: newCost,
-        harga_jual: newPrice,
-        satuan: mainProductForm.satuan.trim() || 'Cup',
-        stok_minimum: Math.max(0, Number(mainProductForm.stok_minimum || 5)),
-        foto: mainProductForm.foto.trim(),
-        gambar_url: mainProductForm.foto.trim(),
-        deskripsi: mainProductForm.deskripsi.trim(),
-        hasVariants: true,
-        updated_at: nowIso,
-      };
+    setIsSavingMainProduct(true);
+    try {
+      if (editingMainProduct) {
+        const newPrice = Math.max(0, Number(mainProductForm.harga_jual || 0));
+        const newCost = Math.max(0, Number(mainProductForm.harga_modal || 0));
+        const updatedProd: Product = {
+          ...editingMainProduct,
+          nama: mainProductForm.nama.trim(),
+          sku: mainProductForm.sku.trim() || editingMainProduct.sku,
+          kategori: mainProductForm.kategori,
+          harga_modal: newCost,
+          harga_jual: newPrice,
+          satuan: mainProductForm.satuan.trim() || 'Cup',
+          stok_minimum: Math.max(0, Number(mainProductForm.stok_minimum || 5)),
+          foto: mainProductForm.foto.trim(),
+          gambar_url: mainProductForm.foto.trim(),
+          deskripsi: mainProductForm.deskripsi.trim(),
+          hasVariants: true,
+          updated_at: nowIso,
+        };
 
-      const cleanId = String(editingMainProduct.id).trim();
-      const cleanSku = String(editingMainProduct.sku || '').trim();
-      const pName = String(editingMainProduct.nama || '').trim().toLowerCase();
+        const cleanId = String(editingMainProduct.id).trim();
+        const cleanSku = String(editingMainProduct.sku || '').trim();
+        const pName = String(editingMainProduct.nama || '').trim().toLowerCase();
 
-      const updatedVariants = variants.map((v) => {
-        const isMatch =
-          String(v.productId).trim() === cleanId ||
-          (cleanSku && String(v.productId).trim() === cleanSku) ||
-          (v.productName && String(v.productName).trim().toLowerCase() === pName);
-        if (!isMatch) return v;
+        const updatedVariants = variants.map((v) => {
+          const isMatch =
+            String(v.productId).trim() === cleanId ||
+            (cleanSku && String(v.productId).trim() === cleanSku) ||
+            (v.productName && String(v.productName).trim().toLowerCase() === pName);
+          if (!isMatch) return v;
+          return {
+            ...v,
+            price: newPrice,
+            costPrice: newCost,
+            updatedAt: nowIso,
+          };
+        });
+
+        const updatedProducts = products.map((p) => (p.id === updatedProd.id ? updatedProd : p));
+        const res: any = await onBulkSaveProductsAndVariants(updatedProducts, updatedVariants);
+        if (res && res.success === false) {
+          showToast(res.error || `Gagal menyimpan produk "${updatedProd.nama}" ke Firestore`, 'error');
+          return;
+        }
+        showToast(`Produk utama "${updatedProd.nama}" & varian rasa berhasil diperbarui!`, 'success');
+        setIsProductModalOpen(false);
+        return;
+      }
+
+      const prodId = mainProductForm.sku.trim() || `SKU-${Date.now().toString().slice(-4)}`;
+      const flavorNames = mainProductForm.initialFlavorsText
+        .split(/[\n,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const createdVariants: ProductVariant[] = flavorNames.map((flv, idx) => {
+        const seq = String(idx + 1).padStart(2, '0');
         return {
-          ...v,
-          price: newPrice,
-          costPrice: newCost,
+          variantId: `VAR-${prodId.replace(/[^A-Za-z0-9]/g, '')}-${seq}-${Date.now().toString().slice(-3)}`,
+          productId: prodId,
+          productName: mainProductForm.nama.trim(),
+          variantName: flv,
+          sku: `${prodId}-V${seq}`,
+          costPrice: Math.max(0, Number(mainProductForm.harga_modal || 3000)),
+          price: Math.max(0, Number(mainProductForm.harga_jual || 5000)),
+          stock: 20,
+          minStock: Math.max(0, Number(mainProductForm.stok_minimum || 5)),
+          unit: mainProductForm.satuan.trim() || 'Cup',
+          imageUrl: mainProductForm.foto.trim(),
+          isActive: true,
+          createdAt: nowIso,
           updatedAt: nowIso,
         };
       });
 
-      const updatedProducts = products.map((p) => (p.id === updatedProd.id ? updatedProd : p));
-      onBulkSaveProductsAndVariants(updatedProducts, updatedVariants);
-      showToast(`Produk utama "${updatedProd.nama}" & varian rasa berhasil diperbarui!`, 'success');
-      setIsProductModalOpen(false);
-      return;
-    }
+      const totalInitialStock = createdVariants.length > 0 ? createdVariants.length * 20 : 20;
 
-    const prodId = mainProductForm.sku.trim() || `SKU-${Date.now().toString().slice(-4)}`;
-    const flavorNames = mainProductForm.initialFlavorsText
-      .split(/[\n,]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    const createdVariants: ProductVariant[] = flavorNames.map((flv, idx) => {
-      const seq = String(idx + 1).padStart(2, '0');
-      return {
-        variantId: `VAR-${prodId.replace(/[^A-Za-z0-9]/g, '')}-${seq}-${Date.now().toString().slice(-3)}`,
-        productId: prodId,
-        productName: mainProductForm.nama.trim(),
-        variantName: flv,
-        sku: `${prodId}-V${seq}`,
-        costPrice: Math.max(0, Number(mainProductForm.harga_modal || 3000)),
-        price: Math.max(0, Number(mainProductForm.harga_jual || 5000)),
-        stock: 20,
-        minStock: Math.max(0, Number(mainProductForm.stok_minimum || 5)),
-        unit: mainProductForm.satuan.trim() || 'Cup',
-        imageUrl: mainProductForm.foto.trim(),
-        isActive: true,
-        createdAt: nowIso,
-        updatedAt: nowIso,
+      const newProduct: Product = {
+        id: prodId,
+        sku: prodId,
+        nama: mainProductForm.nama.trim(),
+        kategori: mainProductForm.kategori,
+        harga_modal: Math.max(0, Number(mainProductForm.harga_modal || 3000)),
+        harga_jual: Math.max(0, Number(mainProductForm.harga_jual || 5000)),
+        satuan: mainProductForm.satuan.trim() || 'Cup',
+        stok: totalInitialStock,
+        stok_minimum: Math.max(0, Number(mainProductForm.stok_minimum || 5)),
+        foto:
+          mainProductForm.foto.trim() ||
+          'https://images.unsplash.com/photo-1544145945-f90425340c7e?w=500&auto=format&fit=crop&q=80',
+        gambar_url:
+          mainProductForm.foto.trim() ||
+          'https://images.unsplash.com/photo-1544145945-f90425340c7e?w=500&auto=format&fit=crop&q=80',
+        status: 'Aktif',
+        deskripsi: mainProductForm.deskripsi.trim(),
+        hasVariants: true,
+        created_at: nowIso,
+        updated_at: nowIso,
       };
-    });
 
-    const totalInitialStock = createdVariants.length > 0 ? createdVariants.length * 20 : 20;
-
-    const newProduct: Product = {
-      id: prodId,
-      sku: prodId,
-      nama: mainProductForm.nama.trim(),
-      kategori: mainProductForm.kategori,
-      harga_modal: Math.max(0, Number(mainProductForm.harga_modal || 3000)),
-      harga_jual: Math.max(0, Number(mainProductForm.harga_jual || 5000)),
-      satuan: mainProductForm.satuan.trim() || 'Cup',
-      stok: totalInitialStock,
-      stok_minimum: Math.max(0, Number(mainProductForm.stok_minimum || 5)),
-      foto:
-        mainProductForm.foto.trim() ||
-        'https://images.unsplash.com/photo-1544145945-f90425340c7e?w=500&auto=format&fit=crop&q=80',
-      gambar_url:
-        mainProductForm.foto.trim() ||
-        'https://images.unsplash.com/photo-1544145945-f90425340c7e?w=500&auto=format&fit=crop&q=80',
-      status: 'Aktif',
-      deskripsi: mainProductForm.deskripsi.trim(),
-      hasVariants: true,
-      created_at: nowIso,
-      updated_at: nowIso,
-    };
-
-    onBulkSaveProductsAndVariants(
-      [...products, newProduct],
-      [...variants, ...createdVariants]
-    );
-    showToast(
-      `Produk "${newProduct.nama}" beserta ${createdVariants.length} varian rasa berhasil dibuat!`,
-      'success'
-    );
-    setIsProductModalOpen(false);
+      const res: any = await onBulkSaveProductsAndVariants(
+        [...products, newProduct],
+        [...variants, ...createdVariants]
+      );
+      if (res && res.success === false) {
+        showToast(res.error || `Gagal menyimpan produk baru "${newProduct.nama}" ke Firestore`, 'error');
+        return;
+      }
+      showToast(
+        `Produk "${newProduct.nama}" beserta ${createdVariants.length} varian rasa berhasil dibuat!`,
+        'success'
+      );
+      setIsProductModalOpen(false);
+    } catch (err: any) {
+      showToast(err?.message || 'Terjadi kesalahan saat menyimpan ke Firestore', 'error');
+    } finally {
+      setIsSavingMainProduct(false);
+    }
   };
 
   // Excel File Selected -> Parse Preview (Section 9)
@@ -1428,9 +1461,15 @@ export const ProductVariantsManager: React.FC<ProductVariantsManagerProps> = ({
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-xl bg-gradient-to-r from-red-600 to-orange-600 text-white font-black shadow-lg cursor-pointer"
+                    disabled={isSavingVariant}
+                    className={`flex items-center gap-1.5 px-5 py-2 rounded-xl text-white font-black shadow-lg cursor-pointer ${
+                      isSavingVariant
+                        ? 'bg-orange-800/60 cursor-not-allowed opacity-80'
+                        : 'bg-gradient-to-r from-red-600 to-orange-600'
+                    }`}
                   >
-                    Simpan Varian
+                    {isSavingVariant && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                    <span>{isSavingVariant ? 'Menyimpan...' : 'Simpan Varian'}</span>
                   </button>
                 </div>
               </div>
@@ -1673,17 +1712,21 @@ export const ProductVariantsManager: React.FC<ProductVariantsManagerProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   const target = productToDelete;
                   setProductToDelete(null);
                   if (selectedProductIdFilter === target.id && onClearProductFilter) {
                     onClearProductFilter();
                   }
-                  onDeleteProduct(target.id);
-                  showToast(
-                    `Produk utama "${target.nama}" beserta variannya berhasil dihapus.`,
-                    'success'
-                  );
+                  try {
+                    await onDeleteProduct(target.id);
+                    showToast(
+                      `Produk utama "${target.nama}" beserta variannya berhasil dihapus.`,
+                      'success'
+                    );
+                  } catch {
+                    showToast(`Gagal menghapus produk "${target.nama}".`, 'error');
+                  }
                 }}
                 className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-black text-xs shadow-lg shadow-rose-950/50 transition active:scale-95 cursor-pointer"
               >
@@ -1725,11 +1768,15 @@ export const ProductVariantsManager: React.FC<ProductVariantsManagerProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   const target = variantToDelete;
                   setVariantToDelete(null);
-                  onDeleteVariant(target.variantId);
-                  showToast(`Varian rasa "${target.variantName}" berhasil dihapus.`, 'success');
+                  try {
+                    await onDeleteVariant(target.variantId);
+                    showToast(`Varian rasa "${target.variantName}" berhasil dihapus.`, 'success');
+                  } catch {
+                    showToast(`Gagal menghapus varian "${target.variantName}".`, 'error');
+                  }
                 }}
                 className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-black text-xs shadow-lg shadow-rose-950/50 transition active:scale-95 cursor-pointer"
               >

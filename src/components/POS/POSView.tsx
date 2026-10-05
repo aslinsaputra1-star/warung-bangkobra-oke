@@ -557,7 +557,7 @@ export const POSView: React.FC<POSViewProps> = ({
                   onClick={() => setSelectedCategory(cat)}
                   className={`min-h-[40px] px-4 py-2 rounded-2xl whitespace-nowrap transition-all border-2 cursor-pointer ${
                     isSelected
-                      ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-stone-950 font-black border-amber-400 shadow-md shadow-amber-950/40'
+                      ? 'bg-gradient-to-r from-red-600 to-orange-500 text-white font-black border-red-400 shadow-md shadow-red-950/50'
                       : 'bg-stone-900 text-stone-300 border-stone-800 hover:bg-stone-850 hover:text-white'
                   }`}
                 >
@@ -569,7 +569,7 @@ export const POSView: React.FC<POSViewProps> = ({
         </div>
 
         {/* Product Cards Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3">
           {filteredProducts.length === 0 ? (
             <div className="col-span-full py-16 text-center text-stone-500 space-y-2">
               <ShoppingBag className="w-12 h-12 mx-auto stroke-1 text-stone-600" />

@@ -358,6 +358,8 @@ export interface StoreSettings {
   poDpFixedAmount?: number;
   poTermsAndConditions?: string;
   poBankTransferInfo?: string;
+  poBankInfo?: string;
+  poTerms?: string;
   poQrisInfo?: string;
 }
 

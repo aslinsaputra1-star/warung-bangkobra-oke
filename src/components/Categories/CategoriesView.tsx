@@ -24,9 +24,9 @@ interface CategoriesViewProps {
   categories?: CategoryItem[];
   products: Product[];
   onNavigateToProducts?: (categoryName: string) => void;
-  onAddCategory?: (cat: CategoryItem) => void;
-  onUpdateCategory?: (cat: CategoryItem) => void;
-  onDeleteCategory?: (id: string) => void;
+  onAddCategory?: (cat: CategoryItem) => Promise<any> | void;
+  onUpdateCategory?: (cat: CategoryItem) => Promise<any> | void;
+  onDeleteCategory?: (id: string) => Promise<any> | void;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
@@ -48,6 +48,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<CategoryItem | null>(null);
   const [categoryToDelete, setCategoryToDelete] = useState<CategoryItem | null>(null);
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
 
   // Form State
   const [formName, setFormName] = useState('');
@@ -81,45 +82,60 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
     setIsAddModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) {
       showToast('Nama kategori wajib diisi!', 'error');
       return;
     }
 
-    if (editingCategory) {
-      const updatedCat: CategoryItem = {
-        ...editingCategory,
-        nama: formName.trim(),
-        deskripsi: formDesc.trim(),
-        status: formStatus,
-      };
-      if (onUpdateCategory) {
-        onUpdateCategory(updatedCat);
+    setIsSavingCategory(true);
+    try {
+      if (editingCategory) {
+        const updatedCat: CategoryItem = {
+          ...editingCategory,
+          nama: formName.trim(),
+          deskripsi: formDesc.trim(),
+          status: formStatus,
+        };
+        if (onUpdateCategory) {
+          const res: any = await onUpdateCategory(updatedCat);
+          if (res && res.success === false) {
+            showToast(res.error || `Gagal menyimpan kategori ke Firestore`, 'error');
+            return;
+          }
+        } else {
+          const updatedList = StorageService.updateCategory(updatedCat);
+          setLocalCategories(updatedList);
+        }
+        showToast(`Kategori "${formName}" berhasil diperbarui`, 'success');
       } else {
-        const updatedList = StorageService.updateCategory(updatedCat);
-        setLocalCategories(updatedList);
+        const newCat: CategoryItem = {
+          id: `CAT-${Date.now()}`,
+          nama: formName.trim(),
+          deskripsi: formDesc.trim(),
+          status: formStatus,
+          urutan: categories.length + 1,
+        };
+        if (onAddCategory) {
+          const res: any = await onAddCategory(newCat);
+          if (res && res.success === false) {
+            showToast(res.error || `Gagal menambahkan kategori ke Firestore`, 'error');
+            return;
+          }
+        } else {
+          const updatedList = StorageService.addCategory(newCat);
+          setLocalCategories(updatedList);
+        }
+        showToast(`Kategori "${formName}" berhasil ditambahkan`, 'success');
       }
-      showToast(`Kategori "${formName}" berhasil diperbarui`, 'success');
-    } else {
-      const newCat: CategoryItem = {
-        id: `CAT-${Date.now()}`,
-        nama: formName.trim(),
-        deskripsi: formDesc.trim(),
-        status: formStatus,
-        urutan: categories.length + 1,
-      };
-      if (onAddCategory) {
-        onAddCategory(newCat);
-      } else {
-        const updatedList = StorageService.addCategory(newCat);
-        setLocalCategories(updatedList);
-      }
-      showToast(`Kategori "${formName}" berhasil ditambahkan`, 'success');
-    }
 
-    setIsAddModalOpen(false);
+      setIsAddModalOpen(false);
+    } catch (err: any) {
+      showToast(err?.message || 'Gagal menyimpan kategori', 'error');
+    } finally {
+      setIsSavingCategory(false);
+    }
   };
 
   const handleDelete = (cat: CategoryItem) => {
@@ -135,16 +151,20 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
     setCategoryToDelete(cat);
   };
 
-  const confirmDeleteCategory = () => {
+  const confirmDeleteCategory = async () => {
     if (!categoryToDelete) return;
     const cat = categoryToDelete;
-    if (onDeleteCategory) {
-      onDeleteCategory(cat.id);
-    } else {
-      const updated = StorageService.deleteCategory(cat.id);
-      setLocalCategories(updated);
+    try {
+      if (onDeleteCategory) {
+        await onDeleteCategory(cat.id);
+      } else {
+        const updated = StorageService.deleteCategory(cat.id);
+        setLocalCategories(updated);
+      }
+      showToast(`Kategori "${cat.nama}" berhasil dihapus`, 'info');
+    } catch {
+      showToast(`Gagal menghapus kategori "${cat.nama}"`, 'error');
     }
-    showToast(`Kategori "${cat.nama}" berhasil dihapus`, 'info');
     setCategoryToDelete(null);
   };
 
@@ -390,9 +410,16 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="min-h-[46px] px-6 rounded-2xl bg-red-600 hover:bg-red-500 active:scale-95 text-white text-xs font-black shadow-lg shadow-red-900/50 border border-red-500/50"
+                  disabled={isSavingCategory}
+                  className={`min-h-[46px] px-6 rounded-2xl bg-red-600 hover:bg-red-500 active:scale-95 text-white text-xs font-black shadow-lg shadow-red-900/50 border border-red-500/50 cursor-pointer ${
+                    isSavingCategory ? 'opacity-70 cursor-not-allowed' : ''
+                  }`}
                 >
-                  {editingCategory ? 'Simpan Perubahan' : 'Tambah Kategori'}
+                  {isSavingCategory
+                    ? 'Menyimpan...'
+                    : editingCategory
+                    ? 'Simpan Perubahan'
+                    : 'Tambah Kategori'}
                 </button>
               </div>
             </form>

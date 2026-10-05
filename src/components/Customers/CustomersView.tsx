@@ -21,9 +21,9 @@ interface CustomersViewProps {
   customers: Customer[];
   transactions: Transaction[];
   settings: StoreSettings;
-  onAddCustomer: (customer: Customer) => void;
-  onUpdateCustomer: (customer: Customer) => void;
-  onDeleteCustomer: (id: string) => void;
+  onAddCustomer: (customer: Customer) => Promise<any> | void;
+  onUpdateCustomer: (customer: Customer) => Promise<any> | void;
+  onDeleteCustomer: (id: string) => Promise<any> | void;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
@@ -39,6 +39,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [isSavingCustomer, setIsSavingCustomer] = useState(false);
 
   // Form State
   const [nama, setNama] = useState('');
@@ -77,41 +78,56 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     setIsModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nama.trim()) {
       showToast('Nama pelanggan wajib diisi!', 'error');
       return;
     }
 
-    if (editingCustomer) {
-      const updated: Customer = {
-        ...editingCustomer,
-        nama: nama.trim(),
-        no_whatsapp: whatsapp.trim() || '-',
-        whatsapp: whatsapp.trim(),
-        alamat: alamat.trim() || undefined,
-        catatan: catatan.trim() || undefined,
-      };
-      onUpdateCustomer(updated);
-      showToast('Data pelanggan berhasil diupdate!', 'success');
-    } else {
-      const newCust: Customer = {
-        id: 'CUST-' + Date.now().toString().slice(-6),
-        nama: nama.trim(),
-        no_whatsapp: whatsapp.trim() || '-',
-        whatsapp: whatsapp.trim(),
-        alamat: alamat.trim() || undefined,
-        catatan: catatan.trim() || undefined,
-        total_transaksi: 0,
-        total_belanja: 0,
-        created_at: new Date().toISOString(),
-      };
-      onAddCustomer(newCust);
-      showToast('Pelanggan baru berhasil ditambahkan!', 'success');
-    }
+    setIsSavingCustomer(true);
+    try {
+      if (editingCustomer) {
+        const updated: Customer = {
+          ...editingCustomer,
+          nama: nama.trim(),
+          no_whatsapp: whatsapp.trim() || '-',
+          whatsapp: whatsapp.trim(),
+          alamat: alamat.trim() || undefined,
+          catatan: catatan.trim() || undefined,
+        };
+        const res: any = await onUpdateCustomer(updated);
+        if (res && res.success === false) {
+          showToast(res.error || 'Gagal memperbarui data pelanggan di Firestore', 'error');
+          return;
+        }
+        showToast('Data pelanggan berhasil diupdate!', 'success');
+      } else {
+        const newCust: Customer = {
+          id: 'CUST-' + Date.now().toString().slice(-6),
+          nama: nama.trim(),
+          no_whatsapp: whatsapp.trim() || '-',
+          whatsapp: whatsapp.trim(),
+          alamat: alamat.trim() || undefined,
+          catatan: catatan.trim() || undefined,
+          total_transaksi: 0,
+          total_belanja: 0,
+          created_at: new Date().toISOString(),
+        };
+        const res: any = await onAddCustomer(newCust);
+        if (res && res.success === false) {
+          showToast(res.error || 'Gagal menambahkan pelanggan ke Firestore', 'error');
+          return;
+        }
+        showToast('Pelanggan baru berhasil ditambahkan!', 'success');
+      }
 
-    setIsModalOpen(false);
+      setIsModalOpen(false);
+    } catch (err: any) {
+      showToast(err?.message || 'Terjadi kesalahan saat menyimpan data pelanggan', 'error');
+    } finally {
+      setIsSavingCustomer(false);
+    }
   };
 
   const openSendWaModal = (c: Customer) => {
@@ -254,7 +270,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       try {
                         if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
                           if (!window.confirm(`Hapus pelanggan "${c.nama}"?`)) {
@@ -264,10 +280,14 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       } catch {
                         // Continue if restricted
                       }
-                      onDeleteCustomer(c.id);
-                      showToast('Pelanggan berhasil dihapus.', 'info');
+                      try {
+                        await onDeleteCustomer(c.id);
+                        showToast('Pelanggan berhasil dihapus.', 'info');
+                      } catch {
+                        showToast('Gagal menghapus data pelanggan.', 'error');
+                      }
                     }}
-                    className="p-2 rounded-xl bg-stone-800 hover:bg-rose-900/40 text-stone-400 hover:text-rose-300 transition"
+                    className="p-2 rounded-xl bg-stone-800 hover:bg-rose-900/40 text-stone-400 hover:text-rose-300 transition cursor-pointer"
                     title="Hapus"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -359,9 +379,12 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold"
+                  disabled={isSavingCustomer}
+                  className={`px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold cursor-pointer transition ${
+                    isSavingCustomer ? 'opacity-70 cursor-not-allowed' : ''
+                  }`}
                 >
-                  Simpan Pelanggan
+                  {isSavingCustomer ? 'Menyimpan...' : 'Simpan Pelanggan'}
                 </button>
               </div>
             </form>

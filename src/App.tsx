@@ -62,6 +62,7 @@ import {
   deleteOrderFromFirebase,
   syncProductsToFirebase,
   saveProductToFirebase,
+  updateProductInFirebase,
   deleteProductFromFirebase,
   deleteProductsBulkFromFirebase,
   clearAllProductsFromFirebase,
@@ -69,21 +70,25 @@ import {
   isProductSyncInFlight,
   syncProductVariantsToFirebase,
   saveProductVariantToFirebase,
+  updateProductVariantInFirebase,
   deleteProductVariantFromFirebase,
   subscribeToFirebaseProductVariants,
   isVariantSyncInFlight,
   deductStockWithFirestoreTransaction,
   restoreStockWithFirestoreTransaction,
   syncCategoriesToFirebase,
+  updateCategoryInFirebase,
   deleteCategoryFromFirebase,
   subscribeToFirebaseCategories,
   saveExpenseToFirebase,
   deleteExpenseFromFirebase,
   subscribeToFirebaseExpenses,
   saveCustomerToFirebase,
+  updateCustomerInFirebase,
   deleteCustomerFromFirebase,
   subscribeToFirebaseCustomers,
   saveSettingsToFirebase,
+  updateSettingsInFirebase,
   subscribeToFirebaseSettings,
   subscribeToFirebaseUsers,
   subscribeToFirebaseStockMutations,
@@ -342,71 +347,20 @@ export default function App() {
 
   // Real-time Cloud Database Synchronization across all devices (Firebase Firestore)
   useEffect(() => {
-    // Seed the 33 official Warung Bang Kobra products (SKU-001..SKU-0028 + 5 Variant Parent Products) & 43 initial variants into local state & Firebase Firestore
-    const FIREBASE_PRODUCTS_SEEDED_KEY = 'wkb_firebase_products_seeded_33_v3';
-    const FIREBASE_VARIANTS_SEEDED_KEY = 'wkb_firebase_variants_seeded_v1';
-    let isSeedingProducts = false;
-    let isSeedingVariants = false;
-    try {
-      if (localStorage.getItem(FIREBASE_PRODUCTS_SEEDED_KEY) !== 'true') {
-        isSeedingProducts = true;
-        localStorage.setItem(FIREBASE_PRODUCTS_SEEDED_KEY, 'true');
-        localStorage.removeItem('wkb_pos_products_admin_cleared_v2');
-        const initialLocalProducts = StorageService.getProducts();
-        const seedList =
-          initialLocalProducts.length > 0 ? initialLocalProducts : INITIAL_PRODUCTS;
-        StorageService.saveProducts(seedList);
-        setProducts(seedList);
-        syncProductsToFirebase(seedList, false)
-          .catch(() => {})
-          .finally(() => {
-            isSeedingProducts = false;
-          });
-      }
-      if (localStorage.getItem(FIREBASE_VARIANTS_SEEDED_KEY) !== 'true') {
-        isSeedingVariants = true;
-        localStorage.setItem(FIREBASE_VARIANTS_SEEDED_KEY, 'true');
-        const initialLocalVariants = StorageService.getProductVariants();
-        const seedVars =
-          initialLocalVariants.length > 0 ? initialLocalVariants : INITIAL_PRODUCT_VARIANTS;
-        StorageService.saveProductVariants(seedVars);
-        setProductVariants(seedVars);
-        syncProductVariantsToFirebase(seedVars, false)
-          .catch(() => {})
-          .finally(() => {
-            isSeedingVariants = false;
-          });
-      }
-
-      // One-time auto-harmonize prices (ensures cashier and menu prices match 100%)
-      if (localStorage.getItem('wkb_app_prices_harmonized_v2') !== 'true') {
-        localStorage.setItem('wkb_app_prices_harmonized_v2', 'true');
-        const { updatedVariants, changedCount } = StorageService.syncAllVariantPricesWithProducts();
-        if (changedCount > 0) {
-          setProductVariants(updatedVariants);
-          syncProductVariantsToFirebase(updatedVariants, false).catch(() => {});
-        }
-      }
-    } catch {
-      isSeedingProducts = false;
-      isSeedingVariants = false;
-    }
-
-    // 1. Subscribe to Products Catalog in real-time (preserve SKU order and respect explicit admin empty action)
+    // 1. Subscribe to Products Catalog in real-time (Firestore is single authoritative source of truth)
     const unsubscribeProducts = subscribeToFirebaseProducts((remoteProducts) => {
-      if (isSeedingProducts || isProductSyncInFlight()) return;
-      const deletedProdIds = StorageService.getDeletedProductIds();
-      let list = (Array.isArray(remoteProducts) ? remoteProducts : []).filter(
-        (p) =>
-          p &&
-          !deletedProdIds.has(String(p.id).trim()) &&
-          !deletedProdIds.has(String(p.sku || '').trim())
-      );
       const isAdminCleared =
         typeof window !== 'undefined' &&
         localStorage.getItem('wkb_pos_products_admin_cleared_v2') === 'true';
 
-      if (list.length === 0 && !isAdminCleared && deletedProdIds.size === 0) {
+      if (Array.isArray(remoteProducts) && remoteProducts.length > 0) {
+        StorageService.saveProducts(remoteProducts, true);
+        setProducts(remoteProducts);
+        return;
+      }
+
+      // First-time database initialization ONLY if Firestore is truly brand-new and empty
+      if (!isAdminCleared) {
         const localSeeded = StorageService.getProducts();
         if (localSeeded.length > 0) {
           setProducts(localSeeded);
@@ -415,73 +369,23 @@ export default function App() {
         }
       }
 
-      if (!isAdminCleared) {
-        try {
-          if (localStorage.getItem('wkb_firebase_variant_parents_v2') !== 'true') {
-            localStorage.setItem('wkb_firebase_variant_parents_v2', 'true');
-            VARIANT_PARENT_PRODUCTS.forEach((parentProd) => {
-              const exists = list.some(
-                (p) =>
-                  p.id === parentProd.id ||
-                  p.sku === parentProd.sku ||
-                  p.nama.toUpperCase() === parentProd.nama.toUpperCase()
-              );
-              if (
-                !exists &&
-                !deletedProdIds.has(parentProd.id) &&
-                !deletedProdIds.has(parentProd.sku)
-              ) {
-                list = [...list, parentProd];
-                saveProductToFirebase(parentProd).catch(() => {});
-              }
-            });
-          }
-        } catch {}
-      }
-
-      // Reconcile with recent local edits (within 8s window) so stale snapshots never overwrite manual changes
-      const localProducts = StorageService.getProducts();
-      const nowMs = Date.now();
-      const remoteById = new Map<string, Product>();
-      list.forEach((rp) => remoteById.set(rp.id, rp));
-
-      localProducts.forEach((lp) => {
-        if (deletedProdIds.has(lp.id) || deletedProdIds.has(lp.sku)) return;
-        const localUpdatedMs = Date.parse(lp.updated_at || '') || 0;
-        const isRecentLocalEdit = nowMs - localUpdatedMs < 8000;
-        const remoteMatch = remoteById.get(lp.id);
-        if (!remoteMatch && isRecentLocalEdit) {
-          remoteById.set(lp.id, lp);
-        } else if (remoteMatch && isRecentLocalEdit) {
-          const remoteUpdatedMs = Date.parse(remoteMatch.updated_at || '') || 0;
-          if (localUpdatedMs > remoteUpdatedMs) {
-            remoteById.set(lp.id, lp);
-          }
-        }
-      });
-
-      const mergedList = Array.from(remoteById.values());
-      StorageService.saveProducts(mergedList);
-      setProducts(StorageService.getProducts());
+      StorageService.saveProducts([]);
+      setProducts([]);
     });
 
     // 1b. Subscribe to Product Variants (`product_variants` collection) in real-time
     const unsubscribeVariants = subscribeToFirebaseProductVariants((remoteVariants) => {
-      if (isSeedingVariants || isVariantSyncInFlight()) return;
-      const deletedVarIds = StorageService.getDeletedVariantIds();
-      const deletedProdIds = StorageService.getDeletedProductIds();
-      let list = (Array.isArray(remoteVariants) ? remoteVariants : []).filter(
-        (v) =>
-          v &&
-          !deletedVarIds.has(String(v.variantId).trim()) &&
-          !deletedVarIds.has(String(v.sku || '').trim()) &&
-          !deletedProdIds.has(String(v.productId || '').trim())
-      );
       const isAdminCleared =
         typeof window !== 'undefined' &&
         localStorage.getItem('wkb_pos_products_admin_cleared_v2') === 'true';
 
-      if (list.length === 0 && !isAdminCleared && deletedVarIds.size === 0 && deletedProdIds.size === 0) {
+      if (Array.isArray(remoteVariants) && remoteVariants.length > 0) {
+        StorageService.saveProductVariants(remoteVariants, true);
+        setProductVariants(remoteVariants);
+        return;
+      }
+
+      if (!isAdminCleared) {
         const localVars = StorageService.getProductVariants();
         if (localVars.length > 0) {
           setProductVariants(localVars);
@@ -490,57 +394,8 @@ export default function App() {
         }
       }
 
-      if (!isAdminCleared) {
-        try {
-          if (localStorage.getItem('wkb_firebase_all_vars_v2') !== 'true') {
-            localStorage.setItem('wkb_firebase_all_vars_v2', 'true');
-            const existingVarIds = new Set(list.map((v) => v.variantId));
-            const missingInitialVars = INITIAL_PRODUCT_VARIANTS.filter(
-              (iv) =>
-                !existingVarIds.has(iv.variantId) &&
-                !deletedVarIds.has(iv.variantId) &&
-                !deletedVarIds.has(iv.sku) &&
-                !deletedProdIds.has(iv.productId)
-            );
-            if (missingInitialVars.length > 0) {
-              list = [...missingInitialVars, ...list];
-              syncProductVariantsToFirebase(missingInitialVars, false).catch(() => {});
-            }
-          }
-        } catch {}
-      }
-
-      // Reconcile with recent local variant edits (within 8s window)
-      const localVars = StorageService.getProductVariants();
-      const nowMs = Date.now();
-      const remoteByVarId = new Map<string, ProductVariant>();
-      list.forEach((rv) => remoteByVarId.set(rv.variantId, rv));
-
-      localVars.forEach((lv) => {
-        if (
-          deletedVarIds.has(lv.variantId) ||
-          deletedVarIds.has(lv.sku) ||
-          deletedProdIds.has(lv.productId)
-        ) {
-          return;
-        }
-        const localUpdatedMs = Date.parse(lv.updatedAt || '') || 0;
-        const isRecentLocalEdit = nowMs - localUpdatedMs < 8000;
-        const remoteMatch = remoteByVarId.get(lv.variantId);
-        if (!remoteMatch && isRecentLocalEdit) {
-          remoteByVarId.set(lv.variantId, lv);
-        } else if (remoteMatch && isRecentLocalEdit) {
-          const remoteUpdatedMs = Date.parse(remoteMatch.updatedAt || '') || 0;
-          if (localUpdatedMs > remoteUpdatedMs) {
-            remoteByVarId.set(lv.variantId, lv);
-          }
-        }
-      });
-
-      const mergedVars = Array.from(remoteByVarId.values());
-      StorageService.saveProductVariants(mergedVars);
-      setProductVariants(StorageService.getProductVariants());
-      setProducts(StorageService.getProducts());
+      StorageService.saveProductVariants([]);
+      setProductVariants([]);
     });
 
     // 2. Subscribe to Categories in real-time
@@ -1039,20 +894,34 @@ export default function App() {
   };
 
   // Product CRUD
-  const handleAddProduct = (prod: Product) => {
+  const handleAddProduct = async (
+    prod: Product
+  ): Promise<{ success: boolean; error?: string }> => {
     const updated = StorageService.addProduct(prod);
     setProducts(updated);
     const savedProd =
       updated.find((p) => p.id === prod.id || (prod.sku && p.sku === prod.sku)) || prod;
-    saveProductToFirebase(savedProd).catch(() => {});
+    const res = await updateProductInFirebase(savedProd, currentUser?.nama || 'Admin');
+    if (!res.success) {
+      showToast(res.error || 'Gagal menyimpan produk ke Firestore', 'error');
+    }
+    return res;
   };
 
-  const handleUpdateProduct = (prod: Product, syncVariants = true) => {
+  const handleUpdateProduct = async (
+    prod: Product,
+    syncVariants = true
+  ): Promise<{ success: boolean; error?: string }> => {
     const updated = StorageService.updateProduct(prod, syncVariants);
     setProducts(updated);
     const savedProd =
       updated.find((p) => p.id === prod.id || (prod.sku && p.sku === prod.sku)) || prod;
-    saveProductToFirebase(savedProd).catch(() => {});
+    const res = await updateProductInFirebase(savedProd, currentUser?.nama || 'Admin');
+
+    if (!res.success) {
+      showToast(res.error || 'Gagal memperbarui produk di Firestore', 'error');
+      return res;
+    }
 
     if (syncVariants) {
       const updatedVars = StorageService.getProductVariants();
@@ -1067,9 +936,13 @@ export default function App() {
           (v.productName && String(v.productName).trim().toLowerCase() === pName)
       );
       if (affectedVars.length > 0) {
-        syncProductVariantsToFirebase(updatedVars, false).catch(() => {});
+        for (const v of affectedVars) {
+          await updateProductVariantInFirebase(v, currentUser?.nama || 'Admin').catch(() => {});
+        }
       }
     }
+
+    return { success: true };
   };
 
   const handleSyncAllPrices = () => {
@@ -1083,7 +956,9 @@ export default function App() {
     }
   };
 
-  const handleDeleteProduct = (id: string) => {
+  const handleDeleteProduct = async (
+    id: string
+  ): Promise<{ success: boolean; error?: string }> => {
     const cleanId = String(id || '').trim();
     const currentProds = StorageService.getProducts();
     const currentVars = StorageService.getProductVariants();
@@ -1101,49 +976,59 @@ export default function App() {
     setProducts(updated);
     setProductVariants(updatedVars);
 
-    deleteProductFromFirebase(cleanId, targetSku).catch(() => {});
+    const ok = await deleteProductFromFirebase(cleanId, targetSku);
     varsToRemove.forEach((v) =>
       deleteProductVariantFromFirebase(v.variantId, v.sku).catch(() => {})
     );
+    return { success: ok };
   };
 
-  const handleDeleteProductsBulk = (ids: string[]) => {
+  const handleDeleteProductsBulk = async (ids: string[]): Promise<boolean> => {
     const res = StorageService.deleteProductsBulk(ids);
     setProducts(res.products);
     setProductVariants(res.variants);
     const removedSkus = res.removedProducts
       .map((p) => String(p.sku || '').trim())
       .filter(Boolean);
-    deleteProductsBulkFromFirebase(ids, removedSkus).catch(() => {});
+    const ok = await deleteProductsBulkFromFirebase(ids, removedSkus);
+    return ok;
   };
 
-  const handleAddVariant = (variant: ProductVariant) => {
+  const handleAddVariant = async (
+    variant: ProductVariant
+  ): Promise<{ success: boolean; error?: string }> => {
     const res = StorageService.addProductVariant(variant);
     setProductVariants(res.variants);
     setProducts(res.products);
     const savedVar =
       res.variants.find((v) => v.variantId === variant.variantId) || variant;
-    saveProductVariantToFirebase(savedVar).catch(() => {});
+    const saveRes = await updateProductVariantInFirebase(savedVar, currentUser?.nama || 'Admin');
     const parentProd = res.products.find((p) => p.id === savedVar.productId);
     if (parentProd) {
-      saveProductToFirebase(parentProd).catch(() => {});
+      await updateProductInFirebase(parentProd, currentUser?.nama || 'Admin').catch(() => {});
     }
+    return saveRes;
   };
 
-  const handleUpdateVariant = (variant: ProductVariant) => {
+  const handleUpdateVariant = async (
+    variant: ProductVariant
+  ): Promise<{ success: boolean; error?: string }> => {
     const res = StorageService.updateProductVariant(variant);
     setProductVariants(res.variants);
     setProducts(res.products);
     const savedVar =
       res.variants.find((v) => v.variantId === variant.variantId) || variant;
-    saveProductVariantToFirebase(savedVar).catch(() => {});
+    const saveRes = await updateProductVariantInFirebase(savedVar, currentUser?.nama || 'Admin');
     const parentProd = res.products.find((p) => p.id === savedVar.productId);
     if (parentProd) {
-      saveProductToFirebase(parentProd).catch(() => {});
+      await updateProductInFirebase(parentProd, currentUser?.nama || 'Admin').catch(() => {});
     }
+    return saveRes;
   };
 
-  const handleDeleteVariant = (variantId: string) => {
+  const handleDeleteVariant = async (
+    variantId: string
+  ): Promise<{ success: boolean; error?: string }> => {
     const cleanVarId = String(variantId || '').trim();
     const currentVars = StorageService.getProductVariants();
     const targetVar = currentVars.find(
@@ -1152,35 +1037,37 @@ export default function App() {
     const res = StorageService.deleteProductVariant(cleanVarId);
     setProductVariants(res.variants);
     setProducts(res.products);
-    deleteProductVariantFromFirebase(cleanVarId, targetVar?.sku).catch(() => {});
+    const ok = await deleteProductVariantFromFirebase(cleanVarId, targetVar?.sku);
     if (targetVar?.productId) {
       const parentProd = res.products.find((p) => p.id === targetVar.productId);
       if (parentProd) {
-        saveProductToFirebase(parentProd).catch(() => {});
+        await updateProductInFirebase(parentProd, currentUser?.nama || 'Admin').catch(() => {});
       }
     }
+    return { success: ok };
   };
 
-  const handleBulkSaveProductsAndVariants = (
+  const handleBulkSaveProductsAndVariants = async (
     newProducts: Product[],
     newVariants: ProductVariant[]
-  ) => {
+  ): Promise<{ success: boolean; error?: string }> => {
     StorageService.saveProductVariants(newVariants, true);
     StorageService.saveProducts(newProducts, true);
     const normProds = StorageService.getProducts();
     const normVars = StorageService.getProductVariants();
     setProducts(normProds);
     setProductVariants(normVars);
-    syncProductsToFirebase(normProds, true).catch(() => {});
-    syncProductVariantsToFirebase(normVars, true).catch(() => {});
+    const pOk = await syncProductsToFirebase(normProds, false);
+    const vOk = await syncProductVariantsToFirebase(normVars, false);
+    return { success: pOk && vOk };
   };
 
-  const handleImportProducts = (prods: Product[]) => {
+  const handleImportProducts = async (prods: Product[]) => {
     StorageService.saveProducts(prods, true);
     const normalized = StorageService.getProducts();
     setProducts(normalized);
     if (prods.length > 0) {
-      syncProductsToFirebase(normalized, true).catch(() => {});
+      await syncProductsToFirebase(normalized, false);
     }
   };
 
@@ -1212,22 +1099,31 @@ export default function App() {
   };
 
   // Categories CRUD
-  const handleAddCategory = (cat: CategoryItem) => {
+  const handleAddCategory = async (
+    cat: CategoryItem
+  ): Promise<{ success: boolean; error?: string }> => {
     const updated = StorageService.addCategory(cat);
     setCategories(updated);
-    syncCategoriesToFirebase(updated).catch(() => {});
+    const res = await updateCategoryInFirebase(cat, currentUser?.nama || 'Admin');
+    return res;
   };
 
-  const handleUpdateCategory = (cat: CategoryItem) => {
+  const handleUpdateCategory = async (
+    cat: CategoryItem
+  ): Promise<{ success: boolean; error?: string }> => {
     const updated = StorageService.updateCategory(cat);
     setCategories(updated);
-    syncCategoriesToFirebase(updated).catch(() => {});
+    const res = await updateCategoryInFirebase(cat, currentUser?.nama || 'Admin');
+    return res;
   };
 
-  const handleDeleteCategory = (id: string) => {
+  const handleDeleteCategory = async (
+    id: string
+  ): Promise<{ success: boolean; error?: string }> => {
     const updated = StorageService.deleteCategory(id);
     setCategories(updated);
-    deleteCategoryFromFirebase(id).catch(() => {});
+    const ok = await deleteCategoryFromFirebase(id);
+    return { success: ok };
   };
 
   // Expenses CRUD
@@ -1244,25 +1140,34 @@ export default function App() {
   };
 
   // Customers CRUD
-  const handleAddCustomer = (cust: Customer) => {
+  const handleAddCustomer = async (
+    cust: Customer
+  ): Promise<{ success: boolean; error?: string }> => {
     const updated = [cust, ...customers];
     StorageService.saveCustomers(updated);
     setCustomers(updated);
-    saveCustomerToFirebase(cust).catch(() => {});
+    const res = await updateCustomerInFirebase(cust, currentUser?.nama || 'Kasir');
+    return res;
   };
 
-  const handleUpdateCustomer = (cust: Customer) => {
+  const handleUpdateCustomer = async (
+    cust: Customer
+  ): Promise<{ success: boolean; error?: string }> => {
     const updated = customers.map((c) => (c.id === cust.id ? cust : c));
     StorageService.saveCustomers(updated);
     setCustomers(updated);
-    saveCustomerToFirebase(cust).catch(() => {});
+    const res = await updateCustomerInFirebase(cust, currentUser?.nama || 'Kasir');
+    return res;
   };
 
-  const handleDeleteCustomer = (id: string) => {
+  const handleDeleteCustomer = async (
+    id: string
+  ): Promise<{ success: boolean; error?: string }> => {
     const updated = customers.filter((c) => c.id !== id);
     StorageService.saveCustomers(updated);
     setCustomers(updated);
-    deleteCustomerFromFirebase(id).catch(() => {});
+    const ok = await deleteCustomerFromFirebase(id);
+    return { success: ok };
   };
 
   // Save Settings
@@ -1282,13 +1187,10 @@ export default function App() {
     // 2. Persist to localStorage
     StorageService.saveSettings(normalized);
 
-    // 3. Persist to Firestore across all devices
+    // 3. Persist to Firestore across all devices using updateDoc
     try {
-      const ok = await saveSettingsToFirebase(normalized);
-      if (!ok) {
-        console.warn('Firebase saveSettingsToFirebase returned false');
-      }
-      return ok;
+      const res = await updateSettingsInFirebase(normalized, currentUser?.nama || 'Owner');
+      return res.success;
     } catch (err) {
       console.warn('Firebase settings save error:', err);
       return false;
@@ -1308,6 +1210,15 @@ export default function App() {
 
   // Low Stock Count for Badge
   const lowStockCount = products.filter((p) => p.stok <= p.stok_minimum).length;
+
+  // Pending Pre-Order (PO) Count for Badge
+  const pendingPOCount = useMemo(() => {
+    return transactions.filter(
+      (tx) =>
+        (tx.orderType === 'PRE_ORDER' || Boolean(tx.poNumber)) &&
+        (tx.poStatus === 'MENUNGGU_KONFIRMASI' || tx.poStatus === 'MENUNGGU_DP')
+    ).length;
+  }, [transactions]);
 
   // Check if current user is an authenticated internal staff member (Owner, Admin, Kasir, Staff, Delivery)
   const isStaffAuthenticated =
@@ -1518,14 +1429,6 @@ export default function App() {
   const effectiveRole = currentUser.role;
   const isTabAuthorized = hasTabAccess(effectiveRole, activeTab);
 
-  const pendingPOCount = useMemo(() => {
-    return transactions.filter(
-      (tx) =>
-        (tx.orderType === 'PRE_ORDER' || Boolean(tx.poNumber)) &&
-        (tx.poStatus === 'MENUNGGU_KONFIRMASI' || tx.poStatus === 'MENUNGGU_DP')
-    ).length;
-  }, [transactions]);
-
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col antialiased selection:bg-amber-500 selection:text-black">
       {/* Top Application Header */}
@@ -1644,8 +1547,11 @@ export default function App() {
             <DashboardView
               transactions={transactions}
               products={products}
+              settings={settings}
+              currentUser={currentUser}
               onNavigate={setActiveTab}
               onSelectTransaction={setReceiptTx}
+              onOpenLogoEditor={() => setIsLogoEditorOpen(true)}
             />
           )}
 

@@ -88,6 +88,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   const [isSyncingFirebase, setIsSyncingFirebase] = useState(false);
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
   const [isClearingProducts, setIsClearingProducts] = useState(false);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
@@ -232,77 +233,96 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     setIsModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.nama || formData.nama.trim() === '') {
       showToast('Nama produk wajib diisi!', 'error');
       return;
     }
 
-    if (editingProduct) {
-      const photo = formData.foto || editingProduct.foto || editingProduct.gambar_url || '';
-      const newPrice = Math.max(0, Number(formData.harga_jual || 0));
-      const newCost = Math.max(0, Number(formData.harga_modal || 0));
-      const updated: Product = {
-        ...editingProduct,
-        ...(formData as Product),
-        harga_jual: newPrice,
-        harga_modal: newCost,
-        foto: photo,
-        gambar_url: photo,
-        updated_at: new Date().toISOString(),
-      };
+    setIsSavingProduct(true);
+    try {
+      if (editingProduct) {
+        const photo = formData.foto || editingProduct.foto || editingProduct.gambar_url || '';
+        const newPrice = Math.max(0, Number(formData.harga_jual || 0));
+        const newCost = Math.max(0, Number(formData.harga_modal || 0));
+        const updated: Product = {
+          ...editingProduct,
+          ...(formData as Product),
+          harga_jual: newPrice,
+          harga_modal: newCost,
+          foto: photo,
+          gambar_url: photo,
+          updated_at: new Date().toISOString(),
+        };
 
-      if (syncVariantsOnEdit && onBulkSaveProductsAndVariants) {
-        const cleanId = String(editingProduct.id).trim();
-        const cleanSku = String(editingProduct.sku || '').trim();
-        const pName = String(editingProduct.nama || '').trim().toLowerCase();
-        const updatedVariants = variants.map((v) => {
-          const isMatch =
-            String(v.productId).trim() === cleanId ||
-            (cleanSku && String(v.productId).trim() === cleanSku) ||
-            (v.productName && String(v.productName).trim().toLowerCase() === pName);
-          if (!isMatch) return v;
-          return {
-            ...v,
-            price: newPrice,
-            costPrice: newCost,
-            updatedAt: updated.updated_at,
-          };
-        });
-        const updatedProducts = products.map((p) => (p.id === updated.id ? updated : p));
-        onBulkSaveProductsAndVariants(updatedProducts, updatedVariants);
+        if (syncVariantsOnEdit && onBulkSaveProductsAndVariants) {
+          const cleanId = String(editingProduct.id).trim();
+          const cleanSku = String(editingProduct.sku || '').trim();
+          const pName = String(editingProduct.nama || '').trim().toLowerCase();
+          const updatedVariants = variants.map((v) => {
+            const isMatch =
+              String(v.productId).trim() === cleanId ||
+              (cleanSku && String(v.productId).trim() === cleanSku) ||
+              (v.productName && String(v.productName).trim().toLowerCase() === pName);
+            if (!isMatch) return v;
+            return {
+              ...v,
+              price: newPrice,
+              costPrice: newCost,
+              updatedAt: updated.updated_at,
+            };
+          });
+          const updatedProducts = products.map((p) => (p.id === updated.id ? updated : p));
+          const res: any = await onBulkSaveProductsAndVariants(updatedProducts, updatedVariants);
+          if (res && res.success === false) {
+            showToast(res.error || `Gagal menyimpan produk "${updated.nama}" ke Firestore`, 'error');
+            return;
+          }
+        } else {
+          const res: any = await onUpdateProduct(updated);
+          if (res && res.success === false) {
+            showToast(res.error || `Gagal memperbarui produk "${updated.nama}" ke Firestore`, 'error');
+            return;
+          }
+        }
+
+        showToast(`Produk "${updated.nama}" berhasil diperbarui!`, 'success');
       } else {
-        onUpdateProduct(updated);
+        const photo =
+          formData.foto ||
+          'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80';
+        const newProd: Product = {
+          id: 'PRD-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
+          sku: formData.sku || 'SKU-' + Date.now().toString().slice(-4),
+          nama: formData.nama.trim(),
+          kategori: formData.kategori as ProductCategory,
+          harga_modal: Number(formData.harga_modal) || 0,
+          harga_jual: Number(formData.harga_jual) || 0,
+          satuan: formData.satuan || 'Porsi',
+          stok: Number(formData.stok) || 0,
+          stok_minimum: Number(formData.stok_minimum) || 5,
+          foto: photo,
+          gambar_url: photo,
+          status: formData.status as 'Aktif' | 'Nonaktif',
+          deskripsi: formData.deskripsi || '',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        const res: any = await onAddProduct(newProd);
+        if (res && res.success === false) {
+          showToast(res.error || `Gagal menambahkan produk "${newProd.nama}" ke Firestore`, 'error');
+          return;
+        }
+        showToast(`Produk ${newProd.nama} berhasil ditambahkan!`, 'success');
       }
 
-      showToast(`Produk "${updated.nama}" berhasil diperbarui!`, 'success');
-    } else {
-      const photo =
-        formData.foto ||
-        'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80';
-      const newProd: Product = {
-        id: 'PRD-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
-        sku: formData.sku || 'SKU-' + Date.now().toString().slice(-4),
-        nama: formData.nama.trim(),
-        kategori: formData.kategori as ProductCategory,
-        harga_modal: Number(formData.harga_modal) || 0,
-        harga_jual: Number(formData.harga_jual) || 0,
-        satuan: formData.satuan || 'Porsi',
-        stok: Number(formData.stok) || 0,
-        stok_minimum: Number(formData.stok_minimum) || 5,
-        foto: photo,
-        gambar_url: photo,
-        status: formData.status as 'Aktif' | 'Nonaktif',
-        deskripsi: formData.deskripsi || '',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      onAddProduct(newProd);
-      showToast(`Produk ${newProd.nama} berhasil ditambahkan!`, 'success');
+      setIsModalOpen(false);
+    } catch (err: any) {
+      showToast(err?.message || 'Terjadi kesalahan saat menyimpan produk', 'error');
+    } finally {
+      setIsSavingProduct(false);
     }
-
-    setIsModalOpen(false);
   };
 
   const handleDelete = (id: string, nama: string) => {
@@ -325,7 +345,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     setProductToDelete(target);
   };
 
-  const handleConfirmSingleDelete = () => {
+  const handleConfirmSingleDelete = async () => {
     if (!productToDelete) return;
     const { id, nama } = productToDelete;
     if (selectedVariantProductId === id) {
@@ -336,11 +356,15 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       next.delete(id);
       return next;
     });
-    onDeleteProduct(id);
+    try {
+      await onDeleteProduct(id);
+      showToast(`Produk "${nama}" berhasil dihapus dari katalog.`, 'success');
+    } catch {
+      showToast(`Gagal menghapus produk "${nama}" dari server.`, 'error');
+    }
     setProductToDelete(null);
     setIsModalOpen(false);
     setEditingProduct(null);
-    showToast(`Produk "${nama}" berhasil dihapus dari katalog.`, 'success');
   };
 
   const toggleSelectProduct = (id: string) => {
@@ -846,7 +870,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           </div>
         </div>
       ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
           {filteredAndSortedProducts.length === 0 ? (
             <div className="col-span-full bg-stone-900 border border-stone-800 rounded-3xl p-12 text-center text-stone-500">
               Tidak ada produk ditemukan.
@@ -875,18 +899,18 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       <div className="absolute inset-0 bg-gradient-to-t from-stone-950/85 via-transparent to-black/25 pointer-events-none" />
 
                       {/* Category Badge */}
-                      <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-stone-950/85 text-amber-400 border border-stone-800 backdrop-blur-xs">
+                      <span className="absolute top-1.5 left-1.5 sm:top-2.5 sm:left-2.5 px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-extrabold bg-stone-950/85 text-amber-400 border border-stone-800 backdrop-blur-xs truncate max-w-[80px] sm:max-w-none">
                         {p.kategori}
                       </span>
 
                       {/* Stock Badge */}
-                      <div className="absolute top-2.5 right-2.5">
+                      <div className="absolute top-1.5 right-1.5 sm:top-2.5 sm:right-2.5">
                         {isLow ? (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-rose-500/90 text-white shadow-md animate-pulse">
-                            STOK MENIPIS ({p.stok})
+                          <span className="px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-black bg-rose-500/90 text-white shadow-md animate-pulse">
+                            STOK ({p.stok})
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-stone-950/85 text-stone-300 border border-stone-800 backdrop-blur-xs">
+                          <span className="px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold bg-stone-950/85 text-stone-300 border border-stone-800 backdrop-blur-xs">
                             {p.stok} {p.satuan}
                           </span>
                         )}
@@ -896,22 +920,22 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => openQuickImageModal(p)}
-                        className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-[11px] shadow-lg transition active:scale-95 cursor-pointer z-10"
+                        className="absolute bottom-1.5 right-1.5 sm:bottom-2.5 sm:right-2.5 flex items-center gap-1 px-1.5 py-1 sm:px-2.5 sm:py-1.5 rounded-lg sm:rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-[10px] sm:text-[11px] shadow-lg transition active:scale-95 cursor-pointer z-10"
                         title="Klik untuk ubah foto menu ini"
                       >
-                        <Camera className="w-3.5 h-3.5 stroke-[2.5]" />
-                        <span>Ubah Foto</span>
+                        <Camera className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.5]" />
+                        <span className="hidden sm:inline">Ubah Foto</span>
                       </button>
                     </div>
 
                     {/* Card Info */}
-                    <div className="p-3.5 space-y-1.5">
-                      <div className="flex items-start justify-between gap-2">
-                        <h4 className="font-extrabold text-stone-100 text-sm leading-snug line-clamp-1 group-hover:text-amber-400 transition-colors">
+                    <div className="p-2.5 sm:p-3.5 space-y-1 sm:space-y-1.5">
+                      <div className="flex items-start justify-between gap-1.5">
+                        <h4 className="font-extrabold text-stone-100 text-xs sm:text-sm leading-snug line-clamp-1 group-hover:text-amber-400 transition-colors">
                           {p.nama}
                         </h4>
                         <span
-                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                          className={`text-[8px] sm:text-[9px] font-bold px-1 sm:px-1.5 py-0.5 rounded shrink-0 ${
                             p.status === 'Aktif'
                               ? 'bg-emerald-500/20 text-emerald-400'
                               : 'bg-stone-800 text-stone-500'
@@ -920,9 +944,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                           {p.status}
                         </span>
                       </div>
-                      <p className="text-[10px] text-stone-400 font-mono">{p.sku}</p>
+                      <p className="text-[9px] sm:text-[10px] text-stone-400 font-mono truncate">{p.sku}</p>
                       {p.deskripsi && (
-                        <p className="text-[11px] text-stone-400 line-clamp-2 leading-relaxed">
+                        <p className="text-[10px] sm:text-[11px] text-stone-400 line-clamp-1 sm:line-clamp-2 leading-relaxed">
                           {p.deskripsi}
                         </p>
                       )}
@@ -930,10 +954,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                   </div>
 
                   {/* Card Bottom / Actions */}
-                  <div className="p-3.5 pt-2 border-t border-stone-800/80 flex items-center justify-between">
+                  <div className="p-2 sm:p-3.5 pt-2 border-t border-stone-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                     <div>
-                      <span className="text-[10px] text-stone-400 block">Harga Jual</span>
-                      <span className="text-sm font-black font-mono text-amber-400">
+                      <span className="text-[9px] sm:text-[10px] text-stone-400 block">Harga Jual</span>
+                      <span className="text-xs sm:text-sm font-black font-mono text-amber-400">
                         {(() => {
                           const prodVars = variantsByProduct.get(p.id) || [];
                           const hasVars = Boolean(p.hasVariants) || prodVars.length > 0;
@@ -952,32 +976,32 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center justify-end gap-1 sm:gap-1.5">
                       <button
                         type="button"
                         onClick={() => openQuickImageModal(p)}
-                        className="p-2 rounded-xl bg-stone-800 hover:bg-amber-950/40 text-amber-400 border border-stone-750 hover:border-amber-500/40 transition cursor-pointer"
+                        className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-stone-800 hover:bg-amber-950/40 text-amber-400 border border-stone-750 hover:border-amber-500/40 transition cursor-pointer"
                         title="Ganti Foto Menu"
                       >
-                        <ImageIcon className="w-3.5 h-3.5" />
+                        <ImageIcon className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                       </button>
                       <button
                         type="button"
                         onClick={() => openEditModal(p)}
-                        className="px-2.5 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-white text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
+                        className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg sm:rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-white text-[10px] sm:text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
                         title="Edit Data Menu"
                       >
-                        <Edit2 className="w-3.5 h-3.5" />
-                        <span>Edit</span>
+                        <Edit2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                        <span className="hidden sm:inline">Edit</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDelete(p.id, p.nama)}
-                        className="px-2.5 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-800/50 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
+                        className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg sm:rounded-xl bg-rose-950/60 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-800/50 text-[10px] sm:text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
                         title="Hapus Menu"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Hapus</span>
+                        <Trash2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                        <span className="hidden sm:inline">Hapus</span>
                       </button>
                     </div>
                   </div>
@@ -1441,9 +1465,15 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs shadow-lg shadow-amber-950/40 cursor-pointer"
+                    disabled={isSavingProduct}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-extrabold text-xs shadow-lg shadow-amber-950/40 cursor-pointer ${
+                      isSavingProduct
+                        ? 'bg-amber-700/60 text-amber-200 cursor-not-allowed'
+                        : 'bg-amber-600 hover:bg-amber-500 text-white'
+                    }`}
                   >
-                    Simpan Produk
+                    {isSavingProduct && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                    <span>{isSavingProduct ? 'Menyimpan ke Firestore...' : (editingProduct ? 'Simpan Perubahan' : 'Tambah Produk')}</span>
                   </button>
                 </div>
               </div>

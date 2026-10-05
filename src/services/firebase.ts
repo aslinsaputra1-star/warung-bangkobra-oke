@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   setDoc,
+  updateDoc,
   getDoc,
   getDocs,
   onSnapshot,
@@ -1144,11 +1145,15 @@ function buildFirestoreProductPayload(prod: Product) {
 }
 
 /**
- * SAVE SINGLE PRODUCT TO FIREBASE FIRESTORE
- * Atomically persists a single added or edited product without rewriting the entire catalog.
+ * UPDATE PRODUCT IN FIREBASE FIRESTORE USING updateDoc
+ * Directly updates an existing product document using updateDoc for strict atomicity and persistence.
  */
-export async function saveProductToFirebase(product: Product): Promise<boolean> {
-  if (!product || !product.id) return false;
+export async function updateProductInFirebase(
+  product: Product,
+  actorName = 'Admin',
+  userRole = 'Owner'
+): Promise<{ success: boolean; error?: string }> {
+  if (!product || !product.id) return { success: false, error: 'ID produk tidak valid' };
   recordPendingProductWrite(product);
   activeProductSyncCount += 1;
   try {
@@ -1157,20 +1162,85 @@ export async function saveProductToFirebase(product: Product): Promise<boolean> 
     }
     const cleanId = String(product.id).trim();
     const prodDocRef = doc(db, 'products', cleanId);
-    const payload = buildFirestoreProductPayload(product);
-    await setDoc(prodDocRef, payload, { merge: true });
-    return true;
+    const nowIso = new Date().toISOString();
+    const stockVal = Number(product.stok ?? 0);
+    const standardizedStatus =
+      product.status === 'Nonaktif' || (product as any).productStatus === 'INACTIVE'
+        ? 'INACTIVE'
+        : 'ACTIVE';
+
+    const updatePayload: Record<string, any> = {
+      nama: String(product.nama || 'Menu Kobra'),
+      name: String(product.nama || 'Menu Kobra'),
+      kategori: String(product.kategori || 'Makanan'),
+      categoryId: String(product.kategori || 'Makanan'),
+      harga_modal: Number(product.harga_modal ?? 0),
+      costPrice: Number(product.harga_modal ?? 0),
+      harga_jual: Number(product.harga_jual ?? 0),
+      price: Number(product.harga_jual ?? 0),
+      satuan: String(product.satuan || 'Pcs'),
+      unit: String(product.satuan || 'Pcs'),
+      stok: stockVal,
+      stock: stockVal,
+      stok_minimum: Number(product.stok_minimum ?? 0),
+      minimumStock: Number(product.stok_minimum ?? 0),
+      foto: String(product.foto || product.gambar_url || ''),
+      gambar_url: String(product.foto || product.gambar_url || ''),
+      imageUrl: String(product.foto || product.gambar_url || ''),
+      status: String(product.status || 'Aktif'),
+      productStatus: standardizedStatus,
+      hasVariants: Boolean(product.hasVariants),
+      deskripsi: String(product.deskripsi || ''),
+      updated_at: String(product.updated_at || nowIso),
+      updatedAt: serverTimestamp(),
+    };
+
+    if (product.sku) {
+      updatePayload.sku = String(product.sku).trim();
+    }
+
+    try {
+      await updateDoc(prodDocRef, updatePayload);
+    } catch (updateErr: any) {
+      if (updateErr?.code === 'not-found' || updateErr?.message?.includes('No document to update')) {
+        const fullPayload = buildFirestoreProductPayload({
+          ...product,
+          updated_at: nowIso,
+        });
+        await setDoc(prodDocRef, fullPayload, { merge: true });
+      } else {
+        throw updateErr;
+      }
+    }
+
+    logAuditActivity(
+      'UPDATE_PRODUCT',
+      `Memperbarui produk ${product.nama} (${cleanId}) - Harga: Rp${product.harga_jual}, Stok: ${product.stok}`,
+      actorName,
+      'PRODUCTS'
+    ).catch(() => {});
+
+    return { success: true };
   } catch (err: any) {
-    console.error('Error saving single product to Firebase:', err);
+    console.error('Error updating single product to Firebase with updateDoc:', err);
     try {
       handleFirestoreError(err, OperationType.WRITE, 'products');
     } catch {
       // Handled
     }
-    return false;
+    return { success: false, error: err?.message || 'Gagal menyimpan perubahan produk ke Firestore' };
   } finally {
     activeProductSyncCount = Math.max(0, activeProductSyncCount - 1);
   }
+}
+
+/**
+ * SAVE SINGLE PRODUCT TO FIREBASE FIRESTORE
+ * Atomically persists a single added or edited product using updateDoc for existing items.
+ */
+export async function saveProductToFirebase(product: Product): Promise<boolean> {
+  const res = await updateProductInFirebase(product);
+  return res.success;
 }
 
 /**
@@ -1278,8 +1348,8 @@ export function subscribeToFirebaseProducts(
         if (!snapshot.empty) {
           snapshot.forEach((docSnap) => {
             const raw = docSnap.data() as Record<string, any>;
-            if (raw && (raw.id || docSnap.id)) {
-              const id = String(raw.id || docSnap.id).trim();
+            if (raw) {
+              const id = String(docSnap.id).trim();
               const sku = String(raw.sku || id).trim();
 
               if (pendingProductDeletes.has(id) || pendingProductDeletes.has(sku)) {
@@ -1694,43 +1764,77 @@ export async function syncProductVariantsToFirebase(
   }
 }
 
-export async function saveProductVariantToFirebase(variant: ProductVariant): Promise<boolean> {
-  if (!variant || !variant.variantId) return false;
+/**
+ * UPDATE PRODUCT VARIANT IN FIREBASE FIRESTORE USING updateDoc
+ */
+export async function updateProductVariantInFirebase(
+  variant: ProductVariant,
+  actorName = 'Admin'
+): Promise<{ success: boolean; error?: string }> {
+  if (!variant || !variant.variantId) return { success: false, error: 'ID varian tidak valid' };
   recordPendingVariantWrite(variant);
   activeVariantSyncCount += 1;
   try {
     if (!auth.currentUser) {
       await ensureFirebaseAuth();
     }
+    const cleanVarId = String(variant.variantId).trim();
+    const ref = doc(db, 'product_variants', cleanVarId);
     const nowIso = new Date().toISOString();
-    const ref = doc(db, 'product_variants', String(variant.variantId).trim());
-    await setDoc(
-      ref,
-      {
-        variantId: String(variant.variantId),
-        productId: String(variant.productId || ''),
-        productName: String(variant.productName || ''),
-        variantName: String(variant.variantName || 'Original'),
-        sku: String(variant.sku || variant.variantId),
-        price: Number(variant.price ?? 0),
-        costPrice: Number(variant.costPrice ?? 0),
-        stock: Number(variant.stock ?? 0),
-        minStock: Number(variant.minStock ?? 5),
-        unit: String(variant.unit || 'Cup'),
-        imageUrl: String(variant.imageUrl || ''),
-        isActive: Boolean(variant.isActive),
-        createdAt: String(variant.createdAt || nowIso),
-        updatedAt: String(variant.updatedAt || nowIso),
-      },
-      { merge: true }
-    );
-    return true;
-  } catch (err) {
-    console.error('Error saving variant to Firebase:', err);
-    return false;
+
+    const updatePayload: Record<string, any> = {
+      productId: String(variant.productId || ''),
+      productName: String(variant.productName || ''),
+      variantName: String(variant.variantName || 'Original'),
+      sku: String(variant.sku || cleanVarId),
+      price: Number(variant.price ?? 0),
+      costPrice: Number(variant.costPrice ?? 0),
+      stock: Number(variant.stock ?? 0),
+      minStock: Number(variant.minStock ?? 5),
+      unit: String(variant.unit || 'Cup'),
+      imageUrl: String(variant.imageUrl || ''),
+      isActive: Boolean(variant.isActive),
+      updatedAt: String(variant.updatedAt || nowIso),
+      updatedAtServer: serverTimestamp(),
+    };
+
+    try {
+      await updateDoc(ref, updatePayload);
+    } catch (updateErr: any) {
+      if (updateErr?.code === 'not-found' || updateErr?.message?.includes('No document to update')) {
+        await setDoc(
+          ref,
+          {
+            variantId: cleanVarId,
+            ...updatePayload,
+            createdAt: String(variant.createdAt || nowIso),
+          },
+          { merge: true }
+        );
+      } else {
+        throw updateErr;
+      }
+    }
+
+    logAuditActivity(
+      'UPDATE_VARIANT',
+      `Memperbarui varian ${variant.productName} - ${variant.variantName} (Rp${variant.price}, Stok: ${variant.stock})`,
+      actorName,
+      'PRODUCTS'
+    ).catch(() => {});
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error updating variant to Firebase with updateDoc:', err);
+    return { success: false, error: err?.message || 'Gagal menyimpan varian ke Firestore' };
   } finally {
     activeVariantSyncCount = Math.max(0, activeVariantSyncCount - 1);
   }
+}
+
+export async function saveProductVariantToFirebase(variant: ProductVariant): Promise<boolean> {
+  const res = await updateProductVariantInFirebase(variant);
+  return res.success;
 }
 
 export async function deleteProductVariantFromFirebase(
@@ -1803,8 +1907,8 @@ export function subscribeToFirebaseProductVariants(
         if (!snapshot.empty) {
           snapshot.forEach((docSnap) => {
             const raw = docSnap.data() as Record<string, any>;
-            if (raw && (raw.variantId || docSnap.id)) {
-              const variantId = String(raw.variantId || docSnap.id).trim();
+            if (raw) {
+              const variantId = String(docSnap.id).trim();
               const sku = String(raw.sku || variantId).trim();
               const productId = String(raw.productId || raw.id_produk || '').trim();
 
@@ -2029,6 +2133,56 @@ export async function deleteOrderFromFirebase(orderId: string): Promise<boolean>
 }
 
 /**
+ * UPDATE SINGLE CATEGORY IN FIREBASE FIRESTORE USING updateDoc
+ */
+export async function updateCategoryInFirebase(
+  category: CategoryItem,
+  actorName = 'Admin'
+): Promise<{ success: boolean; error?: string }> {
+  if (!category || !category.id) return { success: false, error: 'ID kategori tidak valid' };
+  try {
+    if (!auth.currentUser) {
+      await ensureFirebaseAuth();
+    }
+    const cleanId = String(category.id).trim();
+    const catRef = doc(db, 'categories', cleanId);
+    const nowIso = new Date().toISOString();
+
+    const updatePayload: Record<string, any> = {
+      nama: String(category.nama || 'Kategori'),
+      deskripsi: String(category.deskripsi || ''),
+      icon: String(category.icon || ''),
+      urutan: Number(category.urutan ?? 0),
+      status: String(category.status || 'Aktif'),
+      updated_at: nowIso,
+      updatedAt: serverTimestamp(),
+    };
+
+    try {
+      await updateDoc(catRef, updatePayload);
+    } catch (updateErr: any) {
+      if (updateErr?.code === 'not-found' || updateErr?.message?.includes('No document to update')) {
+        await setDoc(catRef, { id: cleanId, ...updatePayload }, { merge: true });
+      } else {
+        throw updateErr;
+      }
+    }
+
+    logAuditActivity(
+      'UPDATE_CATEGORY',
+      `Memperbarui kategori ${category.nama}`,
+      actorName,
+      'CATEGORIES'
+    ).catch(() => {});
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error updating category to Firebase with updateDoc:', err);
+    return { success: false, error: err?.message || 'Gagal menyimpan kategori ke Firestore' };
+  }
+}
+
+/**
  * SYNC CATEGORIES TO FIREBASE
  */
 export async function syncCategoriesToFirebase(categories: CategoryItem[]): Promise<boolean> {
@@ -2096,8 +2250,11 @@ export function subscribeToFirebaseCategories(
         if (!snapshot.empty) {
           snapshot.forEach((docSnap) => {
             const data = docSnap.data() as CategoryItem;
-            if (data && data.id) {
-              list.push(data);
+            if (data) {
+              list.push({
+                ...data,
+                id: String(docSnap.id).trim(),
+              });
             }
           });
         }
@@ -2203,17 +2360,22 @@ export function subscribeToFirebaseExpenses(
 }
 
 /**
- * SAVE CUSTOMER TO FIREBASE
+ * UPDATE CUSTOMER IN FIREBASE FIRESTORE USING updateDoc
  */
-export async function saveCustomerToFirebase(customer: Customer): Promise<boolean> {
-  if (!customer || !customer.id) return false;
+export async function updateCustomerInFirebase(
+  customer: Customer,
+  actorName = 'Kasir'
+): Promise<{ success: boolean; error?: string }> {
+  if (!customer || !customer.id) return { success: false, error: 'ID pelanggan tidak valid' };
   try {
     if (!auth.currentUser) {
       await ensureFirebaseAuth();
     }
-    const docRef = doc(db, 'customers', String(customer.id));
-    const payload = {
-      id: String(customer.id),
+    const cleanId = String(customer.id).trim();
+    const docRef = doc(db, 'customers', cleanId);
+    const nowIso = new Date().toISOString();
+
+    const updatePayload: Record<string, any> = {
       nama: String(customer.nama || 'Pelanggan'),
       name: String(customer.nama || 'Pelanggan'),
       no_whatsapp: String(customer.no_whatsapp || customer.whatsapp || ''),
@@ -2226,18 +2388,50 @@ export async function saveCustomerToFirebase(customer: Customer): Promise<boolea
       total_belanja: Number(customer.total_belanja ?? 0),
       totalSpent: Number(customer.total_belanja ?? 0),
       last_order: String(customer.last_order || ''),
-      lastOrderAt: String(customer.last_order || new Date().toISOString()),
-      created_at: String(customer.created_at || new Date().toISOString()),
-      updated_at: new Date().toISOString(),
-      createdAt: serverTimestamp(),
+      lastOrderAt: String(customer.last_order || nowIso),
+      updated_at: nowIso,
       updatedAt: serverTimestamp(),
     };
-    await setDoc(docRef, payload, { merge: true });
-    return true;
-  } catch (err) {
-    console.error('Gagal menyimpan pelanggan ke Firebase:', err);
-    return false;
+
+    try {
+      await updateDoc(docRef, updatePayload);
+    } catch (updateErr: any) {
+      if (updateErr?.code === 'not-found' || updateErr?.message?.includes('No document to update')) {
+        await setDoc(
+          docRef,
+          {
+            id: cleanId,
+            ...updatePayload,
+            created_at: String(customer.created_at || nowIso),
+            createdAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } else {
+        throw updateErr;
+      }
+    }
+
+    logAuditActivity(
+      'UPDATE_CUSTOMER',
+      `Memperbarui pelanggan ${customer.nama} (${cleanId})`,
+      actorName,
+      'CUSTOMERS'
+    ).catch(() => {});
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Gagal memperbarui pelanggan ke Firebase dengan updateDoc:', err);
+    return { success: false, error: err?.message || 'Gagal menyimpan pelanggan ke Firestore' };
   }
+}
+
+/**
+ * SAVE CUSTOMER TO FIREBASE
+ */
+export async function saveCustomerToFirebase(customer: Customer): Promise<boolean> {
+  const res = await updateCustomerInFirebase(customer);
+  return res.success;
 }
 
 /**
@@ -2273,8 +2467,11 @@ export function subscribeToFirebaseCustomers(
         if (!snapshot.empty) {
           snapshot.forEach((docSnap) => {
             const data = docSnap.data() as Customer;
-            if (data && data.id) {
-              list.push(data);
+            if (data) {
+              list.push({
+                ...data,
+                id: String(docSnap.id).trim(),
+              });
             }
           });
           list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
@@ -2293,83 +2490,122 @@ export function subscribeToFirebaseCustomers(
 }
 
 /**
- * SAVE STORE SETTINGS TO FIREBASE (Warung Bang Kobra global settings)
+ * UPDATE STORE SETTINGS IN FIREBASE FIRESTORE USING updateDoc
  */
-export async function saveSettingsToFirebase(settings: StoreSettings): Promise<boolean> {
-  if (!settings) return false;
+export async function updateSettingsInFirebase(
+  settings: Partial<StoreSettings>,
+  actorName = 'Owner'
+): Promise<{ success: boolean; error?: string }> {
   try {
     if (!auth.currentUser) {
       await ensureFirebaseAuth();
     }
     const docRef = doc(db, 'settings', 'warung');
     const qrisDocRef = doc(db, 'settings', 'qris');
-    const storeAddr = String(settings.address || settings.storeAddress || '').trim();
-    const resolvedQrisUrl = String(
-      settings.qrisImageUrl !== undefined ? settings.qrisImageUrl : settings.qrisUrl || ''
-    );
     const nowIso = new Date().toISOString();
-    const payload = {
-      id: 'warung',
-      storeName: String(settings.storeName || 'Warung Bang Kobra'),
-      tagline: String(settings.tagline || ''),
-      storeSlogan: String(settings.storeSlogan || settings.tagline || ''),
-      address: storeAddr,
-      storeAddress: storeAddr,
-      whatsappNumber: String(settings.whatsappNumber || ''),
-      logoUrl: String(settings.logoUrl || '/icon.svg'),
-      receiptFooter: String(settings.receiptFooter || ''),
-      receiptPaperSize: settings.receiptPaperSize || '58mm',
-      taxPercent: Number(settings.taxPercent ?? 0),
-      currency: String(settings.currency || 'Rp'),
-      qrisImageUrl: resolvedQrisUrl,
-      qrisUrl: resolvedQrisUrl,
-      qrisMerchantName: String(
-        settings.qrisMerchantName || settings.storeName || 'WARUNG BANG KOBRA'
-      ),
-      qrisNmid: String(settings.qrisNmid || ''),
-      qrisEnabled: settings.qrisEnabled !== undefined ? Boolean(settings.qrisEnabled) : true,
-      qrisInstruction: String(
-        settings.qrisInstruction ||
-          'Scan QRIS menggunakan GoPay, OVO, DANA, ShopeePay, LinkAja, atau Mobile Banking.'
-      ),
-      qrisStoragePath: String(settings.qrisStoragePath || ''),
-      qrisUpdatedAt: String(settings.qrisUpdatedAt || nowIso),
-      onlineMenuEnabled: Boolean(settings.onlineMenuEnabled ?? true),
-      onlineMenuBannerText: String(settings.onlineMenuBannerText || ''),
-      onlineMenuHours: String(settings.onlineMenuHours || ''),
-      onlineMenuBankInfo: String(settings.onlineMenuBankInfo || ''),
-      onlineMenuIsOpen: Boolean(settings.onlineMenuIsOpen ?? true),
-      onlineMenuAnnouncement: String(settings.onlineMenuAnnouncement || settings.onlineMenuBannerText || ''),
-      onlineMenuMinOrder: Number(settings.onlineMenuMinOrder ?? 0),
-      deliveryDqmEnabled: Boolean(settings.deliveryDqmEnabled ?? true),
-      deliveryFeeType: settings.deliveryFeeType || 'FREE',
-      deliveryFeeAmount: Number(settings.deliveryFeeAmount ?? 2000),
-      deliveryDqmNote: String(settings.deliveryDqmNote || ''),
+
+    const storeAddr = settings.address !== undefined ? String(settings.address || '').trim() : undefined;
+    const resolvedQrisUrl = settings.qrisImageUrl !== undefined
+      ? String(settings.qrisImageUrl || '')
+      : (settings.qrisUrl !== undefined ? String(settings.qrisUrl || '') : undefined);
+
+    const updatePayload: Record<string, any> = {
       updated_at: nowIso,
+      updatedAt: serverTimestamp(),
     };
-    await setDoc(docRef, payload, { merge: true });
-    await setDoc(
-      qrisDocRef,
-      {
-        id: 'qris',
-        storeName: payload.storeName,
-        qrisImageUrl: payload.qrisImageUrl,
-        qrisUrl: payload.qrisUrl,
-        qrisMerchantName: payload.qrisMerchantName,
-        qrisNmid: payload.qrisNmid,
-        qrisEnabled: payload.qrisEnabled,
-        qrisInstruction: payload.qrisInstruction,
-        qrisStoragePath: payload.qrisStoragePath,
-        qrisUpdatedAt: payload.qrisUpdatedAt,
+
+    if (settings.storeName !== undefined) updatePayload.storeName = String(settings.storeName);
+    if (settings.tagline !== undefined) {
+      updatePayload.tagline = String(settings.tagline);
+      updatePayload.storeSlogan = String(settings.tagline);
+    }
+    if (storeAddr !== undefined) {
+      updatePayload.address = storeAddr;
+      updatePayload.storeAddress = storeAddr;
+    }
+    if (settings.whatsappNumber !== undefined) updatePayload.whatsappNumber = String(settings.whatsappNumber);
+    if (settings.logoUrl !== undefined) updatePayload.logoUrl = String(settings.logoUrl);
+    if (settings.receiptFooter !== undefined) updatePayload.receiptFooter = String(settings.receiptFooter);
+    if (settings.receiptPaperSize !== undefined) updatePayload.receiptPaperSize = settings.receiptPaperSize;
+    if (settings.taxPercent !== undefined) updatePayload.taxPercent = Number(settings.taxPercent);
+    if (settings.currency !== undefined) updatePayload.currency = String(settings.currency);
+    if (resolvedQrisUrl !== undefined) {
+      updatePayload.qrisImageUrl = resolvedQrisUrl;
+      updatePayload.qrisUrl = resolvedQrisUrl;
+    }
+    if (settings.qrisMerchantName !== undefined) updatePayload.qrisMerchantName = String(settings.qrisMerchantName);
+    if (settings.qrisNmid !== undefined) updatePayload.qrisNmid = String(settings.qrisNmid);
+    if (settings.qrisEnabled !== undefined) updatePayload.qrisEnabled = Boolean(settings.qrisEnabled);
+    if (settings.qrisInstruction !== undefined) updatePayload.qrisInstruction = String(settings.qrisInstruction);
+    if (settings.onlineMenuEnabled !== undefined) updatePayload.onlineMenuEnabled = Boolean(settings.onlineMenuEnabled);
+    if (settings.onlineMenuIsOpen !== undefined) updatePayload.onlineMenuIsOpen = Boolean(settings.onlineMenuIsOpen);
+    if (settings.onlineMenuAnnouncement !== undefined) updatePayload.onlineMenuAnnouncement = String(settings.onlineMenuAnnouncement);
+    if (settings.onlineMenuMinOrder !== undefined) updatePayload.onlineMenuMinOrder = Number(settings.onlineMenuMinOrder);
+    if (settings.deliveryDqmEnabled !== undefined) updatePayload.deliveryDqmEnabled = Boolean(settings.deliveryDqmEnabled);
+    if (settings.deliveryFeeType !== undefined) updatePayload.deliveryFeeType = settings.deliveryFeeType;
+    if (settings.deliveryFeeAmount !== undefined) updatePayload.deliveryFeeAmount = Number(settings.deliveryFeeAmount);
+    if (settings.deliveryDqmNote !== undefined) updatePayload.deliveryDqmNote = String(settings.deliveryDqmNote);
+    if (settings.poEnabled !== undefined) updatePayload.poEnabled = Boolean(settings.poEnabled);
+    if (settings.poMinDaysAhead !== undefined) updatePayload.poMinDaysAhead = Number(settings.poMinDaysAhead);
+    if (settings.poDpType !== undefined) updatePayload.poDpType = settings.poDpType;
+    if (settings.poDpPercent !== undefined) updatePayload.poDpPercent = Number(settings.poDpPercent);
+    if (settings.poDpFixedAmount !== undefined) updatePayload.poDpFixedAmount = Number(settings.poDpFixedAmount);
+    if (settings.poBankInfo !== undefined) updatePayload.poBankInfo = String(settings.poBankInfo);
+    if (settings.poTerms !== undefined) updatePayload.poTerms = String(settings.poTerms);
+
+    try {
+      await updateDoc(docRef, updatePayload);
+    } catch (updateErr: any) {
+      if (updateErr?.code === 'not-found' || updateErr?.message?.includes('No document to update')) {
+        await setDoc(docRef, { id: 'warung', ...updatePayload }, { merge: true });
+      } else {
+        throw updateErr;
+      }
+    }
+
+    if (resolvedQrisUrl !== undefined || settings.qrisMerchantName !== undefined || settings.qrisNmid !== undefined || settings.qrisEnabled !== undefined) {
+      const qrisUpdate: Record<string, any> = {
         updated_at: nowIso,
-      },
-      { merge: true }
-    );
-    return true;
-  } catch (err) {
-    console.warn('Gagal menyimpan settings ke Firebase:', err);
-    return false;
+        updatedAt: serverTimestamp(),
+      };
+      if (resolvedQrisUrl !== undefined) {
+        qrisUpdate.qrisImageUrl = resolvedQrisUrl;
+        qrisUpdate.qrisUrl = resolvedQrisUrl;
+      }
+      if (settings.qrisMerchantName !== undefined) qrisUpdate.qrisMerchantName = String(settings.qrisMerchantName);
+      if (settings.qrisNmid !== undefined) qrisUpdate.qrisNmid = String(settings.qrisNmid);
+      if (settings.qrisEnabled !== undefined) qrisUpdate.qrisEnabled = Boolean(settings.qrisEnabled);
+      if (settings.qrisInstruction !== undefined) qrisUpdate.qrisInstruction = String(settings.qrisInstruction);
+
+      try {
+        await updateDoc(qrisDocRef, qrisUpdate);
+      } catch (qrisErr: any) {
+        if (qrisErr?.code === 'not-found' || qrisErr?.message?.includes('No document to update')) {
+          await setDoc(qrisDocRef, { id: 'qris', ...qrisUpdate }, { merge: true });
+        }
+      }
+    }
+
+    logAuditActivity(
+      'UPDATE_SETTINGS',
+      `Memperbarui konfigurasi warung (${Object.keys(settings).join(', ')})`,
+      actorName,
+      'SETTINGS'
+    ).catch(() => {});
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error updating settings in Firebase with updateDoc:', err);
+    return { success: false, error: err?.message || 'Gagal menyimpan pengaturan ke Firestore' };
   }
+}
+
+/**
+ * SAVE STORE SETTINGS TO FIREBASE (Warung Bang Kobra global settings)
+ */
+export async function saveSettingsToFirebase(settings: StoreSettings): Promise<boolean> {
+  const res = await updateSettingsInFirebase(settings);
+  return res.success;
 }
 
 /**
