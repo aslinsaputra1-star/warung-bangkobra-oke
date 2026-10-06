@@ -34,6 +34,7 @@ import { ExpensesView } from './components/Expenses/ExpensesView';
 import { CustomersView } from './components/Customers/CustomersView';
 import { SettingsView } from './components/Settings/SettingsView';
 import { WABotManagementView } from './components/WhatsApp/WABotManagementView';
+import { WhatsAppStatusView } from './components/WhatsAppStatus/WhatsAppStatusView';
 import { LogoEditorModal } from './components/Settings/LogoEditorModal';
 import { AIBotView } from './components/AIBot/AIBotView';
 import { AIBotDrawer } from './components/AIBot/AIBotDrawer';
@@ -1709,6 +1710,15 @@ export default function App() {
               settings={settings}
               onUpdateSettings={handleSaveSettings}
               onSelectTransaction={setReceiptTx}
+              showToast={showToast}
+            />
+          )}
+
+          {activeTab === 'whatsapp_status' && (
+            <WhatsAppStatusView
+              products={products}
+              settings={settings}
+              currentUser={currentUser}
               showToast={showToast}
             />
           )}

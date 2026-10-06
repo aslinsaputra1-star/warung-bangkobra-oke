@@ -398,6 +398,7 @@ export interface StoreSettings {
   ewallets?: EWalletAccount[];
   // Online Menu / Online Order
   onlineMenuEnabled?: boolean;
+  customerAppUrl?: string;
   onlineMenuBannerText?: string;
   onlineMenuHours?: string;
   onlineMenuBankInfo?: string;
@@ -584,6 +585,7 @@ export type ActiveTab =
   | 'menu_ads'
   | 'login'
   | 'settings'
+  | 'whatsapp_status'
   | 'ai_bot';
 
 export interface CategoryItem {
@@ -619,3 +621,44 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
 }
+
+export type WhatsAppStatusTemplateType =
+  | 'PROMO_HARI_INI'
+  | 'PROMO_MINUMAN'
+  | 'PROMO_MIE'
+  | 'PROMO_MAKANAN'
+  | 'PAKET_HEMAT'
+  | 'PROMO_DELIVERY'
+  | 'PROMO_WEEKEND'
+  | 'FLASH_SALE'
+  | 'FAVORIT_PELANGGAN'
+  | 'MENU_BARU';
+
+export interface WhatsAppStatusItem {
+  statusId: string;
+  title: string;
+  templateType: WhatsAppStatusTemplateType;
+  imageUrl?: string;
+  videoUrl?: string;
+  productIds?: string[];
+  productName?: string;
+  productCategory?: string;
+  tagline?: string;
+  text?: string;
+  price?: number;
+  promoPrice?: number;
+  ctaText?: string;
+  customerAppUrl?: string;
+  isDeliveryPromo?: boolean;
+  deliveryMinOrder?: number;
+  badgeText?: string;
+  themeStyle?: 'red-glow' | 'sunset-orange' | 'dark-fire' | 'fresh-white' | 'gold-premium';
+  createdBy: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface WhatsAppStatusTemplate extends WhatsAppStatusItem {
+  isPreset?: boolean;
+}
+

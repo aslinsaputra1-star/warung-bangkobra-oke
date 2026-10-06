@@ -292,5 +292,18 @@ service cloud.firestore {
       allow create, update: if isValidId(logId) && isValidReceiptEmailLog(incoming());
       allow delete: if isValidId(logId);
     }
+
+    // WHATSAPP STATUS TEMPLATES & HISTORY
+    match /whatsapp_status_templates/{templateId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(templateId);
+      allow delete: if isValidId(templateId);
+    }
+
+    match /whatsapp_status_history/{historyId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(historyId);
+      allow delete: if isValidId(historyId);
+    }
   }
 }
