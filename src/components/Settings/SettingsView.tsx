@@ -1,44 +1,69 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  Settings,
   Store,
-  FileSpreadsheet,
-  RefreshCw,
-  Sliders,
-  CheckCircle2,
-  XCircle,
-  HelpCircle,
-  Save,
-  RotateCcw,
-  Copy,
-  ExternalLink,
-  ShieldCheck,
+  Palette,
+  Clock,
+  ShoppingCart,
+  CreditCard,
+  Globe,
+  ShoppingBag,
+  Truck,
+  Calendar,
+  Package,
+  Layers,
+  Database,
+  Receipt,
+  Mail,
+  MessageCircle,
+  QrCode,
+  Bell,
   Smartphone,
-  Image as ImageIcon,
+  Users,
+  Shield,
+  Lock,
+  History,
+  FileSpreadsheet,
+  RotateCcw,
+  Save,
+  Search,
+  CheckCircle2,
+  AlertCircle,
+  HelpCircle,
+  Upload,
+  Download,
+  Eye,
+  Plus,
+  Trash2,
+  Volume2,
+  ExternalLink,
+  ChevronRight,
+  Menu,
+  ChevronDown,
+  X,
   Sparkles,
   Flame,
-  Database,
-  Download,
-  Upload,
-  FileDown,
-  AlertCircle,
-  Truck,
-  MapPin,
   Check,
-  QrCode,
-  CreditCard,
-  Calendar,
+  RefreshCw,
+  ArrowLeft,
+  Copy,
+  Info,
 } from 'lucide-react';
-import { StoreSettings, Product } from '../../types';
+import { StoreSettings, Product, DayOperatingHour, EWalletAccount } from '../../types';
 import { formatRupiah } from '../../utils/formatters';
-import { GoogleSheetsSyncService } from '../../services/googleSheetsSync';
-import { StorageService } from '../../services/storage';
 import { LogoUploader } from './LogoUploader';
 import { QRISUploader } from './QRISUploader';
+import { ReceiptPreviewModal } from './ReceiptPreviewModal';
+import { WhatsAppTesterModal } from './WhatsAppTesterModal';
+import { QRCodeGeneratorModal } from './QRCodeGeneratorModal';
+import {
+  SettingSectionCard,
+  SettingRow,
+  SettingToggle,
+  SettingInput,
+  SettingSelect,
+} from './SettingUIComponents';
 import {
   testFirestoreConnection,
-  syncProductsToFirebase,
-  syncAllDataToFirebase,
   firebaseConfig,
   subscribeToAuditLogs,
   AuditLogEntry,
@@ -48,9 +73,10 @@ import {
   exportProductsToExcel,
   exportTransactionsToExcel,
   exportCustomersToExcel,
-  downloadProductExcelTemplate,
-  parseProductsFromExcel,
 } from '../../utils/excelHelper';
+import { INITIAL_SETTINGS } from '../../data/initialData';
+import { StorageService } from '../../services/storage';
+import { PWAInstallButton } from '../PWAInstallButton';
 
 interface SettingsViewProps {
   settings: StoreSettings;
@@ -62,6 +88,68 @@ interface SettingsViewProps {
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
+export type SettingsTabId =
+  | 'profile'
+  | 'branding'
+  | 'operating_hours'
+  | 'pos'
+  | 'payment'
+  | 'online_order'
+  | 'takeaway'
+  | 'delivery'
+  | 'po'
+  | 'products'
+  | 'variants'
+  | 'stock'
+  | 'receipt'
+  | 'email'
+  | 'whatsapp'
+  | 'qrcode'
+  | 'notification'
+  | 'pwa'
+  | 'customer'
+  | 'users'
+  | 'security'
+  | 'audit'
+  | 'backup'
+  | 'about';
+
+interface NavCategory {
+  id: SettingsTabId;
+  label: string;
+  icon: React.ElementType;
+  badge?: string;
+  description: string;
+  keywords: string[];
+}
+
+const SETTINGS_CATEGORIES: NavCategory[] = [
+  { id: 'profile', label: 'Profil Toko', icon: Store, description: 'Nama, logo, alamat, kontak & slogan warung', keywords: ['profil', 'nama', 'logo', 'alamat', 'slogan', 'toko', 'warung', 'instagram', 'facebook'] },
+  { id: 'branding', label: 'Branding & Tema', icon: Palette, description: 'Warna tema, font, rounded radius & density', keywords: ['branding', 'tema', 'warna', 'color', 'dark', 'light', 'font', 'inter', 'poppins', 'radius'] },
+  { id: 'operating_hours', label: 'Jam Operasional', icon: Clock, description: 'Jadwal buka-tutup Senin–Minggu, libur & 24 jam', keywords: ['jam', 'buka', 'tutup', 'operasional', 'senin', 'minggu', 'libur', '24 jam', 'jadwal'] },
+  { id: 'pos', label: 'Pengaturan POS', icon: ShoppingCart, description: 'Format nomor struk, kasir, diskon & cetak', keywords: ['pos', 'kasir', 'invoice', 'nomor', 'prefix', 'wbk', 'diskon', 'pembulatan', 'cetak'] },
+  { id: 'payment', label: 'Pembayaran & QRIS', icon: CreditCard, description: 'Tunai, Transfer Bank, QRIS dinamis & E-Wallet', keywords: ['pembayaran', 'qris', 'transfer', 'bank', 'bca', 'dana', 'gopay', 'ovo', 'shopeepay', 'tunai'] },
+  { id: 'online_order', label: 'Online Order', icon: Globe, description: 'Katalog web, guest checkout & jam order online', keywords: ['online', 'order', 'pesan online', 'web', 'tamu', 'guest', 'wa', 'pengumuman'] },
+  { id: 'takeaway', label: 'Bungkus / Takeaway', icon: ShoppingBag, description: 'Pengambilan di warung, estimasi & antrian', keywords: ['takeaway', 'bungkus', 'ambil', 'antrian', 'estimasi', 'kasir'] },
+  { id: 'delivery', label: 'Delivery DQM', icon: Truck, badge: 'Rp20rb', description: 'Area Pesantren DQM, min order Rp20.000 & ongkir', keywords: ['delivery', 'antar', 'kurir', 'dqm', 'pesantren', 'ongkir', 'minimal', '20000', 'gratis'] },
+  { id: 'po', label: 'Pesanan Acara / PO', icon: Calendar, badge: 'PO', description: 'Pre-order katering, DP wajib, kalender acara', keywords: ['po', 'preorder', 'pre-order', 'acara', 'katering', 'dp', 'down payment', 'jadwal'] },
+  { id: 'products', label: 'Pengaturan Produk', icon: Package, description: 'Perilaku stok habis, satuan default, foto menu', keywords: ['produk', 'menu', 'habis', 'satuan', 'porsi', 'gambar', 'foto', 'kompresi'] },
+  { id: 'variants', label: 'Varian Produk', icon: Layers, description: 'Varian rasa sachet minuman, Indomie & add-on', keywords: ['varian', 'rasa', 'pop ice', 'nutrisari', 'hilo', 'indomie', 'sachet', 'topping'] },
+  { id: 'stock', label: 'Kontrol Stok', icon: Database, description: 'Stok minus, batas minimum & notifikasi habis', keywords: ['stok', 'inventory', 'minimum', 'minus', 'opname', 'adjustment', 'notifikasi'] },
+  { id: 'receipt', label: 'Struk & Printer', icon: Receipt, badge: 'Preview', description: 'Ukuran 58mm/80mm, logo struk & preview cetak', keywords: ['struk', 'printer', '58mm', '80mm', 'a4', 'cetak', 'footer', 'preview'] },
+  { id: 'email', label: 'Email Notifikasi', icon: Mail, description: 'Struk digital via email & pengirim toko', keywords: ['email', 'surat', 'inbox', 'notifikasi email', 'sender'] },
+  { id: 'whatsapp', label: 'WhatsApp Notifikasi', icon: MessageCircle, badge: 'Tester', description: 'Template pesan WA, chat kasir & live tester', keywords: ['whatsapp', 'wa', 'chat', 'template', 'pesan', 'tester', 'kasir'] },
+  { id: 'qrcode', label: 'QR Code Generator', icon: QrCode, description: 'QR Menu Meja, QR Order Standee & cetak', keywords: ['qr', 'qrcode', 'barcode', 'menu', 'standee', 'cetak', 'download'] },
+  { id: 'notification', label: 'Notifikasi & Suara', icon: Bell, description: 'Lonceng pesanan baru, getar & slider volume', keywords: ['notifikasi', 'suara', 'chime', 'bell', 'audio', 'volume', 'getar', 'pesanan baru'] },
+  { id: 'pwa', label: 'PWA Mobile App', icon: Smartphone, description: 'Aplikasi Android tanpa instal playstore', keywords: ['pwa', 'aplikasi', 'mobile', 'install', 'apk', 'offline', 'homescreen'] },
+  { id: 'customer', label: 'Portal Pelanggan', icon: Users, description: 'Guest order, verifikasi WA & riwayat pesanan', keywords: ['pelanggan', 'customer', 'guest', 'member', 'riwayat', 'pesanan'] },
+  { id: 'users', label: 'Pengguna & RBAC', icon: Users, description: 'Hak akses Owner, Admin, Kasir, Staff & Delivery', keywords: ['pengguna', 'user', 'role', 'rbac', 'owner', 'admin', 'kasir', 'staff', 'delivery'] },
+  { id: 'security', label: 'Keamanan & Sesi', icon: Shield, description: 'Firebase Auth, session timeout & security rules', keywords: ['keamanan', 'security', 'auth', 'password', 'rules', 'sesi', 'login'] },
+  { id: 'audit', label: 'Audit Log Cloud', icon: History, description: 'Riwayat riil perubahan setting, produk & transaksi', keywords: ['audit', 'log', 'riwayat', 'history', 'aktivitas', 'siapa', 'kapan'] },
+  { id: 'backup', label: 'Data & Backup', icon: FileSpreadsheet, description: 'Ekspor Excel (.xlsx), CSV & reset database', keywords: ['backup', 'data', 'export', 'ekspor', 'excel', 'xlsx', 'csv', 'reset', 'danger'] },
+  { id: 'about', label: 'Tentang Aplikasi', icon: Sparkles, badge: 'v2.5', description: 'Informasi sistem POS, lisensi & status Firebase Firestore', keywords: ['tentang', 'about', 'versi', 'sistem', 'bantuan', 'info', 'lisensi', 'developer', 'firebase'] },
+];
+
 export const SettingsView: React.FC<SettingsViewProps> = ({
   settings,
   products = [],
@@ -71,91 +159,87 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onResetData,
   showToast,
 }) => {
-  // Track whether the user has uncommitted local edits
+  const [activeTab, setActiveTab] = useState<SettingsTabId>('profile');
+  const [mobileView, setMobileView] = useState<'menu' | 'detail'>('menu');
+  const [mobileCategoryFilter, setMobileCategoryFilter] = useState<
+    'ALL' | 'STORE' | 'POS' | 'ORDER' | 'STOCK' | 'COMMS' | 'SYSTEM'
+  >('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const dirtyFieldsRef = useRef<Set<keyof StoreSettings>>(new Set());
-  const [hasRemoteNotice, setHasRemoteNotice] = useState(false);
-  const [pendingRemoteSettings, setPendingRemoteSettings] = useState<StoreSettings | null>(null);
 
-  const [formData, setFormData] = useState<StoreSettings>(() => {
-    const rawAddr = settings.address !== undefined ? settings.address : settings.storeAddress;
-    const addr = String(rawAddr ?? '').trim();
-    return {
-      ...settings,
-      address: addr,
-      storeAddress: addr,
-    };
-  });
+  // Modal states
+  const [isReceiptPreviewOpen, setIsReceiptPreviewOpen] = useState(false);
+  const [isWaTesterOpen, setIsWaTesterOpen] = useState(false);
+  const [isQrGeneratorOpen, setIsQrGeneratorOpen] = useState(false);
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [isDangerResetDbOpen, setIsDangerResetDbOpen] = useState(false);
 
+  // Audit logs state
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [auditSearch, setAuditSearch] = useState('');
+
+  // Form State
+  const [formData, setFormData] = useState<StoreSettings>(() => ({
+    ...INITIAL_SETTINGS,
+    ...settings,
+    address: settings.address || settings.storeAddress || INITIAL_SETTINGS.address,
+    storeAddress: settings.address || settings.storeAddress || INITIAL_SETTINGS.storeAddress,
+  }));
+
+  // Sync external props into formData if user hasn't made uncommitted edits
   useEffect(() => {
-    const rawAddr = settings.address !== undefined ? settings.address : settings.storeAddress;
-    const remoteAddr = String(rawAddr ?? '').trim();
-    const normalizedRemote: StoreSettings = {
-      ...settings,
-      address: remoteAddr,
-      storeAddress: remoteAddr,
-    };
-
-    // If the user has NOT edited the form locally, keep the form seamlessly synchronized with incoming Firestore updates
     if (!isDirty) {
-      setFormData(normalizedRemote);
-      setHasRemoteNotice(false);
-      setPendingRemoteSettings(null);
-    } else {
-      // User has unsaved edits: DO NOT overwrite local edits!
-      // Compare if the remote data differs from our current formData
-      const currentAddr = String(formData.address || formData.storeAddress || '').trim();
-      const hasAddressChanged = remoteAddr !== currentAddr;
-      const hasNameChanged = settings.storeName !== formData.storeName;
-      if (hasAddressChanged || hasNameChanged) {
-        setHasRemoteNotice(true);
-        setPendingRemoteSettings(normalizedRemote);
-      }
+      setFormData((prev) => ({
+        ...prev,
+        ...settings,
+        address: settings.address || settings.storeAddress || prev.address,
+        storeAddress: settings.address || settings.storeAddress || prev.storeAddress,
+      }));
     }
   }, [settings, isDirty]);
 
-  const [isTestingUrl, setIsTestingUrl] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [showGuideModal, setShowGuideModal] = useState(false);
-  const [activeSettingsSection, setActiveSettingsSection] = useState<
-    'all' | 'qris' | 'delivery' | 'po' | 'profile' | 'database'
-  >('all');
-
-  // Firebase testing and sync states
-  const [isTestingFirebase, setIsTestingFirebase] = useState(false);
-  const [firebaseStatus, setFirebaseStatus] = useState<{
-    success: boolean;
-    message: string;
-  } | null>({
-    success: true,
-    message: `Terhubung langsung ke Firebase Cloud Firestore (Project: ${firebaseConfig.projectId})`,
-  });
-  const [isSyncingFirebaseProducts, setIsSyncingFirebaseProducts] = useState(false);
-  const [isSyncingAllFirebase, setIsSyncingAllFirebase] = useState(false);
-
-  // Real-time Audit Logs from Firestore `audit_logs`
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
-
+  // Real-time Audit Logs from Firestore
   useEffect(() => {
-    testFirestoreConnection().then((res) => {
-      setFirebaseStatus({
-        success: res.connected,
-        message: res.message,
-      });
-    });
     const unsub = subscribeToAuditLogs((logs) => {
       setAuditLogs(logs);
     });
     return () => unsub();
   }, []);
 
-  const handleInputChange = (field: keyof StoreSettings, value: any) => {
-    dirtyFieldsRef.current.add(field);
-    if (field === 'address' || field === 'storeAddress') {
-      dirtyFieldsRef.current.add('address');
-      dirtyFieldsRef.current.add('storeAddress');
-    }
+  // Filter Categories by search
+  const filteredCategories = useMemo(() => {
+    if (!searchQuery.trim()) return SETTINGS_CATEGORIES;
+    const q = searchQuery.toLowerCase().trim();
+    return SETTINGS_CATEGORIES.filter(
+      (cat) =>
+        cat.label.toLowerCase().includes(q) ||
+        cat.description.toLowerCase().includes(q) ||
+        cat.keywords.some((k) => k.includes(q))
+    );
+  }, [searchQuery]);
+
+  const CATEGORY_GROUPS: Record<string, SettingsTabId[]> = useMemo(
+    () => ({
+      STORE: ['profile', 'branding', 'operating_hours', 'pwa'],
+      POS: ['pos', 'payment', 'receipt'],
+      ORDER: ['online_order', 'takeaway', 'delivery', 'po', 'customer'],
+      STOCK: ['products', 'variants', 'stock'],
+      COMMS: ['email', 'whatsapp', 'qrcode', 'notification'],
+      SYSTEM: ['users', 'security', 'audit', 'backup', 'about'],
+    }),
+    []
+  );
+
+  const displayCategories = useMemo(() => {
+    if (mobileCategoryFilter === 'ALL') return filteredCategories;
+    const allowed = CATEGORY_GROUPS[mobileCategoryFilter] || [];
+    return filteredCategories.filter((c) => allowed.includes(c.id));
+  }, [filteredCategories, mobileCategoryFilter, CATEGORY_GROUPS]);
+
+  const handleFieldChange = (field: keyof StoreSettings, value: any) => {
     setIsDirty(true);
     setFormData((prev) => {
       const updated = { ...prev, [field]: value };
@@ -163,1436 +247,2507 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         updated.address = value;
         updated.storeAddress = value;
       }
+      if (field === 'tagline' || field === 'storeSlogan') {
+        updated.tagline = value;
+        updated.storeSlogan = value;
+      }
       return updated;
     });
-  };
-
-  const handleDiscard = () => {
-    const rawAddr = settings.address !== undefined ? settings.address : settings.storeAddress;
-    const addr = String(rawAddr ?? '').trim();
-    setFormData({
-      ...settings,
-      address: addr,
-      storeAddress: addr,
-    });
-    dirtyFieldsRef.current.clear();
-    setIsDirty(false);
-    setHasRemoteNotice(false);
-    setPendingRemoteSettings(null);
-    showToast('Perubahan lokal dibatalkan. Memuat kembali data tersimpan.', 'info');
-  };
-
-  const handleApplyRemote = () => {
-    if (pendingRemoteSettings) {
-      setFormData(pendingRemoteSettings);
-    } else {
-      const rawAddr = settings.address !== undefined ? settings.address : settings.storeAddress;
-      const addr = String(rawAddr ?? '').trim();
-      setFormData({
-        ...settings,
-        address: addr,
-        storeAddress: addr,
-      });
-    }
-    dirtyFieldsRef.current.clear();
-    setIsDirty(false);
-    setHasRemoteNotice(false);
-    setPendingRemoteSettings(null);
-    showToast('Data pengaturan terbaru dari cloud berhasil diterapkan!', 'success');
   };
 
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setIsSaving(true);
     try {
-      const rawAddr = formData.address !== undefined ? formData.address : formData.storeAddress;
-      const addr = String(rawAddr ?? '').trim();
-      const normalized: StoreSettings = {
-        ...formData,
-        address: addr,
-        storeAddress: addr,
-      };
-      await onSaveSettings(normalized);
-      dirtyFieldsRef.current.clear();
+      const res = await onSaveSettings(formData);
       setIsDirty(false);
-      setHasRemoteNotice(false);
-      setPendingRemoteSettings(null);
-      showToast('Pengaturan warung & alamat berhasil disimpan ke cloud Firebase!', 'success');
+      showToast('Pengaturan berhasil disimpan ke cloud Firebase!', 'success');
+      logAuditActivity(
+        'UPDATE_SETTINGS',
+        `Menyimpan pengaturan kategori ${activeTab.toUpperCase()}`,
+        formData.activeCashier || 'Owner',
+        'SETTINGS'
+      ).catch(() => {});
     } catch (err: any) {
-      showToast('Gagal menyimpan ke cloud: ' + (err?.message || 'Error'), 'error');
+      showToast('Pengaturan gagal disimpan. Silakan coba lagi.', 'error');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleTestConnection = async () => {
-    if (!formData.googleSheetsUrl || !formData.googleSheetsUrl.startsWith('http')) {
-      showToast('Masukkan URL Google Apps Script yang valid terlebih dahulu!', 'error');
-      return;
-    }
-
-    setIsTestingUrl(true);
-    setTestResult(null);
-
-    const res = await GoogleSheetsSyncService.testConnection(formData.googleSheetsUrl);
-    setIsTestingUrl(false);
-    setTestResult(res);
-
-    if (res.success) {
-      showToast('Koneksi ke Google Sheets berhasil!', 'success');
-      const updated = { ...formData, isGoogleSheetsConnected: true };
-      setFormData(updated);
-      onSaveSettings(updated);
-    } else {
-      showToast(res.message, 'error');
-    }
+  const handleDiscard = () => {
+    setFormData({
+      ...INITIAL_SETTINGS,
+      ...settings,
+    });
+    setIsDirty(false);
+    showToast('Perubahan dibatalkan. Memuat kembali data tersimpan.', 'info');
   };
 
-  const handleTestFirebase = async () => {
-    setIsTestingFirebase(true);
-    setFirebaseStatus(null);
+  const handleResetToDefault = () => {
+    setFormData({
+      ...INITIAL_SETTINGS,
+      storeName: settings.storeName || INITIAL_SETTINGS.storeName,
+    });
+    setIsDirty(true);
+    setIsResetConfirmOpen(false);
+    showToast('Pengaturan dikembalikan ke nilai default pabrik (Klik Simpan untuk menerapkan).', 'info');
+  };
+
+  // Sound Test for notifications
+  const handleTestChime = () => {
     try {
-      const res = await testFirestoreConnection(true);
-      setFirebaseStatus({
-        success: res.connected,
-        message: res.message,
-      });
-      if (res.connected) {
-        showToast('🔥 Firebase Firestore terhubung & siap digunakan!', 'success');
-      } else {
-        showToast(res.message, 'error');
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) {
+        showToast('Web Audio tidak didukung pada browser ini', 'error');
+        return;
       }
-    } catch (err: any) {
-      setFirebaseStatus({
-        success: false,
-        message: err?.message || 'Gagal menghubungi Firebase Firestore',
-      });
-      showToast('Gagal menghubungi Firebase', 'error');
-    } finally {
-      setIsTestingFirebase(false);
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+      const vol = (formData.notificationSoundVolume ?? 80) / 100;
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(587.33, now); // D5
+      osc.frequency.setValueAtTime(880.0, now + 0.12); // A5
+
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.3 * vol, now + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.65);
+      showToast('Memutar suara notifikasi pesanan!', 'info');
+    } catch (err) {
+      console.warn('Audio chime error:', err);
     }
   };
 
-  const handleSyncFirebaseProducts = async () => {
-    if (!products || products.length === 0) {
-      showToast('Tidak ada data produk untuk disinkronkan ke Firebase.', 'info');
-      return;
-    }
-    setIsSyncingFirebaseProducts(true);
-    try {
-      const ok = await syncProductsToFirebase(products);
-      if (ok) {
-        showToast(`Katalog ${products.length} menu berhasil disinkronkan ke Firebase Firestore!`, 'success');
-      } else {
-        showToast('Gagal menyinkronkan menu ke Firebase.', 'error');
-      }
-    } catch (e: any) {
-      showToast(e?.message || 'Error sinkronisasi produk ke Firebase', 'error');
-    } finally {
-      setIsSyncingFirebaseProducts(false);
-    }
-  };
-
-  const handleSyncAllFirebase = async () => {
-    setIsSyncingAllFirebase(true);
-    try {
-      const allTransactions = StorageService.getTransactions();
-      const allCustomers = StorageService.getCustomers();
-      const allExpenses = StorageService.getExpenses();
-      const allCategories = StorageService.getCategories();
-      const allMutations = StorageService.getStockMutations();
-      const addr = String(formData.address || formData.storeAddress || '').trim();
-      const currentSettings: StoreSettings = {
-        ...formData,
-        address: addr,
-        storeAddress: addr,
-      };
-
-      const res = await syncAllDataToFirebase({
-        settings: currentSettings,
-        products,
-        categories: allCategories,
-        transactions: allTransactions,
-        customers: allCustomers,
-        expenses: allExpenses,
-        mutations: allMutations,
-      });
-
-      if (res.success) {
-        onSaveSettings(currentSettings);
-        showToast(res.message, 'success');
-      } else {
-        showToast(res.message, 'error');
-      }
-    } catch (err: any) {
-      showToast('Gagal sinkronisasi data: ' + (err?.message || 'Error'), 'error');
-    } finally {
-      setIsSyncingAllFirebase(false);
-    }
-  };
-
-  const sampleAppsScriptCode = `// Script google-apps-script.js
-// Buka Google Sheets -> Ekstensi -> Apps Script
-// Tempel kode dari file google-apps-script.js pada repositori aplikasi ini
-// Klik Deploy -> New Deployment -> Pilih Web App -> Akses: Anyone
-// Salin URL Web App dan tempelkan di halaman Pengaturan ini.`;
+  const currentCategory = SETTINGS_CATEGORIES.find((c) => c.id === activeTab) || SETTINGS_CATEGORIES[0];
 
   return (
-    <div className="max-w-5xl mx-auto p-4 sm:p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-black text-stone-100 flex items-center gap-2">
-            <Settings className="w-6 h-6 text-amber-500" />
-            <span>Pengaturan Warung, Pembayaran QRIS &amp; Database</span>
-          </h2>
-          <p className="text-xs sm:text-sm text-stone-400">
-            Kelola pembayaran QRIS Warung Bang Kobra, tarif Delivery DQM, profil toko, dan sinkronisasi Firebase Cloud.
-          </p>
+    <div className="flex-1 flex flex-col min-h-0 bg-stone-950 text-stone-100 overflow-hidden select-none">
+      {/* 1. TOP GLOBAL SETTINGS HEADER */}
+      <header className="bg-stone-900 border-b border-stone-800 px-4 py-3 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 z-20">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-red-600 to-orange-600 flex items-center justify-center text-white shadow-lg shadow-red-950/60 font-black">
+            <Store className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="font-black text-lg sm:text-xl text-white tracking-tight">
+                PENGATURAN WARUNG
+              </h1>
+              <span className="hidden sm:inline-flex text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-red-600/20 text-red-400 border border-red-500/30">
+                PRO
+              </span>
+            </div>
+            <p className="text-[11px] text-stone-400 font-medium">
+              Kelola profil, branding, POS, jam buka, delivery &amp; pembayaran
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Action Buttons: Simpan, Batalkan, Status */}
+        <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+          {isDirty && (
+            <span className="text-[11px] font-bold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2.5 py-1 rounded-xl animate-pulse flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              Ada Perubahan Belum Disimpan
+            </span>
+          )}
+
           {isDirty && (
             <button
               type="button"
               onClick={handleDiscard}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-xs transition active:scale-95 cursor-pointer"
+              className="min-h-[40px] px-3.5 rounded-xl bg-stone-800 hover:bg-stone-750 text-stone-300 text-xs font-bold transition cursor-pointer"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Batal</span>
+              Batalkan
             </button>
           )}
+
           <button
             type="button"
-            id="btn-save-settings-header"
-            onClick={() => handleSave()}
             disabled={isSaving}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-extrabold text-xs shadow-lg shadow-amber-950/30 transition active:scale-95 disabled:opacity-50 cursor-pointer"
+            onClick={handleSave}
+            className={`min-h-[40px] px-5 rounded-xl font-black text-xs shadow-lg flex items-center gap-2 transition active:scale-95 cursor-pointer ${
+              isDirty
+                ? 'bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white shadow-red-950/50'
+                : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700'
+            }`}
           >
-            <Save className={`w-4 h-4 ${isSaving ? 'animate-spin' : ''}`} />
-            <span>{isSaving ? 'Menyimpan...' : isDirty ? 'Simpan Perubahan *' : 'Simpan Perubahan'}</span>
+            {isSaving ? (
+              <RefreshCw className="w-4 h-4 animate-spin text-white" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
+            <span>{isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}</span>
+          </button>
+        </div>
+      </header>
+
+      {/* 2. SEARCH & NAVIGATION BAR */}
+      <div className="bg-stone-920 border-b border-stone-800/80 px-4 py-2.5 shrink-0 flex items-center justify-between gap-3">
+        {/* Instant Search Settings Input */}
+        <div className="relative flex-1 max-w-md">
+          <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cari pengaturan (QRIS, Delivery, Struk, Jam, PO, WhatsApp...)"
+            className="w-full min-h-[38px] bg-stone-950 border border-stone-800 focus:border-red-500 rounded-xl pl-10 pr-8 text-xs text-stone-100 placeholder-stone-500 focus:outline-none transition shadow-inner font-medium"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-white text-xs p-1 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Mobile View Category Menu Trigger */}
+        <div className="lg:hidden">
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="min-h-[38px] px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+          >
+            <Menu className="w-4 h-4" />
+            <span>Pilih Menu ({currentCategory.label})</span>
+          </button>
+        </div>
+
+        {/* Desktop Sidebar Toggle */}
+        <div className="hidden lg:flex items-center gap-2 text-xs text-stone-400">
+          <button
+            type="button"
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            className="px-2.5 py-1.5 rounded-lg bg-stone-850 hover:bg-stone-800 text-stone-400 hover:text-stone-200 text-[11px] font-bold transition cursor-pointer"
+          >
+            {isSidebarCollapsed ? 'Tampilkan Sidebar' : 'Kecilkan Sidebar'}
           </button>
         </div>
       </div>
 
-      {/* Sub-Navigation Menu Pengaturan (Termasuk Menu QRIS) */}
-      <div className="flex items-center gap-1.5 p-1.5 bg-stone-900 border border-stone-800 rounded-2xl overflow-x-auto">
-        <button
-          type="button"
-          id="tab-settings-all"
-          onClick={() => setActiveSettingsSection('all')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer whitespace-nowrap shrink-0 ${
-            activeSettingsSection === 'all'
-              ? 'bg-amber-500 text-stone-950 shadow-md'
-              : 'text-stone-300 hover:text-white hover:bg-stone-800'
-          }`}
+      {/* 3. MOBILE CATEGORY DRAWER / SHEET */}
+      {isMobileMenuOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col justify-end animate-in fade-in"
+          onClick={() => setIsMobileMenuOpen(false)}
         >
-          <Settings className="w-3.5 h-3.5" />
-          <span>Semua Pengaturan</span>
-        </button>
-
-        <button
-          type="button"
-          id="tab-settings-qris"
-          onClick={() => setActiveSettingsSection('qris')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer whitespace-nowrap shrink-0 ${
-            activeSettingsSection === 'qris'
-              ? 'bg-amber-500 text-stone-950 shadow-md'
-              : 'text-amber-300 hover:text-white bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30'
-          }`}
-        >
-          <QrCode className="w-3.5 h-3.5" />
-          <span>Menu QRIS (Pembayaran)</span>
-        </button>
-
-        <button
-          type="button"
-          id="tab-settings-delivery"
-          onClick={() => setActiveSettingsSection('delivery')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer whitespace-nowrap shrink-0 ${
-            activeSettingsSection === 'delivery'
-              ? 'bg-amber-500 text-stone-950 shadow-md'
-              : 'text-stone-300 hover:text-white hover:bg-stone-800'
-          }`}
-        >
-          <Truck className="w-3.5 h-3.5" />
-          <span>Delivery DQM</span>
-        </button>
-
-        <button
-          type="button"
-          id="tab-settings-po"
-          onClick={() => setActiveSettingsSection('po')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer whitespace-nowrap shrink-0 ${
-            activeSettingsSection === 'po'
-              ? 'bg-amber-500 text-stone-950 shadow-md'
-              : 'text-stone-300 hover:text-white hover:bg-stone-800'
-          }`}
-        >
-          <Calendar className="w-3.5 h-3.5" />
-          <span>Pre-Order (PO)</span>
-        </button>
-
-        <button
-          type="button"
-          id="tab-settings-profile"
-          onClick={() => setActiveSettingsSection('profile')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer whitespace-nowrap shrink-0 ${
-            activeSettingsSection === 'profile'
-              ? 'bg-amber-500 text-stone-950 shadow-md'
-              : 'text-stone-300 hover:text-white hover:bg-stone-800'
-          }`}
-        >
-          <Store className="w-3.5 h-3.5" />
-          <span>Profil &amp; Logo Warung</span>
-        </button>
-
-        <button
-          type="button"
-          id="tab-settings-database"
-          onClick={() => setActiveSettingsSection('database')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer whitespace-nowrap shrink-0 ${
-            activeSettingsSection === 'database'
-              ? 'bg-amber-500 text-stone-950 shadow-md'
-              : 'text-stone-300 hover:text-white hover:bg-stone-800'
-          }`}
-        >
-          <Database className="w-3.5 h-3.5" />
-          <span>Database, Struk &amp; Excel</span>
-        </button>
-      </div>
-
-      {/* Cloud Remote Update Alert if local edits are in progress */}
-      {hasRemoteNotice && pendingRemoteSettings && (
-        <div className="p-4 bg-amber-950/50 border border-amber-500/50 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-lg animate-fadeIn">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
-              <AlertCircle className="w-4 h-4" />
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-stone-900 border-t-2 border-red-500/60 rounded-t-[28px] max-h-[82vh] overflow-y-auto p-4 space-y-3 shadow-2xl animate-in slide-in-from-bottom"
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-stone-800">
+              <h3 className="font-extrabold text-sm text-stone-100">
+                Pilih Kategori Pengaturan
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="p-1.5 rounded-lg text-stone-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <div>
-              <p className="text-xs font-bold text-stone-200">
-                Pembaruan Toko Diterima dari Cloud / Perangkat Lain
-              </p>
-              <p className="text-[11px] text-stone-400">
-                Alamat atau data toko di cloud telah diperbarui oleh perangkat lain. Editan lokal Anda saat ini tetap aman di layar.
-              </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {filteredCategories.map((cat) => {
+                const Icon = cat.icon;
+                const isSelected = activeTab === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveTab(cat.id);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className={`min-h-[50px] p-3 rounded-2xl text-left border flex items-center justify-between gap-3 transition cursor-pointer active:scale-98 ${
+                      isSelected
+                        ? 'bg-red-600/20 border-red-500 text-white font-black'
+                        : 'bg-stone-950 border-stone-800 text-stone-300 hover:bg-stone-850'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                          isSelected ? 'bg-red-600 text-white' : 'bg-stone-900 text-red-400'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-bold text-xs truncate">{cat.label}</div>
+                        <div className="text-[10px] text-stone-400 truncate">
+                          {cat.description}
+                        </div>
+                      </div>
+                    </div>
+                    {cat.badge && (
+                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-red-600/30 text-red-400 shrink-0">
+                        {cat.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleApplyRemote}
-              className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-extrabold text-xs transition active:scale-95 cursor-pointer shadow-md"
-            >
-              Muat Versi Cloud
-            </button>
-            <button
-              type="button"
-              onClick={() => setHasRemoteNotice(false)}
-              className="px-3 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 font-semibold text-xs transition cursor-pointer"
-            >
-              Tetap Pakai Editan Saya
-            </button>
           </div>
         </div>
       )}
 
-      <form onSubmit={handleSave} className="space-y-6">
-        {/* Section QRIS: WARUNG BANG KOBRA — Pengaturan Pembayaran (Fitur Upload QRIS) */}
-        {(activeSettingsSection === 'all' || activeSettingsSection === 'qris') && (
-          <div
-            id="settings-qris-payment"
-            className="bg-stone-900 border-2 border-amber-500/50 rounded-3xl p-6 space-y-5 shadow-xl relative overflow-hidden"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-stone-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500/15 text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0">
-                  <QrCode className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-black text-stone-100 text-base sm:text-lg">
-                      Pengaturan Pembayaran — Upload &amp; Kelola QRIS
-                    </h3>
-                    <span className="text-xs font-bold text-amber-400">
-                      · WARUNG BANG KOBRA
-                    </span>
-                  </div>
-                  <p className="text-xs text-stone-400">
-                    Unggah, ganti, edit, pratinjau, atau hapus gambar QRIS (PNG, JPG, JPEG) untuk pembayaran pelanggan di Kasir POS, Menu Online, &amp; QR Order.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <QRISUploader
-              settings={formData}
-              onSaveSettings={async (newSettings) => {
-                setFormData(newSettings);
-                await onSaveSettings(newSettings);
-              }}
-              showToast={showToast}
-            />
-          </div>
-        )}
-
-        {/* Section: Pengaturan → Delivery DQM */}
-        {(activeSettingsSection === 'all' || activeSettingsSection === 'delivery') && (
+      {/* 4. MAIN WORKSPACE: SIDEBAR + CONTENT VIEW */}
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        {/* MOBILE MENU HUB (Shown on mobile when mobileView === 'menu') */}
         <div
-          id="settings-delivery-dqm"
-          className="bg-stone-900 border-2 border-amber-500/40 rounded-3xl p-6 space-y-5 shadow-xl relative overflow-hidden"
+          className={`${
+            mobileView === 'menu' ? 'block' : 'hidden'
+          } lg:hidden flex-1 overflow-y-auto p-4 space-y-4`}
         >
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-stone-800">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500/15 text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0">
-                <Truck className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-black text-stone-100 text-base sm:text-lg">
-                    Pengaturan → Delivery DQM
-                  </h3>
-                  <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 uppercase">
-                    Khusus Pesantren DQM
-                  </span>
-                </div>
-                <p className="text-xs text-stone-400">
-                  Atur kebijakan biaya pengantaran khusus untuk area Pesantren DQM (Gratis atau Biaya Tetap).
-                </p>
-              </div>
-            </div>
-
-            <div className="px-3.5 py-2 rounded-2xl bg-stone-950 border border-amber-500/40 text-right">
-              <div className="text-[10px] font-bold text-stone-400 uppercase">Status Tarif Saat Ini</div>
-              <div className="text-sm font-black text-amber-400">
-                {(formData.deliveryFeeType || 'FREE') === 'FREE'
-                  ? 'Delivery DQM: GRATIS'
-                  : `Biaya Delivery DQM: ${formatRupiah(Number(formData.deliveryFeeAmount ?? 2000))}`}
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Option 1: Gratis Delivery */}
-            <button
-              type="button"
-              onClick={() => {
-                handleInputChange('deliveryFeeType', 'FREE');
-              }}
-              className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-start gap-3.5 ${
-                (formData.deliveryFeeType || 'FREE') === 'FREE'
-                  ? 'bg-emerald-950/30 border-emerald-500 text-stone-100 shadow-lg shadow-emerald-950/30'
-                  : 'bg-stone-950 border-stone-800 text-stone-400 hover:border-stone-700'
-              }`}
-            >
-              <div
-                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 shrink-0 ${
-                  (formData.deliveryFeeType || 'FREE') === 'FREE'
-                    ? 'border-emerald-400 bg-emerald-500 text-stone-950'
-                    : 'border-stone-600'
+          {/* Quick Group Filter Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            {[
+              { id: 'ALL', label: 'Semua (24)' },
+              { id: 'STORE', label: 'Toko & Profil' },
+              { id: 'POS', label: 'Kasir & POS' },
+              { id: 'ORDER', label: 'Layanan Pesanan' },
+              { id: 'STOCK', label: 'Produk & Stok' },
+              { id: 'COMMS', label: 'WhatsApp & Notif' },
+              { id: 'SYSTEM', label: 'Sistem & Cloud' },
+            ].map((chip) => (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => setMobileCategoryFilter(chip.id as any)}
+                className={`min-h-[34px] px-3.5 rounded-full text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+                  mobileCategoryFilter === chip.id
+                    ? 'bg-red-600 text-white shadow-md shadow-red-950/60'
+                    : 'bg-stone-900 border border-stone-800 text-stone-300 hover:bg-stone-850'
                 }`}
               >
-                {(formData.deliveryFeeType || 'FREE') === 'FREE' && (
-                  <div className="w-2 h-2 rounded-full bg-stone-950" />
-                )}
-              </div>
-              <div className="space-y-1">
-                <div className="font-black text-sm text-stone-100 flex items-center gap-2">
-                  <span>Gratis Delivery</span>
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
-                    Rp0
-                  </span>
-                </div>
-                <p className="text-xs text-stone-400">
-                  Pelanggan di area Pesantren DQM tidak dikenakan biaya tambahan pengantaran.
-                </p>
-                <div className="pt-1 text-xs font-mono font-bold text-emerald-400">
-                  Contoh tampilan: Delivery DQM: GRATIS
-                </div>
-              </div>
-            </button>
-
-            {/* Option 2: Biaya Delivery Tetap */}
-            <button
-              type="button"
-              onClick={() => {
-                handleInputChange('deliveryFeeType', 'FIXED');
-                if (!formData.deliveryFeeAmount || formData.deliveryFeeAmount <= 0) {
-                  handleInputChange('deliveryFeeAmount', 2000);
-                }
-              }}
-              className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-start gap-3.5 ${
-                formData.deliveryFeeType === 'FIXED'
-                  ? 'bg-amber-950/30 border-amber-500 text-stone-100 shadow-lg shadow-amber-950/30'
-                  : 'bg-stone-950 border-stone-800 text-stone-400 hover:border-stone-700'
-              }`}
-            >
-              <div
-                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 shrink-0 ${
-                  formData.deliveryFeeType === 'FIXED'
-                    ? 'border-amber-400 bg-amber-500 text-stone-950'
-                    : 'border-stone-600'
-                }`}
-              >
-                {formData.deliveryFeeType === 'FIXED' && (
-                  <div className="w-2 h-2 rounded-full bg-stone-950" />
-                )}
-              </div>
-              <div className="space-y-1 flex-1">
-                <div className="font-black text-sm text-stone-100 flex items-center gap-2">
-                  <span>Biaya Delivery Tetap</span>
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded bg-amber-500/20 text-amber-300">
-                    Flat Rate
-                  </span>
-                </div>
-                <p className="text-xs text-stone-400">
-                  Tetapkan tarif ongkos kirim tetap untuk setiap pesanan DELIVERY DQM.
-                </p>
-                <div className="pt-1 text-xs font-mono font-bold text-amber-400">
-                  Contoh tampilan: Biaya Delivery DQM: {formatRupiah(Number(formData.deliveryFeeAmount ?? 2000))}
-                </div>
-              </div>
-            </button>
+                {chip.label}
+              </button>
+            ))}
           </div>
 
-          {formData.deliveryFeeType === 'FIXED' && (
-            <div className="p-4 rounded-2xl bg-stone-950 border border-amber-500/40 space-y-3 animate-fadeIn">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <label className="text-xs font-black text-amber-400 block">
-                    Nominal Biaya Delivery DQM (Rp)
-                  </label>
-                  <span className="text-[11px] text-stone-400">
-                    Biaya ini otomatis ditambahkan saat customer memilih DELIVERY DQM. Untuk BUNGKUS, biaya selalu Rp0.
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {[1000, 2000, 3000, 5000].map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => handleInputChange('deliveryFeeAmount', preset)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-extrabold border transition cursor-pointer ${
-                        Number(formData.deliveryFeeAmount) === preset
-                          ? 'bg-amber-500 text-stone-950 border-amber-400'
-                          : 'bg-stone-900 text-stone-300 border-stone-700 hover:border-amber-500/50'
+          {/* Category Cards Touch Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {displayCategories.map((cat) => {
+              const Icon = cat.icon;
+              const isSelected = activeTab === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(cat.id);
+                    setMobileView('detail');
+                  }}
+                  className={`min-h-[58px] p-3.5 rounded-2xl text-left border flex items-center justify-between gap-3 transition-all cursor-pointer active:scale-[0.98] shadow-sm ${
+                    isSelected
+                      ? 'bg-gradient-to-r from-red-600/20 to-orange-600/10 border-red-500/60 text-white'
+                      : 'bg-stone-900/90 border-stone-800 text-stone-200 hover:border-stone-700 hover:bg-stone-850'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-md ${
+                        isSelected
+                          ? 'bg-gradient-to-br from-red-600 to-orange-600 text-white'
+                          : 'bg-stone-950 text-red-400 border border-stone-800'
                       }`}
                     >
-                      {formatRupiah(preset)}
-                    </button>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-extrabold text-xs sm:text-sm text-stone-100 truncate">
+                        {cat.label}
+                      </div>
+                      <div className="text-[11px] text-stone-400 truncate mt-0.5">
+                        {cat.description}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {cat.badge && (
+                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-red-600/20 text-red-400 border border-red-500/30">
+                        {cat.badge}
+                      </span>
+                    )}
+                    <ChevronRight className="w-4 h-4 text-stone-500" />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Quick System Status Card at bottom */}
+          <div className="p-4 rounded-2xl bg-stone-900/70 border border-stone-800/80 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                <Database className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-stone-200">
+                  Google Cloud Firestore
+                </div>
+                <div className="text-[10px] text-emerald-400 flex items-center gap-1.5 mt-0.5 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Realtime Cloud Sync Terhubung
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('about');
+                setMobileView('detail');
+              }}
+              className="text-xs text-stone-400 hover:text-white font-bold flex items-center gap-1 px-3 py-1.5 rounded-xl bg-stone-800"
+            >
+              <span>Info</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* DESKTOP SIDEBAR */}
+        <aside
+          className={`hidden lg:flex flex-col bg-stone-920 border-r border-stone-800 shrink-0 transition-all duration-200 overflow-y-auto ${
+            isSidebarCollapsed ? 'w-20' : 'w-72'
+          }`}
+        >
+          <div className="p-3 space-y-1">
+            {filteredCategories.map((cat) => {
+              const Icon = cat.icon;
+              const isSelected = activeTab === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  id={`settings-nav-${cat.id}`}
+                  type="button"
+                  onClick={() => setActiveTab(cat.id)}
+                  title={isSidebarCollapsed ? cat.label : undefined}
+                  className={`w-full min-h-[46px] p-2.5 rounded-2xl flex items-center justify-between gap-3 text-left transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-gradient-to-r from-red-600/25 to-orange-600/15 text-white font-extrabold border border-red-500/50 shadow-md'
+                      : 'text-stone-300 hover:bg-stone-850 hover:text-white border border-transparent'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                        isSelected
+                          ? 'bg-gradient-to-r from-red-600 to-orange-600 text-white shadow'
+                          : 'bg-stone-900 text-stone-400 group-hover:text-red-400 border border-stone-800'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 stroke-[2.2]" />
+                    </div>
+                    {!isSidebarCollapsed && (
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold truncate leading-tight">
+                          {cat.label}
+                        </div>
+                        <div className="text-[10px] text-stone-400 truncate leading-tight mt-0.5">
+                          {cat.description}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {!isSidebarCollapsed && cat.badge && (
+                    <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-red-600/20 text-red-400 border border-red-500/30 shrink-0">
+                      {cat.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        {/* CONTENT VIEWPORT */}
+        <main
+          className={`${
+            mobileView === 'menu' ? 'hidden lg:block' : 'block'
+          } flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6 max-w-5xl mx-auto`}
+        >
+          {/* Mobile Subpage Sticky Top Header */}
+          <div className="lg:hidden sticky -top-4 -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 mb-4 px-4 py-3 bg-stone-900/95 backdrop-blur-md border-b border-stone-800 z-30 flex items-center justify-between gap-2 shadow-lg">
+            <button
+              type="button"
+              onClick={() => setMobileView('menu')}
+              className="min-h-[38px] px-3 rounded-xl bg-stone-800 hover:bg-stone-750 text-stone-200 text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4 text-red-400" />
+              <span>Menu</span>
+            </button>
+
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-red-600/20 text-red-400 flex items-center justify-center shrink-0">
+                <currentCategory.icon className="w-4 h-4" />
+              </div>
+              <span className="font-extrabold text-xs text-white truncate max-w-[120px] sm:max-w-[200px]">
+                {currentCategory.label}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(true)}
+                className="min-h-[38px] px-2.5 rounded-xl bg-stone-800 hover:bg-stone-750 text-stone-300 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                title="Pindah ke menu lain"
+              >
+                <span>Pindah</span>
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={handleSave}
+                className={`min-h-[38px] px-3.5 rounded-xl font-black text-xs flex items-center gap-1.5 shadow transition active:scale-95 cursor-pointer ${
+                  isDirty
+                    ? 'bg-gradient-to-r from-red-600 to-orange-600 text-white shadow-red-950/60'
+                    : 'bg-stone-800 text-stone-300 border border-stone-700'
+                }`}
+              >
+                {isSaving ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Save className="w-3.5 h-3.5" />
+                )}
+                <span className="hidden sm:inline">{isSaving ? 'Menyimpan' : 'Simpan'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Breadcrumb Header */}
+          <div className="flex items-center justify-between pb-2 border-b border-stone-850">
+            <div className="flex items-center gap-2 text-xs text-stone-400">
+              <span>Pengaturan</span>
+              <ChevronRight className="w-3.5 h-3.5 text-stone-600" />
+              <span className="font-extrabold text-stone-100">
+                {currentCategory.label}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsResetConfirmOpen(true)}
+              className="text-stone-400 hover:text-rose-400 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Reset Pengaturan</span>
+            </button>
+          </div>
+
+          {/* ========================================================
+              1. PROFIL TOKO
+             ======================================================== */}
+          {activeTab === 'profile' && (
+            <SettingSectionCard
+              title="Profil Toko & Informasi Bisnis"
+              subtitle="Kelola identitas resmi Warung Bang Kobra yang ditampilkan pada struk, aplikasi pelanggan & web menu"
+              icon={Store}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Nama Toko *
+                  </label>
+                  <SettingInput
+                    value={formData.storeName || ''}
+                    onChange={(e) => handleFieldChange('storeName', e.target.value)}
+                    placeholder="WARUNG BANG KOBRA"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Nama Pemilik (Owner)
+                  </label>
+                  <SettingInput
+                    value={formData.ownerName || ''}
+                    onChange={(e) => handleFieldChange('ownerName', e.target.value)}
+                    placeholder="Bang Kobra"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Slogan / Tagline
+                  </label>
+                  <SettingInput
+                    value={formData.tagline || ''}
+                    onChange={(e) => handleFieldChange('tagline', e.target.value)}
+                    placeholder="Sajian Pedas Mantap, Nikmat Tanpa Lawan"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Nomor WhatsApp Resmi Warung *
+                  </label>
+                  <SettingInput
+                    value={formData.whatsappNumber || ''}
+                    onChange={(e) => handleFieldChange('whatsappNumber', e.target.value)}
+                    placeholder="6281234567890"
+                    prefixLabel="WA"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-stone-300 block mb-1">
+                  Alamat Lengkap Toko *
+                </label>
+                <textarea
+                  rows={2}
+                  value={formData.address || formData.storeAddress || ''}
+                  onChange={(e) => handleFieldChange('address', e.target.value)}
+                  placeholder="Jl. Raya Kuliner No. 88, Samping Kampus / Pasar Malam"
+                  className="w-full bg-stone-950 border border-stone-800 focus:border-red-500 rounded-xl p-3 text-xs sm:text-sm text-stone-100 focus:outline-none transition shadow-inner"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Email Toko
+                  </label>
+                  <SettingInput
+                    type="email"
+                    value={formData.storeEmail || ''}
+                    onChange={(e) => handleFieldChange('storeEmail', e.target.value)}
+                    placeholder="warungbangkobra@gmail.com"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Instagram Toko
+                  </label>
+                  <SettingInput
+                    value={formData.storeInstagram || ''}
+                    onChange={(e) => handleFieldChange('storeInstagram', e.target.value)}
+                    placeholder="@warungbangkobra"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Website Resmi
+                  </label>
+                  <SettingInput
+                    value={formData.storeWebsite || ''}
+                    onChange={(e) => handleFieldChange('storeWebsite', e.target.value)}
+                    placeholder="https://warungbangkobra.id"
+                  />
+                </div>
+              </div>
+
+              {/* Upload Logo Toko Section */}
+              <div className="pt-4 border-t border-stone-800">
+                <h4 className="font-extrabold text-sm text-stone-200 mb-2">
+                  Upload &amp; Ganti Logo Warung
+                </h4>
+                <LogoUploader
+                  currentLogoUrl={formData.logoUrl}
+                  storeName={formData.storeName}
+                  onLogoChange={(newLogoUrl) => handleFieldChange('logoUrl', newLogoUrl)}
+                  showToast={showToast}
+                />
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              2. BRANDING
+             ======================================================== */}
+          {activeTab === 'branding' && (
+            <SettingSectionCard
+              title="Branding &amp; Skema Tampilan"
+              subtitle="Kustomisasi palet warna, tipografi font, sudut rounded, dan kerapatan tampilan"
+              icon={Palette}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Tema Utama
+                  </label>
+                  <SettingSelect
+                    value={formData.theme || 'dark'}
+                    onChange={(e) => handleFieldChange('theme', e.target.value)}
+                    options={[
+                      { value: 'dark', label: 'Dark Mode (Elegan Gelap)' },
+                      { value: 'light', label: 'Light Mode (Cerah)' },
+                      { value: 'system', label: 'Ikuti Sistem Perangkat' },
+                    ]}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Font Utama
+                  </label>
+                  <SettingSelect
+                    value={formData.themeFont || 'Inter'}
+                    onChange={(e) => handleFieldChange('themeFont', e.target.value)}
+                    options={[
+                      { value: 'Inter', label: 'Inter (Rekomendasi POS)' },
+                      { value: 'Poppins', label: 'Poppins (Modern Ramah)' },
+                      { value: 'System', label: 'System Default' },
+                    ]}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Sudut Rounded Kartu
+                  </label>
+                  <SettingSelect
+                    value={formData.themeRadius || 'medium'}
+                    onChange={(e) => handleFieldChange('themeRadius', e.target.value)}
+                    options={[
+                      { value: 'small', label: 'Small (12px)' },
+                      { value: 'medium', label: 'Medium (16-20px)' },
+                      { value: 'large', label: 'Large (24-28px)' },
+                    ]}
+                  />
+                </div>
+              </div>
+
+              {/* Color Customizer */}
+              <div className="pt-3 border-t border-stone-800 space-y-3">
+                <h4 className="font-extrabold text-sm text-stone-200">
+                  Palet Warna Identitas
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-stone-400 block mb-1">
+                      Primary (Merah)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={formData.themePrimaryColor || '#dc2626'}
+                        onChange={(e) => handleFieldChange('themePrimaryColor', e.target.value)}
+                        className="w-10 h-10 rounded-xl bg-transparent border-0 cursor-pointer"
+                      />
+                      <span className="text-xs font-mono font-bold text-stone-300">
+                        {formData.themePrimaryColor || '#dc2626'}
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-stone-400 block mb-1">
+                      Secondary (Oranye)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={formData.themeSecondaryColor || '#f97316'}
+                        onChange={(e) => handleFieldChange('themeSecondaryColor', e.target.value)}
+                        className="w-10 h-10 rounded-xl bg-transparent border-0 cursor-pointer"
+                      />
+                      <span className="text-xs font-mono font-bold text-stone-300">
+                        {formData.themeSecondaryColor || '#f97316'}
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-stone-400 block mb-1">
+                      Accent (Emas)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={formData.themeAccentColor || '#eab308'}
+                        onChange={(e) => handleFieldChange('themeAccentColor', e.target.value)}
+                        className="w-10 h-10 rounded-xl bg-transparent border-0 cursor-pointer"
+                      />
+                      <span className="text-xs font-mono font-bold text-stone-300">
+                        {formData.themeAccentColor || '#eab308'}
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-stone-400 block mb-1">
+                      Background
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={formData.themeBgColor || '#0c0a09'}
+                        onChange={(e) => handleFieldChange('themeBgColor', e.target.value)}
+                        className="w-10 h-10 rounded-xl bg-transparent border-0 cursor-pointer"
+                      />
+                      <span className="text-xs font-mono font-bold text-stone-300">
+                        {formData.themeBgColor || '#0c0a09'}
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-stone-400 block mb-1">
+                      Text Color
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={formData.themeTextColor || '#f5f5f4'}
+                        onChange={(e) => handleFieldChange('themeTextColor', e.target.value)}
+                        className="w-10 h-10 rounded-xl bg-transparent border-0 cursor-pointer"
+                      />
+                      <span className="text-xs font-mono font-bold text-stone-300">
+                        {formData.themeTextColor || '#f5f5f4'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleFieldChange('themePrimaryColor', '#dc2626');
+                      handleFieldChange('themeSecondaryColor', '#f97316');
+                      handleFieldChange('themeAccentColor', '#eab308');
+                      handleFieldChange('themeBgColor', '#0c0a09');
+                      handleFieldChange('themeTextColor', '#f5f5f4');
+                      handleFieldChange('themeFont', 'Inter');
+                      handleFieldChange('themeRadius', 'medium');
+                      showToast('Tema dikembalikan ke palet standar Bang Kobra!', 'info');
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-bold transition cursor-pointer"
+                  >
+                    Reset Tema Default Bang Kobra
+                  </button>
+                </div>
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              3. JAM OPERASIONAL
+             ======================================================== */}
+          {activeTab === 'operating_hours' && (
+            <SettingSectionCard
+              title="Jam Operasional &amp; Jadwal Buka-Tutup"
+              subtitle="Atur jam buka setiap hari. Jika toko tutup, checkout online order dinonaktifkan otomatis"
+              icon={Clock}
+            >
+              <SettingToggle
+                label="Buka 24 Jam Non-Stop"
+                description="Warung beroperasi 24 jam penuh tanpa pembatasan jam operasional"
+                checked={Boolean(formData.is24Hours)}
+                onChange={(c) => handleFieldChange('is24Hours', c)}
+              />
+
+              <SettingToggle
+                label="Tutup Sementara (Istirahat / Libur)"
+                description="Nonaktifkan penerimaan pesanan online sementara waktu"
+                checked={Boolean(formData.isTempClosed)}
+                onChange={(c) => handleFieldChange('isTempClosed', c)}
+              />
+
+              {formData.isTempClosed && (
+                <div>
+                  <label className="text-xs font-bold text-amber-400 block mb-1">
+                    Pesan Pengumuman Tutup Sementara
+                  </label>
+                  <SettingInput
+                    value={formData.tempClosedReason || ''}
+                    onChange={(e) => handleFieldChange('tempClosedReason', e.target.value)}
+                    placeholder="Warung sedang istirahat sejenak. Buka kembali pukul 16:00!"
+                  />
+                </div>
+              )}
+
+              <SettingToggle
+                label="Tetap Izinkan Pelanggan Melihat Menu Saat Tutup"
+                description="Pelanggan tetap dapat melihat daftar menu makanan & harga, namun tidak dapat checkout"
+                checked={formData.allowBrowsingWhenClosed !== false}
+                onChange={(c) => handleFieldChange('allowBrowsingWhenClosed', c)}
+              />
+
+              {/* 7 Days Schedule Table */}
+              <div className="pt-3 border-t border-stone-800 space-y-2">
+                <h4 className="font-extrabold text-sm text-stone-200 mb-2">
+                  Jadwal Harian (Senin – Minggu)
+                </h4>
+                <div className="space-y-2">
+                  {(formData.operatingHours || INITIAL_SETTINGS.operatingHours || []).map((dayItem, idx) => (
+                    <div
+                      key={dayItem.day}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-2xl bg-stone-950 border border-stone-800 gap-2.5"
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={dayItem.isOpen}
+                          onChange={(e) => {
+                            const updated = [...(formData.operatingHours || INITIAL_SETTINGS.operatingHours!)];
+                            updated[idx] = { ...dayItem, isOpen: e.target.checked };
+                            handleFieldChange('operatingHours', updated);
+                          }}
+                          className="w-4 h-4 accent-red-600 rounded cursor-pointer"
+                        />
+                        <span className="font-bold text-xs sm:text-sm text-stone-200 w-24">
+                          {dayItem.day}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                            dayItem.isOpen
+                              ? 'bg-emerald-500/20 text-emerald-400'
+                              : 'bg-stone-800 text-stone-500'
+                          }`}
+                        >
+                          {dayItem.isOpen ? 'BUKA' : 'LIBUR'}
+                        </span>
+                      </div>
+
+                      {dayItem.isOpen && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <input
+                            type="time"
+                            value={dayItem.openTime}
+                            onChange={(e) => {
+                              const updated = [...(formData.operatingHours || INITIAL_SETTINGS.operatingHours!)];
+                              updated[idx] = { ...dayItem, openTime: e.target.value };
+                              handleFieldChange('operatingHours', updated);
+                            }}
+                            className="bg-stone-900 border border-stone-750 rounded-xl px-2.5 py-1.5 text-stone-100 font-mono"
+                          />
+                          <span className="text-stone-500">s/d</span>
+                          <input
+                            type="time"
+                            value={dayItem.closeTime}
+                            onChange={(e) => {
+                              const updated = [...(formData.operatingHours || INITIAL_SETTINGS.operatingHours!)];
+                              updated[idx] = { ...dayItem, closeTime: e.target.value };
+                              handleFieldChange('operatingHours', updated);
+                            }}
+                            className="bg-stone-900 border border-stone-750 rounded-xl px-2.5 py-1.5 text-stone-100 font-mono"
+                          />
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
-              <input
-                type="number"
-                min={0}
-                step={500}
-                value={formData.deliveryFeeAmount ?? 2000}
-                onChange={(e) => handleInputChange('deliveryFeeAmount', Math.max(0, Number(e.target.value)))}
-                className="w-full sm:w-64 bg-stone-900 border border-amber-500/50 rounded-xl px-3.5 py-2 text-sm font-mono font-black text-amber-300 focus:outline-none focus:border-amber-400"
-              />
-            </div>
+            </SettingSectionCard>
           )}
 
-          <div className="p-3.5 rounded-2xl bg-stone-950 border border-stone-800 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-xs text-stone-300">
-              <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>
-                Validasi Area Aktif: <strong>Hanya Pesantren DQM (deliveryArea = DQM)</strong>. Pesanan di luar area DQM otomatis ditolak.
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleSave()}
-              disabled={isSaving}
-              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs transition cursor-pointer shadow-md"
+          {/* ========================================================
+              4. PENGATURAN POS
+             ======================================================== */}
+          {activeTab === 'pos' && (
+            <SettingSectionCard
+              title="Pengaturan Kasir &amp; Transaksi (POS)"
+              subtitle="Atur penomoran struk, izin kasir, pembulatan, dan alur otomatis pasca pembayaran"
+              icon={ShoppingCart}
             >
-              Simpan Pengaturan Delivery DQM
-            </button>
-          </div>
-        </div>
-        )}
-
-        {/* Section: Pengaturan Pre-Order (PO) Acara & DP */}
-        {(activeSettingsSection === 'all' || activeSettingsSection === 'po') && (
-        <div className="bg-stone-900 border border-stone-800 rounded-3xl p-6 space-y-5 shadow-xl">
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-stone-800">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-red-600/20 text-red-400 border border-red-500/30 flex items-center justify-center">
-                <Calendar className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="font-extrabold text-stone-100 text-base flex items-center gap-2">
-                  <span>Pengaturan Pre-Order (PO) & Uang Muka (DP)</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">
-                    Owner Exclusive
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Prefix Nomor Invoice
+                  </label>
+                  <SettingInput
+                    value={formData.invoicePrefix || 'WBK'}
+                    onChange={(e) => handleFieldChange('invoicePrefix', e.target.value.toUpperCase())}
+                    placeholder="WBK"
+                  />
+                  <span className="text-[10px] text-stone-400 mt-1 block">
+                    Contoh: {formData.invoicePrefix || 'WBK'}-20261005-0001
                   </span>
-                </h3>
-                <p className="text-xs text-stone-400">
-                  Konfigurasi syarat pemesanan katering acara, batasan hari H-x, dan skema kewajiban DP
-                </p>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Siklus Reset Nomor Struk
+                  </label>
+                  <SettingSelect
+                    value={formData.invoiceResetPeriod || 'DAILY'}
+                    onChange={(e) => handleFieldChange('invoiceResetPeriod', e.target.value)}
+                    options={[
+                      { value: 'DAILY', label: 'Setiap Hari (Mulai dari 001)' },
+                      { value: 'MONTHLY', label: 'Setiap Bulan' },
+                      { value: 'NEVER', label: 'Terus Bertambah' },
+                    ]}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Mata Uang
+                  </label>
+                  <SettingInput
+                    value={formData.currency || 'Rp'}
+                    onChange={(e) => handleFieldChange('currency', e.target.value)}
+                    placeholder="Rp"
+                  />
+                </div>
               </div>
-            </div>
 
-            <label className="flex items-center gap-2 cursor-pointer bg-stone-950 px-3 py-1.5 rounded-xl border border-stone-800">
-              <input
-                type="checkbox"
-                checked={formData.poEnabled !== false}
-                onChange={(e) => handleInputChange('poEnabled', e.target.checked)}
-                className="w-4 h-4 accent-red-600 rounded"
-              />
-              <span className="text-xs font-bold text-stone-200">
-                {formData.poEnabled !== false ? 'Layanan PO Aktif' : 'Layanan PO Nonaktif'}
-              </span>
-            </label>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-            {/* Minimal Hari Pemesanan */}
-            <div className="p-4 rounded-2xl bg-stone-950 border border-stone-800 space-y-2">
-              <label className="block font-bold text-stone-200 uppercase tracking-wider text-[11px]">
-                Minimal Hari Pemesanan (H-x)
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="1"
-                  max="30"
-                  value={formData.poMinDaysAhead ?? 1}
-                  onChange={(e) => handleInputChange('poMinDaysAhead', Math.max(1, Number(e.target.value)))}
-                  className="w-24 py-2 px-3 bg-stone-900 border border-stone-700 rounded-xl text-white font-mono text-sm focus:outline-none focus:border-red-500"
+              <div className="pt-3 border-t border-stone-800 space-y-2">
+                <h4 className="font-extrabold text-sm text-stone-200">
+                  Izin &amp; Validasi Kasir
+                </h4>
+                <SettingToggle
+                  label="Izinkan Diskon Transaksi"
+                  description="Kasir dapat memasukkan diskon rupiah atau persen pada keranjang"
+                  checked={formData.posAllowDiscount !== false}
+                  onChange={(c) => handleFieldChange('posAllowDiscount', c)}
                 />
-                <span className="text-stone-400">Hari sebelum pesanan harus siap</span>
-              </div>
-              <p className="text-[11px] text-stone-500">
-                Pelanggan wajib memesan minimal 1 hari sebelumnya (H-1) untuk persiapan dapur warung.
-              </p>
-            </div>
-
-            {/* Skema Uang Muka (DP) */}
-            <div className="p-4 rounded-2xl bg-stone-950 border border-stone-800 space-y-2">
-              <label className="block font-bold text-stone-200 uppercase tracking-wider text-[11px]">
-                Skema Ketentuan Uang Muka (DP)
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleInputChange('poDpType', 'PERCENT')}
-                  className={`py-2 px-2.5 rounded-xl font-bold text-xs border transition cursor-pointer text-center ${
-                    (formData.poDpType || 'PERCENT') === 'PERCENT'
-                      ? 'bg-red-600 border-red-500 text-white'
-                      : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-white'
-                  }`}
-                >
-                  Persentase (%)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleInputChange('poDpType', 'FIXED')}
-                  className={`py-2 px-2.5 rounded-xl font-bold text-xs border transition cursor-pointer text-center ${
-                    formData.poDpType === 'FIXED'
-                      ? 'bg-red-600 border-red-500 text-white'
-                      : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-white'
-                  }`}
-                >
-                  Nominal Tetap (Rp)
-                </button>
+                <SettingToggle
+                  label="Izinkan Edit Harga Menu Manual"
+                  description="Kasir dapat mengubah harga satuan menu langsung saat transaksi"
+                  checked={Boolean(formData.posAllowPriceEdit)}
+                  onChange={(c) => handleFieldChange('posAllowPriceEdit', c)}
+                />
+                <SettingToggle
+                  label="Izinkan Catatan Per Item"
+                  description="Tampilkan tombol catatan khusus (contoh: pedas, manis, tanpa es)"
+                  checked={formData.posAllowItemNotes !== false}
+                  onChange={(c) => handleFieldChange('posAllowItemNotes', c)}
+                />
+                <SettingToggle
+                  label="Konfirmasi Sebelum Batalkan Pesanan"
+                  description="Minta konfirmasi sebelum membatalkan antrian kasir"
+                  checked={formData.posConfirmCancel !== false}
+                  onChange={(c) => handleFieldChange('posConfirmCancel', c)}
+                />
               </div>
 
-              {(formData.poDpType || 'PERCENT') === 'PERCENT' ? (
-                <div className="flex items-center gap-2 pt-1">
-                  <input
-                    type="number"
-                    min="5"
-                    max="100"
-                    value={formData.poDpPercent ?? 50}
-                    onChange={(e) => handleInputChange('poDpPercent', Math.max(1, Math.min(100, Number(e.target.value))))}
-                    className="w-24 py-2 px-3 bg-stone-900 border border-stone-700 rounded-xl text-white font-mono text-sm focus:outline-none focus:border-red-500"
-                  />
-                  <span className="text-stone-300 font-bold">% dari total pesanan</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 pt-1">
-                  <input
-                    type="number"
-                    min="10000"
-                    step="5000"
-                    value={formData.poDpFixedAmount ?? 100000}
-                    onChange={(e) => handleInputChange('poDpFixedAmount', Math.max(0, Number(e.target.value)))}
-                    className="w-36 py-2 px-3 bg-stone-900 border border-stone-700 rounded-xl text-white font-mono text-sm focus:outline-none focus:border-red-500"
-                  />
-                  <span className="text-stone-300 font-bold">Rupiah per pesanan</span>
-                </div>
-              )}
-            </div>
-
-            {/* Info Rekening Transfer Bank & E-Wallet */}
-            <div className="md:col-span-2 p-4 rounded-2xl bg-stone-950 border border-stone-800 space-y-2">
-              <label className="block font-bold text-stone-200 uppercase tracking-wider text-[11px]">
-                Info Rekening Transfer Bank & E-Wallet untuk Pembayaran DP
-              </label>
-              <textarea
-                rows={2}
-                value={formData.poBankTransferInfo ?? 'BCA: 1234567890 a/n WARUNG BANG KOBRA\nMandiri: 987654321 a/n BANG KOBRA'}
-                onChange={(e) => handleInputChange('poBankTransferInfo', e.target.value)}
-                placeholder="Tuliskan nomor rekening BCA, Mandiri, BRI, BSI, atau akun E-Wallet..."
-                className="w-full py-2 px-3 bg-stone-900 border border-stone-700 rounded-xl text-white text-xs resize-none"
-              />
-              <p className="text-[11px] text-stone-500">
-                Informasi ini ditampilkan kepada pelanggan pada formulir konfirmasi Pre-Order.
-              </p>
-            </div>
-
-            {/* Syarat & Ketentuan PO */}
-            <div className="md:col-span-2 p-4 rounded-2xl bg-stone-950 border border-stone-800 space-y-2">
-              <label className="block font-bold text-stone-200 uppercase tracking-wider text-[11px]">
-                Ketentuan &amp; Kebijakan Pembatalan Pre-Order
-              </label>
-              <textarea
-                rows={2}
-                value={formData.poTermsAndConditions ?? '1. Pesanan Pre-Order masuk daftar antrean masak setelah DP diverifikasi Kasir.\n2. Pembatalan H-1 dikenakan penyesuaian bahan baku yang telah dibeli.'}
-                onChange={(e) => handleInputChange('poTermsAndConditions', e.target.value)}
-                placeholder="Tuliskan syarat dan ketentuan pemesanan acara..."
-                className="w-full py-2 px-3 bg-stone-900 border border-stone-700 rounded-xl text-white text-xs resize-none"
-              />
-            </div>
-          </div>
-
-          <div className="p-3.5 rounded-2xl bg-stone-950 border border-stone-800 flex flex-wrap items-center justify-between gap-3">
-            <span className="text-xs text-stone-400">
-              Perubahan ketentuan DP otomatis diterapkan pada formulir Pre-Order pelanggan & kasir.
-            </span>
-            <button
-              type="button"
-              onClick={() => handleSave()}
-              disabled={isSaving}
-              className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-xs transition cursor-pointer shadow-md"
-            >
-              Simpan Pengaturan Pre-Order (PO)
-            </button>
-          </div>
-        </div>
-        )}
-
-        {/* Section 0: Identitas Visual & Upload Logo Warung */}
-        {(activeSettingsSection === 'all' || activeSettingsSection === 'profile') && (
-        <div className="bg-stone-900 border border-stone-800 rounded-3xl p-6 space-y-4 shadow-xl">
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-stone-800">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center">
-                <ImageIcon className="w-4 h-4" />
+              <div className="pt-3 border-t border-stone-800 space-y-2">
+                <h4 className="font-extrabold text-sm text-stone-200">
+                  Alur Setelah Pembayaran Selesai
+                </h4>
+                <SettingToggle
+                  label="Tampilkan Pop-up Struk Digital"
+                  description="Buka struk pembayaran otomatis segera setelah kasir menekan Bayar"
+                  checked={formData.posShowReceiptModal !== false}
+                  onChange={(c) => handleFieldChange('posShowReceiptModal', c)}
+                />
+                <SettingToggle
+                  label="Otomatis Buat Pesan WhatsApp Pelanggan"
+                  description="Siapkan tautan WhatsApp berisikan rincian pesanan jika nomor WA diisi"
+                  checked={formData.posAutoSendWhatsApp !== false}
+                  onChange={(c) => handleFieldChange('posAutoSendWhatsApp', c)}
+                />
               </div>
-              <div>
-                <h3 className="font-extrabold text-stone-100 text-base flex items-center gap-2">
-                  <span>Logo & Branding Warung</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                    Kustom
-                  </span>
-                </h3>
-                <p className="text-[11px] text-stone-400">
-                  Unggah logo warung untuk ditampilkan pada header kasir, menu WhatsApp, dan struk cetak
-                </p>
-              </div>
-            </div>
-
-            {formData.logoUrl !== settings.logoUrl && (
-              <button
-                type="button"
-                onClick={() => {
-                  onSaveSettings(formData);
-                  showToast('Logo warung berhasil disimpan & diperbarui!', 'success');
-                }}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-extrabold text-xs shadow-md transition active:scale-95"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>Simpan Logo Sekarang</span>
-              </button>
-            )}
-          </div>
-
-          <LogoUploader
-            currentLogoUrl={formData.logoUrl || '/icon.svg'}
-            storeName={formData.storeName}
-            onLogoChange={(newUrl) => {
-              const resolvedLogo = newUrl && newUrl.trim() !== '' ? newUrl : '/icon.svg';
-              handleInputChange('logoUrl', resolvedLogo);
-              onSaveSettings({
-                ...formData,
-                logoUrl: resolvedLogo,
-              });
-            }}
-            showToast={showToast}
-          />
-        </div>
-        )}
-
-        {/* Section 1: Profil Toko & WhatsApp */}
-        {(activeSettingsSection === 'all' || activeSettingsSection === 'profile') && (
-        <div className="bg-stone-900 border border-stone-800 rounded-3xl p-6 space-y-4 shadow-xl">
-          <div className="flex items-center gap-2 pb-2 border-b border-stone-800">
-            <Store className="w-5 h-5 text-amber-500" />
-            <h3 className="font-extrabold text-stone-100 text-base">Profil Warung & Kontak</h3>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-bold text-stone-300 mb-1 block">
-                Nama Usaha / Warung *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.storeName}
-                onChange={(e) => handleInputChange('storeName', e.target.value)}
-                className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-stone-300 mb-1 block">
-                Slogan / Deskripsi Singkat
-              </label>
-              <input
-                type="text"
-                value={formData.storeSlogan}
-                onChange={(e) => handleInputChange('storeSlogan', e.target.value)}
-                className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
-              />
-            </div>
-
-            {/* Configurable WhatsApp Number (CRITICAL requirement: NEVER hardcode) */}
-            <div>
-              <label className="text-xs font-bold text-emerald-400 mb-1 flex items-center gap-1.5">
-                <Smartphone className="w-3.5 h-3.5" />
-                <span>Nomor WhatsApp Warung * (Untuk Terima Order)</span>
-              </label>
-              <input
-                type="tel"
-                required
-                value={formData.whatsappNumber}
-                onChange={(e) => handleInputChange('whatsappNumber', e.target.value)}
-                placeholder="Contoh: 081234567890 atau 628123456789"
-                className="w-full bg-stone-950 border border-emerald-500/50 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-emerald-400 font-mono font-bold"
-              />
-              <span className="text-[10px] text-stone-400 mt-1 block">
-                Nomor ini digunakan untuk tombol "Pesan via WhatsApp" dari pelanggan & kirim struk.
-              </span>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-stone-300 mb-1 block">
-                Nama Kasir Aktif
-              </label>
-              <input
-                type="text"
-                value={formData.activeCashier}
-                onChange={(e) => handleInputChange('activeCashier', e.target.value)}
-                className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="text-xs font-bold text-stone-300 mb-1 flex items-center justify-between">
-                <span>Alamat Warung *</span>
-                <span className="text-[10px] text-amber-400 font-medium flex items-center gap-1">
-                  <span>📍</span>
-                  <span>Sinkron otomatis ke struk & semua perangkat</span>
-                </span>
-              </label>
-              <input
-                type="text"
-                id="input-store-address"
-                value={formData.address || formData.storeAddress || ''}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  handleInputChange('address', val);
-                  handleInputChange('storeAddress', val);
-                }}
-                placeholder="Contoh: Jl. Raya Kuliner No. 88, Samping Kampus / Pasar Malam"
-                className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3.5 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500 shadow-inner"
-              />
-              <span className="text-[10px] text-stone-400 mt-1 block">
-                Alamat ini otomatis tercetak pada struk belanja, pratinjau menu online, dan titik jemput Takeaway & Delivery.
-              </span>
-            </div>
-
-            <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-stone-950 border border-stone-800">
-              <div className="flex items-center gap-2.5">
-                <QrCode className="w-4 h-4 text-amber-400 shrink-0" />
-                <div className="text-xs">
-                  <span className="font-bold text-stone-200">Gambar QRIS Pembayaran: </span>
-                  <span className={formData.qrisImageUrl ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>
-                    {formData.qrisImageUrl ? 'Sudah Diatur & Tersimpan di Cloud' : 'Belum Diatur'}
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveSettingsSection('qris');
-                  const el = document.getElementById('settings-qris-payment');
-                  if (el) el.scrollIntoView({ behavior: 'smooth' });
-                }}
-                className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-extrabold transition cursor-pointer"
-              >
-                Kelola di Menu QRIS →
-              </button>
-            </div>
-          </div>
-        </div>
-        )}
-
-        {/* Section 2: Realtime Cloud Database (Firebase Firestore) */}
-        {(activeSettingsSection === 'all' || activeSettingsSection === 'database') && (
-        <>
-        <div className="bg-stone-900 border border-orange-500/30 rounded-3xl p-6 space-y-4 shadow-xl relative overflow-hidden">
-          <div className="flex items-center justify-between pb-3 border-b border-stone-800">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center text-orange-400">
-                <Flame className="w-4 h-4 text-orange-400 animate-pulse" />
-              </div>
-              <div>
-                <h3 className="font-extrabold text-stone-100 text-base flex items-center gap-2">
-                  <span>Firebase Cloud Firestore</span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                    Terhubung & Aktif
-                  </span>
-                </h3>
-                <p className="text-[11px] text-stone-400">
-                  Sinkronisasi pesanan QR Code langsung (live realtime) ke layar kasir & katalog menu di HP pelanggan.
-                </p>
-              </div>
-            </div>
-            <div className="hidden sm:flex items-center gap-2">
-              <span className="text-[11px] text-stone-400 font-mono">
-                Project: <strong className="text-orange-400">{firebaseConfig.projectId}</strong>
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div className="p-3.5 rounded-2xl bg-stone-950 border border-stone-800 space-y-1">
-              <div className="text-stone-400 font-bold text-[11px] flex items-center gap-1.5">
-                <Database className="w-3.5 h-3.5 text-orange-400" />
-                <span>Firestore Database ID</span>
-              </div>
-              <div className="font-mono text-stone-200 text-[11px] truncate select-all">
-                {firebaseConfig.firestoreDatabaseId || '(default)'}
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-2xl bg-stone-950 border border-stone-800 space-y-1">
-              <div className="text-stone-400 font-bold text-[11px] flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Realtime Order Listener</span>
-              </div>
-              <div className="text-emerald-300 font-extrabold text-[11px] flex items-center gap-1">
-                <span>Aktif (Push onSnapshot + Audio Chime)</span>
-              </div>
-            </div>
-          </div>
-
-          {firebaseStatus && (
-            <div
-              className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
-                firebaseStatus.success
-                  ? 'bg-emerald-950/40 border-emerald-800 text-emerald-300'
-                  : 'bg-rose-950/40 border-rose-800 text-rose-300'
-              }`}
-            >
-              {firebaseStatus.success ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              ) : (
-                <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
-              )}
-              <span>{firebaseStatus.message}</span>
-            </div>
+            </SettingSectionCard>
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-            <div className="text-[11px] text-stone-400 flex items-center gap-1.5">
-              <span>Status:</span>
-              <span className="text-stone-200 font-semibold">
-                Pesanan Takeaway/Delivery dari QR Code langsung tersimpan ke Cloud
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                id="btn-test-firebase"
-                onClick={handleTestFirebase}
-                disabled={isTestingFirebase}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold transition disabled:opacity-50 cursor-pointer"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isTestingFirebase ? 'animate-spin text-orange-400' : 'text-orange-400'}`} />
-                <span>{isTestingFirebase ? 'Memeriksa...' : 'Tes Koneksi Firebase'}</span>
-              </button>
-
-              <button
-                type="button"
-                id="btn-sync-firebase-products"
-                onClick={handleSyncFirebaseProducts}
-                disabled={isSyncingFirebaseProducts}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold transition active:scale-95 disabled:opacity-50 cursor-pointer"
-              >
-                <Flame className={`w-3.5 h-3.5 ${isSyncingFirebaseProducts ? 'animate-spin text-orange-400' : 'text-orange-400'}`} />
-                <span>{isSyncingFirebaseProducts ? 'Menyinkronkan...' : 'Sinkron Menu Saja'}</span>
-              </button>
-
-              <button
-                type="button"
-                id="btn-sync-all-firebase"
-                onClick={handleSyncAllFirebase}
-                disabled={isSyncingAllFirebase}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-orange-600 via-amber-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-stone-950 text-xs font-black transition shadow-lg shadow-orange-950/40 active:scale-95 disabled:opacity-50 cursor-pointer"
-              >
-                <Flame className={`w-3.5 h-3.5 text-stone-950 ${isSyncingAllFirebase ? 'animate-spin' : ''}`} />
-                <span>{isSyncingAllFirebase ? 'Menyelaraskan Semua Data...' : 'Sinkronkan Semua Data ke Cloud (Multi-Device)'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Section 2B: Audit Log Aktivitas Warung (Firebase Firestore audit_logs) */}
-        <div
-          id="settings-audit-logs"
-          className="bg-stone-900 border border-stone-800 rounded-3xl p-6 space-y-4 shadow-xl relative overflow-hidden"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-stone-800">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-red-600/15 border border-red-500/40 flex items-center justify-center text-red-400 shrink-0">
-                <ShieldCheck className="w-5 h-5" />
+          {/* ========================================================
+              5. PEMBAYARAN & QRIS
+             ======================================================== */}
+          {activeTab === 'payment' && (
+            <SettingSectionCard
+              title="Metode Pembayaran &amp; QRIS"
+              subtitle="Aktifkan Tunai, Transfer Rekening Bank, QRIS Statis/Dinamis, dan E-Wallet"
+              icon={CreditCard}
+            >
+              <div className="space-y-3">
+                <SettingToggle
+                  label="Pembayaran Tunai (CASH)"
+                  description="Menerima uang tunai fisik di kasir dengan kalkulasi kembalian"
+                  checked={formData.paymentCashEnabled !== false}
+                  onChange={(c) => handleFieldChange('paymentCashEnabled', c)}
+                />
+                <SettingToggle
+                  label="Transfer Bank Langsung"
+                  description="Pelanggan mentransfer ke rekening bank resmi warung"
+                  checked={formData.paymentTransferEnabled !== false}
+                  onChange={(c) => handleFieldChange('paymentTransferEnabled', c)}
+                />
+                <SettingToggle
+                  label="Pembayaran QRIS (BCA, Mandiri, GoPay, OVO, ShopeePay)"
+                  description="Tampilkan barcode QRIS pada kasir dan menu mandiri pelanggan"
+                  checked={formData.qrisEnabled !== false}
+                  onChange={(c) => handleFieldChange('qrisEnabled', c)}
+                />
+                <SettingToggle
+                  label="Dompet Digital (E-Wallet)"
+                  description="Menerima DANA, GoPay, OVO, ShopeePay via nomor akun kasir"
+                  checked={formData.paymentEwalletEnabled !== false}
+                  onChange={(c) => handleFieldChange('paymentEwalletEnabled', c)}
+                />
               </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="font-black text-stone-100 text-base sm:text-lg">
-                    Audit Log &amp; Riwayat Aktivitas Sistem
-                  </h3>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-                    Realtime Firestore
-                  </span>
-                </div>
-                <p className="text-xs text-stone-400">
-                  Mencatat aktivitas login, perubahan produk, mutasi stok, transaksi, pengaturan, dan manajemen pengguna.
-                </p>
-              </div>
-            </div>
-            <span className="text-xs font-mono text-stone-400">
-              Total: <strong className="text-white">{auditLogs.length}</strong> log terbaru
-            </span>
-          </div>
 
-          <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-            {auditLogs.length === 0 ? (
-              <div className="p-6 rounded-2xl bg-stone-950 border border-stone-800 text-center text-xs text-stone-400">
-                Belum ada catatan aktivitas baru. Aktivitas transaksi, stok, dan pengaturan akan tercatat otomatis di sini.
-              </div>
-            ) : (
-              auditLogs.slice(0, 20).map((log) => (
-                <div
-                  key={log.id}
-                  className="p-3 rounded-2xl bg-stone-950 border border-stone-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
-                >
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-red-600/20 text-red-400 border border-red-500/30">
-                        {log.action}
-                      </span>
-                      <span className="text-[11px] font-bold text-orange-400">{log.actor}</span>
-                    </div>
-                    <p className="text-stone-200 font-medium">{log.details}</p>
+              {/* Data Rekening Bank */}
+              <div className="pt-4 border-t border-stone-800 space-y-3">
+                <h4 className="font-extrabold text-sm text-stone-200">
+                  Informasi Rekening Bank
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-stone-300 block mb-1">
+                      Nama Bank
+                    </label>
+                    <SettingInput
+                      value={formData.bankName || 'BCA'}
+                      onChange={(e) => handleFieldChange('bankName', e.target.value)}
+                      placeholder="BCA"
+                    />
                   </div>
-                  <span className="text-[10px] font-mono text-stone-400 shrink-0">
-                    {new Date(log.timestamp).toLocaleString('id-ID')}
+                  <div>
+                    <label className="text-xs font-bold text-stone-300 block mb-1">
+                      Nomor Rekening
+                    </label>
+                    <SettingInput
+                      value={formData.bankAccountNumber || ''}
+                      onChange={(e) => handleFieldChange('bankAccountNumber', e.target.value)}
+                      placeholder="8830192831"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-stone-300 block mb-1">
+                      Atas Nama (Pemilik Rekening)
+                    </label>
+                    <SettingInput
+                      value={formData.bankAccountHolder || ''}
+                      onChange={(e) => handleFieldChange('bankAccountHolder', e.target.value)}
+                      placeholder="Warung Bang Kobra"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* QRIS Management Section */}
+              <div className="pt-4 border-t border-stone-800">
+                <h4 className="font-extrabold text-sm text-stone-200 mb-2">
+                  Pengaturan Barcode QRIS
+                </h4>
+                <QRISUploader
+                  settings={formData}
+                  onSaveSettings={(newSet) => {
+                    setFormData(newSet);
+                    return onSaveSettings(newSet);
+                  }}
+                  showToast={showToast}
+                />
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              6. ONLINE ORDER
+             ======================================================== */}
+          {activeTab === 'online_order' && (
+            <SettingSectionCard
+              title="Online Order &amp; Menu Mandiri"
+              subtitle="Konfigurasi halaman pemesanan web yang diakses pelanggan melalui scan QR meja atau tautan"
+              icon={Globe}
+            >
+              <SettingToggle
+                label="Buka Penerimaan Pesanan Online"
+                description="Izinkan pelanggan mengirim pesanan dari HP mereka ke antrian kasir"
+                checked={formData.onlineMenuIsOpen !== false}
+                onChange={(c) => handleFieldChange('onlineMenuIsOpen', c)}
+              />
+
+              <SettingToggle
+                label="Izinkan Pemesanan Tanpa Login (Guest Checkout)"
+                description="Pelanggan cukup mengisi Nama & WhatsApp tanpa perlu daftar akun"
+                checked={formData.onlineAllowGuest !== false}
+                onChange={(c) => handleFieldChange('onlineAllowGuest', c)}
+              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Batas Minimal Pembelian Online (Rp)
+                  </label>
+                  <SettingInput
+                    type="number"
+                    value={formData.onlineMenuMinOrder || 10000}
+                    onChange={(e) => handleFieldChange('onlineMenuMinOrder', Number(e.target.value))}
+                    prefixLabel="Rp"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Jam Layanan Pesanan Online
+                  </label>
+                  <SettingInput
+                    value={formData.onlineMenuHours || '08:00 - 22:00 WIB'}
+                    onChange={(e) => handleFieldChange('onlineMenuHours', e.target.value)}
+                    placeholder="08:00 - 22:00 WIB"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-stone-300 block mb-1">
+                  Pesan Pengumuman / Banner Menu Online
+                </label>
+                <textarea
+                  rows={2}
+                  value={formData.onlineMenuAnnouncement || ''}
+                  onChange={(e) => handleFieldChange('onlineMenuAnnouncement', e.target.value)}
+                  placeholder="Pengumuman spesial untuk pelanggan web..."
+                  className="w-full bg-stone-950 border border-stone-800 focus:border-red-500 rounded-xl p-3 text-xs sm:text-sm text-stone-100 focus:outline-none transition shadow-inner"
+                />
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              7. TAKEAWAY (BUNGKUS)
+             ======================================================== */}
+          {activeTab === 'takeaway' && (
+            <SettingSectionCard
+              title="Layanan Ambil Sendiri (Bungkus / Takeaway)"
+              subtitle="Konfigurasi opsi takeaway pada menu kasir dan online order"
+              icon={ShoppingBag}
+            >
+              <SettingToggle
+                label="Aktifkan Layanan Bungkus / Takeaway"
+                description="Pelanggan dapat memesan untuk dibungkus dan diambil langsung di kasir"
+                checked={formData.takeawayEnabled !== false}
+                onChange={(c) => handleFieldChange('takeawayEnabled', c)}
+              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Nama Label Layanan
+                  </label>
+                  <SettingInput
+                    value={formData.takeawayServiceName || 'Bungkus / Ambil Sendiri'}
+                    onChange={(e) => handleFieldChange('takeawayServiceName', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Estimasi Persiapan (Menit)
+                  </label>
+                  <SettingInput
+                    type="number"
+                    value={formData.takeawayEstimatedMinutes || 15}
+                    onChange={(e) => handleFieldChange('takeawayEstimatedMinutes', Number(e.target.value))}
+                    suffixLabel="Mnt"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Prefix Nomor Antrian
+                  </label>
+                  <SettingInput
+                    value={formData.takeawayQueuePrefix || 'A'}
+                    onChange={(e) => handleFieldChange('takeawayQueuePrefix', e.target.value.toUpperCase())}
+                    placeholder="A"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-stone-300 block mb-1">
+                  Instruksi Pengambilan untuk Pelanggan
+                </label>
+                <textarea
+                  rows={2}
+                  value={
+                    formData.takeawayPickupInstructions ||
+                    'Silakan ambil pesanan di kasir setelah status berubah menjadi SIAP.'
+                  }
+                  onChange={(e) => handleFieldChange('takeawayPickupInstructions', e.target.value)}
+                  className="w-full bg-stone-950 border border-stone-800 focus:border-red-500 rounded-xl p-3 text-xs sm:text-sm text-stone-100 focus:outline-none transition shadow-inner"
+                />
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              8. DELIVERY DQM
+             ======================================================== */}
+          {activeTab === 'delivery' && (
+            <SettingSectionCard
+              title="Layanan Antar (Delivery DQM)"
+              subtitle="Konfigurasi area jangkauan, batas belanja minimal Rp20.000, tarif ongkir dan estimasi pengantaran"
+              icon={Truck}
+              badge="Min Rp20rb"
+            >
+              <SettingToggle
+                label="Aktifkan Layanan Delivery DQM"
+                description="Izinkan pelanggan memilih opsi diantar oleh kurir warung"
+                checked={formData.deliveryDqmEnabled !== false}
+                onChange={(c) => handleFieldChange('deliveryDqmEnabled', c)}
+              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Batas Minimal Belanja Delivery (Wajib &ge; Rp20.000) *
+                  </label>
+                  <SettingInput
+                    type="number"
+                    value={formData.deliveryMinOrder || 20000}
+                    onChange={(e) => handleFieldChange('deliveryMinOrder', Math.max(0, Number(e.target.value)))}
+                    prefixLabel="Rp"
+                  />
+                  <span className="text-[10px] text-amber-400 mt-1 block">
+                    Pelanggan tidak dapat checkout delivery jika total pesanan di bawah nominal ini.
                   </span>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Tarif Biaya Pengantaran (Ongkir)
+                  </label>
+                  <SettingInput
+                    type="number"
+                    value={formData.deliveryFeeAmount || 2000}
+                    onChange={(e) => handleFieldChange('deliveryFeeAmount', Number(e.target.value))}
+                    prefixLabel="Rp"
+                  />
+                </div>
+              </div>
 
-        {/* Section 3: Integrasi Google Sheets Backend */}
-        <div className="bg-stone-900 border border-stone-800 rounded-3xl p-6 space-y-4 shadow-xl">
-          <div className="flex items-center justify-between pb-2 border-b border-stone-800">
-            <div className="flex items-center gap-2">
-              <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
-              <h3 className="font-extrabold text-stone-100 text-base">
-                Database Cloud: Google Sheets
-              </h3>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowGuideModal(true)}
-              className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 font-semibold"
-            >
-              <HelpCircle className="w-4 h-4" />
-              <span>Petunjuk Script</span>
-            </button>
-          </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Area Layanan Utama
+                  </label>
+                  <SettingInput
+                    value={formData.deliveryAreaName || 'Sekitar Pesantren DQM'}
+                    onChange={(e) => handleFieldChange('deliveryAreaName', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Jam Operasional Delivery
+                  </label>
+                  <SettingInput
+                    value={formData.deliveryHours || '09:00 - 21:00 WIB'}
+                    onChange={(e) => handleFieldChange('deliveryHours', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Estimasi Pengantaran (Menit)
+                  </label>
+                  <SettingInput
+                    type="number"
+                    value={formData.deliveryEstimatedMinutes || 25}
+                    onChange={(e) => handleFieldChange('deliveryEstimatedMinutes', Number(e.target.value))}
+                    suffixLabel="Mnt"
+                  />
+                </div>
+              </div>
 
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs font-bold text-stone-300 mb-1 block">
-                Google Apps Script Web App URL
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="url"
-                  value={formData.googleSheetsUrl || ''}
-                  onChange={(e) => handleInputChange('googleSheetsUrl', e.target.value)}
-                  placeholder="https://script.google.com/macros/s/.../exec"
-                  className="flex-1 bg-stone-950 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500 font-mono"
+              <SettingToggle
+                label="Aktifkan Gratis Ongkir untuk Pesanan Besar"
+                description="Bebaskan ongkir jika total belanja mencapai batas tertentu"
+                checked={Boolean(formData.deliveryFreeEnabled)}
+                onChange={(c) => handleFieldChange('deliveryFreeEnabled', c)}
+              />
+
+              {formData.deliveryFreeEnabled && (
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Minimal Belanja untuk Gratis Ongkir
+                  </label>
+                  <SettingInput
+                    type="number"
+                    value={formData.deliveryFreeMinOrder || 50000}
+                    onChange={(e) => handleFieldChange('deliveryFreeMinOrder', Number(e.target.value))}
+                    prefixLabel="Rp"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs font-bold text-stone-300 block mb-1">
+                  Catatan &amp; Instruksi Khusus Delivery
+                </label>
+                <textarea
+                  rows={2}
+                  value={formData.deliveryDqmNote || ''}
+                  onChange={(e) => handleFieldChange('deliveryDqmNote', e.target.value)}
+                  placeholder="Delivery khusus area Pesantren DQM dan sekitarnya..."
+                  className="w-full bg-stone-950 border border-stone-800 focus:border-red-500 rounded-xl p-3 text-xs sm:text-sm text-stone-100 focus:outline-none transition shadow-inner"
                 />
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              9. PESANAN ACARA / PRE-ORDER (PO)
+             ======================================================== */}
+          {activeTab === 'po' && (
+            <SettingSectionCard
+              title="Pesanan Acara / Pre-Order (PO)"
+              subtitle="Atur katering hajatan, rapat & acara: DP minimal 50%, batas pelunasan dan aturan pembatalan"
+              icon={Calendar}
+              badge="PO"
+            >
+              <SettingToggle
+                label="Aktifkan Modul Pre-Order (PO)"
+                description="Buka formulir pemesanan khusus acara dengan sistem Down Payment (DP)"
+                checked={formData.poEnabled !== false}
+                onChange={(c) => handleFieldChange('poEnabled', c)}
+              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Minimal Pesanan PO (Rp)
+                  </label>
+                  <SettingInput
+                    type="number"
+                    value={formData.poMinOrderAmount || 100000}
+                    onChange={(e) => handleFieldChange('poMinOrderAmount', Number(e.target.value))}
+                    prefixLabel="Rp"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Minimal Waktu Pemesanan (H-?)
+                  </label>
+                  <SettingInput
+                    type="number"
+                    value={formData.poMinDaysAhead || 1}
+                    onChange={(e) => handleFieldChange('poMinDaysAhead', Number(e.target.value))}
+                    suffixLabel="Hari"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Persentase DP Wajib (%)
+                  </label>
+                  <SettingInput
+                    type="number"
+                    value={formData.poDpPercent || 50}
+                    onChange={(e) => handleFieldChange('poDpPercent', Number(e.target.value))}
+                    suffixLabel="%"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-stone-300 block mb-1">
+                  Syarat &amp; Ketentuan Pre-Order Acara
+                </label>
+                <textarea
+                  rows={3}
+                  value={formData.poTermsAndConditions || ''}
+                  onChange={(e) => handleFieldChange('poTermsAndConditions', e.target.value)}
+                  placeholder="Pesanan PO wajib membayar DP minimal 50%..."
+                  className="w-full bg-stone-950 border border-stone-800 focus:border-red-500 rounded-xl p-3 text-xs sm:text-sm text-stone-100 focus:outline-none transition shadow-inner"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-stone-300 block mb-1">
+                  Info Rekening Pembayaran DP
+                </label>
+                <SettingInput
+                  value={formData.poBankTransferInfo || ''}
+                  onChange={(e) => handleFieldChange('poBankTransferInfo', e.target.value)}
+                  placeholder="Transfer DP ke Rekening BCA: 8830192831 a.n Warung Bang Kobra"
+                />
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              10. PENGATURAN PRODUK
+             ======================================================== */}
+          {activeTab === 'products' && (
+            <SettingSectionCard
+              title="Pengaturan Katalog Menu &amp; Gambar"
+              subtitle="Kebijakan saat stok habis, kompresi gambar dan standar porsi produk"
+              icon={Package}
+            >
+              <div>
+                <label className="text-xs font-bold text-stone-300 block mb-1">
+                  Perilaku Tampilan Menu Saat Stok 0 (Habis)
+                </label>
+                <SettingSelect
+                  value={formData.productOutOfStockBehavior || 'SHOW_DISABLED'}
+                  onChange={(e) => handleFieldChange('productOutOfStockBehavior', e.target.value)}
+                  options={[
+                    { value: 'SHOW_DISABLED', label: 'Tetap Tampilkan dengan Badge HABIS (Tidak Dapat Dipesan)' },
+                    { value: 'HIDE', label: 'Sembunyikan Menu Sepenuhnya dari Pelanggan' },
+                  ]}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Batas Minimum Stok Default
+                  </label>
+                  <SettingInput
+                    type="number"
+                    value={formData.defaultMinStock || 5}
+                    onChange={(e) => handleFieldChange('defaultMinStock', Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Satuan Default Menu
+                  </label>
+                  <SettingInput
+                    value={formData.defaultUnit || 'Porsi'}
+                    onChange={(e) => handleFieldChange('defaultUnit', e.target.value)}
+                    placeholder="Porsi, Cup, Bungkus"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Maksimal Ukuran Gambar Upload
+                  </label>
+                  <SettingSelect
+                    value={formData.productImageMaxSizeBytes || 2097152}
+                    onChange={(e) => handleFieldChange('productImageMaxSizeBytes', Number(e.target.value))}
+                    options={[
+                      { value: 1048576, label: '1 MB (Sangat Cepat)' },
+                      { value: 2097152, label: '2 MB (Standar Web)' },
+                      { value: 5242880, label: '5 MB (Resolusi Tinggi)' },
+                    ]}
+                  />
+                </div>
+              </div>
+
+              <SettingToggle
+                label="Kompresi Gambar Otomatis Saat Upload"
+                description="Optimalkan foto makanan secara otomatis agar cepat dimuat di HP Android spesifikasi rendah"
+                checked={formData.productAutoCompressImages !== false}
+                onChange={(c) => handleFieldChange('productAutoCompressImages', c)}
+              />
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              11. VARIAN PRODUK
+             ======================================================== */}
+          {activeTab === 'variants' && (
+            <SettingSectionCard
+              title="Varian Rasa Minuman &amp; Makanan"
+              subtitle="Kelola varian sachet multi-rasa (Nutrisari, Pop Ice, Hilo, Chocolatos) & Indomie"
+              icon={Layers}
+            >
+              <SettingToggle
+                label="Aktifkan Fitur Multi-Varian Rasa"
+                description="Produk utama dapat memiliki pilihan rasa dengan stok dan harga tersendiri"
+                checked={formData.variantsEnabled !== false}
+                onChange={(c) => handleFieldChange('variantsEnabled', c)}
+              />
+
+              <SettingToggle
+                label="Wajib Pilih Varian Saat Pemesanan"
+                description="Pelanggan dan kasir harus memilih varian rasa sebelum menambahkan ke keranjang"
+                checked={formData.variantsRequireSelection !== false}
+                onChange={(c) => handleFieldChange('variantsRequireSelection', c)}
+              />
+
+              <div>
+                <label className="text-xs font-bold text-stone-300 block mb-1">
+                  Maksimal Varian Rasa per Produk
+                </label>
+                <SettingInput
+                  type="number"
+                  value={formData.variantsMaxPerProduct || 15}
+                  onChange={(e) => handleFieldChange('variantsMaxPerProduct', Number(e.target.value))}
+                />
+              </div>
+
+              <div className="p-4 rounded-2xl bg-stone-950 border border-stone-800 space-y-2">
+                <h4 className="text-xs font-bold text-stone-200">
+                  Preset Cepat Varian Bang Kobra:
+                </h4>
+                <div className="flex flex-wrap gap-2 text-[11px]">
+                  <span className="px-2 py-1 rounded-lg bg-stone-900 text-stone-300 border border-stone-800">
+                    Indomie: Aceh, Rendang, Goreng, Geprek, Soto, Ayam Bawang
+                  </span>
+                  <span className="px-2 py-1 rounded-lg bg-stone-900 text-stone-300 border border-stone-800">
+                    Minuman: Pop Ice, Nutrisari, Hilo, Chocolatos, Good Day
+                  </span>
+                </div>
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              12. KONTROL STOK
+             ======================================================== */}
+          {activeTab === 'stock' && (
+            <SettingSectionCard
+              title="Kontrol Stok &amp; Manajemen Opname"
+              subtitle="Cegah stok minus dan catat seluruh pergerakan barang ke log audit mutasi stok"
+              icon={Database}
+            >
+              <SettingToggle
+                label="Kontrol Stok Otomatis Saat Transaksi"
+                description="Kurangi stok secara otomatis setiap kali kasir menyelesaikan transaksi pembayaran"
+                checked={formData.stockControl !== false}
+                onChange={(c) => handleFieldChange('stockControl', c)}
+              />
+
+              <SettingToggle
+                label="Izinkan Stok Bernilai Minus (Stok Minus = OFF)"
+                description="Jika dinonaktifkan, transaksi akan diblokir apabila stok bahan/menu habis (0)"
+                checked={Boolean(formData.allowNegativeStock)}
+                onChange={(c) => handleFieldChange('allowNegativeStock', c)}
+              />
+
+              <SettingToggle
+                label="Peringatan Stok Menipis"
+                description="Tampilkan badge kuning/merah jika stok berada di bawah batas minimum"
+                checked={formData.notifyLowStock !== false}
+                onChange={(c) => handleFieldChange('notifyLowStock', c)}
+              />
+
+              <div className="p-3.5 rounded-2xl bg-stone-950 border border-stone-800 space-y-1.5 text-xs">
+                <span className="font-bold text-stone-200">Alasan Penyesuaian Stok (Opname):</span>
+                <p className="text-[11px] text-stone-400">
+                  {(formData.adjustmentReasons || INITIAL_SETTINGS.adjustmentReasons || []).join(' • ')}
+                </p>
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              13. STRUK & PRINTER
+             ======================================================== */}
+          {activeTab === 'receipt' && (
+            <SettingSectionCard
+              title="Kustomisasi Struk &amp; Mesin Cetak"
+              subtitle="Pilih ukuran kertas thermal (58mm/80mm), kelola elemen struk dan lihat preview interaktif"
+              icon={Receipt}
+              headerAction={
                 <button
                   type="button"
-                  onClick={handleTestConnection}
-                  disabled={isTestingUrl}
-                  className="px-4 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold transition disabled:opacity-50"
+                  onClick={() => setIsReceiptPreviewOpen(true)}
+                  className="min-h-[40px] px-4 rounded-xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white text-xs font-black shadow-lg shadow-red-950/40 flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
                 >
-                  {isTestingUrl ? 'Mengecek...' : 'Tes Koneksi'}
+                  <Eye className="w-4 h-4" />
+                  <span>Preview Struk</span>
+                </button>
+              }
+            >
+              <div>
+                <label className="text-xs font-bold text-stone-300 block mb-1">
+                  Ukuran Lebar Kertas Printer
+                </label>
+                <SettingSelect
+                  value={formData.receiptPaperSize || '58mm'}
+                  onChange={(e) => handleFieldChange('receiptPaperSize', e.target.value)}
+                  options={[
+                    { value: '58mm', label: '58mm (Printer Thermal Standar Mini)' },
+                    { value: '80mm', label: '80mm (Printer Kasir Lebar / Desktop)' },
+                    { value: 'A4', label: 'A4 / Kertas Invoice Standar' },
+                  ]}
+                />
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-stone-800">
+                <h4 className="font-extrabold text-sm text-stone-200 mb-2">
+                  Elemen Yang Tampil di Struk
+                </h4>
+                <SettingToggle
+                  label="Tampilkan Logo Toko di Header Struk"
+                  checked={formData.receiptShowLogo !== false}
+                  onChange={(c) => handleFieldChange('receiptShowLogo', c)}
+                />
+                <SettingToggle
+                  label="Tampilkan Alamat & Kontak Toko"
+                  checked={formData.receiptShowAddress !== false}
+                  onChange={(c) => handleFieldChange('receiptShowAddress', c)}
+                />
+                <SettingToggle
+                  label="Tampilkan Nama Kasir Bertugas"
+                  checked={formData.receiptShowCashier !== false}
+                  onChange={(c) => handleFieldChange('receiptShowCashier', c)}
+                />
+                <SettingToggle
+                  label="Tampilkan Nama & Kontak Pelanggan"
+                  checked={formData.receiptShowCustomer !== false}
+                  onChange={(c) => handleFieldChange('receiptShowCustomer', c)}
+                />
+                <SettingToggle
+                  label="Cetak Barcode QRIS di Struk"
+                  description="Mencetak kode QRIS pada bagian bawah struk untuk pembayaran digital"
+                  checked={formData.receiptShowQris !== false}
+                  onChange={(c) => handleFieldChange('receiptShowQris', c)}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-stone-300 block mb-1">
+                  Catatan Footer Struk (Penutup)
+                </label>
+                <textarea
+                  rows={2}
+                  value={formData.receiptFooter || ''}
+                  onChange={(e) => handleFieldChange('receiptFooter', e.target.value)}
+                  placeholder="Matur Suwun / Terima kasih sudah membeli di WARUNG BANG KOBRA 🙏"
+                  className="w-full bg-stone-950 border border-stone-800 focus:border-red-500 rounded-xl p-3 text-xs sm:text-sm text-stone-100 focus:outline-none transition shadow-inner"
+                />
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              14. EMAIL
+             ======================================================== */}
+          {activeTab === 'email' && (
+            <SettingSectionCard
+              title="Integrasi Struk &amp; Notifikasi Email"
+              subtitle="Kirim struk digital via email (opsional). Pelanggan tanpa email tetap dapat checkout"
+              icon={Mail}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Nama Pengirim Email
+                  </label>
+                  <SettingInput
+                    value={formData.emailSenderName || 'Warung Bang Kobra'}
+                    onChange={(e) => handleFieldChange('emailSenderName', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Alamat Email Pengirim
+                  </label>
+                  <SettingInput
+                    type="email"
+                    value={formData.emailSenderAddress || 'warungbangkobra@gmail.com'}
+                    onChange={(e) => handleFieldChange('emailSenderAddress', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-stone-800">
+                <SettingToggle
+                  label="Kirim Struk Digital via Email ke Pelanggan"
+                  description="Jika pelanggan mengisi email saat checkout, sistem akan otomatis mengirim struk"
+                  checked={formData.emailReceiptEnabled !== false}
+                  onChange={(c) => handleFieldChange('emailReceiptEnabled', c)}
+                />
+                <SettingToggle
+                  label="Notifikasi Email Saat Pre-Order (PO) Masuk"
+                  checked={formData.emailPoNotificationEnabled !== false}
+                  onChange={(c) => handleFieldChange('emailPoNotificationEnabled', c)}
+                />
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-stone-950 border border-stone-800 text-[11px] text-stone-400">
+                <span className="font-bold text-amber-400">PENTING: </span>
+                Email pelanggan bersifat <span className="font-bold text-white">TIDAK WAJIB</span>. Jika dikosongkan, checkout tetap berhasil tanpa kendala.
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              15. WHATSAPP
+             ======================================================== */}
+          {activeTab === 'whatsapp' && (
+            <SettingSectionCard
+              title="Notifikasi &amp; Template Pesan WhatsApp"
+              subtitle="Sesuaikan format pesan otomatis untuk konfirmasi order, pesanan siap, delivery & struk"
+              icon={MessageCircle}
+              headerAction={
+                <button
+                  type="button"
+                  onClick={() => setIsWaTesterOpen(true)}
+                  className="min-h-[40px] px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black shadow-lg shadow-emerald-950/40 flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>Uji Coba WhatsApp</span>
+                </button>
+              }
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Nomor WhatsApp Toko
+                  </label>
+                  <SettingInput
+                    value={formData.whatsappNumber || ''}
+                    onChange={(e) => handleFieldChange('whatsappNumber', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Nomor WhatsApp Kasir Bertugas
+                  </label>
+                  <SettingInput
+                    value={formData.cashierWhatsappNumber || formData.whatsappNumber || ''}
+                    onChange={(e) => handleFieldChange('cashierWhatsappNumber', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-2 border-t border-stone-800">
+                <h4 className="font-extrabold text-sm text-stone-200">
+                  Template Teks Pesan Otomatis (Gunakan Placeholder):
+                </h4>
+                <div className="p-3 bg-stone-950 rounded-xl border border-stone-800 text-[11px] text-stone-400 flex flex-wrap gap-2">
+                  <span className="font-bold text-stone-200">Placeholder:</span>
+                  <code className="text-amber-400 font-mono">{'{{nama}}'}</code>
+                  <code className="text-amber-400 font-mono">{'{{nomor_order}}'}</code>
+                  <code className="text-amber-400 font-mono">{'{{produk}}'}</code>
+                  <code className="text-amber-400 font-mono">{'{{total}}'}</code>
+                  <code className="text-amber-400 font-mono">{'{{status}}'}</code>
+                  <code className="text-amber-400 font-mono">{'{{alamat}}'}</code>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Template: Konfirmasi Pesanan Baru
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={formData.waTemplateOrderConfirmation || ''}
+                    onChange={(e) => handleFieldChange('waTemplateOrderConfirmation', e.target.value)}
+                    className="w-full bg-stone-950 border border-stone-800 focus:border-emerald-500 rounded-xl p-3 text-xs sm:text-sm text-stone-100 font-sans focus:outline-none transition shadow-inner"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Template: Pesanan Siap Diambil / Diantar
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={formData.waTemplateOrderReady || ''}
+                    onChange={(e) => handleFieldChange('waTemplateOrderReady', e.target.value)}
+                    className="w-full bg-stone-950 border border-stone-800 focus:border-emerald-500 rounded-xl p-3 text-xs sm:text-sm text-stone-100 font-sans focus:outline-none transition shadow-inner"
+                  />
+                </div>
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              16. QR CODE
+             ======================================================== */}
+          {activeTab === 'qrcode' && (
+            <SettingSectionCard
+              title="Generator &amp; Standee QR Code"
+              subtitle="Buat QR Code untuk meja kasir, promosi brosur, tautan menu online & unduh gambar"
+              icon={QrCode}
+              headerAction={
+                <button
+                  type="button"
+                  onClick={() => setIsQrGeneratorOpen(true)}
+                  className="min-h-[40px] px-4 rounded-xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white text-xs font-black shadow-lg shadow-red-950/40 flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+                >
+                  <QrCode className="w-4 h-4" />
+                  <span>Buka Generator QR</span>
+                </button>
+              }
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Judul QR Menu Meja
+                  </label>
+                  <SettingInput
+                    value={formData.qrMenuTitle || 'QR MENU WARUNG BANG KOBRA'}
+                    onChange={(e) => handleFieldChange('qrMenuTitle', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Judul QR Standee Kasir (Bungkus)
+                  </label>
+                  <SettingInput
+                    value={formData.qrOrderTitle || 'QR ORDER STANDEE KASIR'}
+                    onChange={(e) => handleFieldChange('qrOrderTitle', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-stone-950 border border-stone-800 flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-extrabold text-xs sm:text-sm text-stone-200">
+                    Cetak Lembar Standee Kasir &amp; Stiker Meja
+                  </div>
+                  <p className="text-[11px] text-stone-400">
+                    Unduh file gambar beresolusi tinggi (PNG) atau cetak langsung ke printer
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsQrGeneratorOpen(true)}
+                  className="min-h-[38px] px-3.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold transition cursor-pointer"
+                >
+                  Kelola QR
                 </button>
               </div>
-              <span className="text-[10px] text-stone-400 mt-1 block">
-                Google Sheets digunakan untuk sinkronisasi 8 Sheet (PRODUK, KATEGORI, TRANSAKSI,
-                DETAIL_TRANSAKSI, PELANGGAN, PENGELUARAN, STOK_LOG, PENGATURAN).
-              </span>
-            </div>
+            </SettingSectionCard>
+          )}
 
-            {testResult && (
-              <div
-                className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
-                  testResult.success
-                    ? 'bg-emerald-950/40 border-emerald-800 text-emerald-300'
-                    : 'bg-rose-950/40 border-rose-800 text-rose-300'
-                }`}
-              >
-                {testResult.success ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                ) : (
-                  <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                )}
-                <span>{testResult.message}</span>
+          {/* ========================================================
+              17. NOTIFIKASI & SUARA
+             ======================================================== */}
+          {activeTab === 'notification' && (
+            <SettingSectionCard
+              title="Notifikasi Real-time &amp; Suara Chime"
+              subtitle="Lonceng audio otomatis saat pesanan pelanggan dari QR masuk ke kasir"
+              icon={Bell}
+              headerAction={
+                <button
+                  type="button"
+                  onClick={handleTestChime}
+                  className="min-h-[40px] px-4 rounded-xl bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40 text-xs font-black flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Volume2 className="w-4 h-4 text-amber-400" />
+                  <span>Uji Suara Lonceng</span>
+                </button>
+              }
+            >
+              <SettingToggle
+                label="Suara Chime Lonceng Pesanan Baru Masuk"
+                description="Bunyikan nada audio web saat pelanggan mengirim pesanan baru ke kasir"
+                checked={formData.notificationSoundEnabled !== false}
+                onChange={(c) => handleFieldChange('notificationSoundEnabled', c)}
+              />
+
+              <SettingToggle
+                label="Getar pada Perangkat Mobile Android"
+                description="Getarkan HP saat notifikasi pesanan masuk pada perangkat yang mendukung API vibrasi"
+                checked={formData.notificationVibrateEnabled !== false}
+                onChange={(c) => handleFieldChange('notificationVibrateEnabled', c)}
+              />
+
+              {/* Volume Slider */}
+              <div className="p-4 rounded-2xl bg-stone-950 border border-stone-800 space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-bold text-stone-200">Volume Suara Lonceng:</span>
+                  <span className="font-mono font-black text-amber-400">
+                    {formData.notificationSoundVolume ?? 80}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={formData.notificationSoundVolume ?? 80}
+                  onChange={(e) => handleFieldChange('notificationSoundVolume', Number(e.target.value))}
+                  className="w-full accent-red-600 cursor-pointer"
+                />
               </div>
-            )}
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-              <div className="text-xs text-stone-400">
-                Terakhir Sinkronisasi:{' '}
-                <span className="font-mono text-stone-200">
-                  {formData.lastSyncTime || 'Belum pernah'}
+              <div className="space-y-2 pt-2 border-t border-stone-800">
+                <h4 className="font-extrabold text-sm text-stone-200">
+                  Pemberitahuan Dalam Aplikasi
+                </h4>
+                <SettingToggle
+                  label="Banner Notifikasi Pesanan Baru Masuk"
+                  checked={formData.notifyNewOrder !== false}
+                  onChange={(c) => handleFieldChange('notifyNewOrder', c)}
+                />
+                <SettingToggle
+                  label="Notifikasi Antrian Pre-Order (PO)"
+                  checked={formData.notifyPO !== false}
+                  onChange={(c) => handleFieldChange('notifyPO', c)}
+                />
+                <SettingToggle
+                  label="Notifikasi Pengantaran Kurir Delivery DQM"
+                  checked={formData.notifyDelivery !== false}
+                  onChange={(c) => handleFieldChange('notifyDelivery', c)}
+                />
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              18. PWA MOBILE APP
+             ======================================================== */}
+          {activeTab === 'pwa' && (
+            <SettingSectionCard
+              title="Progressive Web App (PWA)"
+              subtitle="Instal aplikasi WARUNG BANG KOBRA ke layar utama HP Android tanpa download PlayStore"
+              icon={Smartphone}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Nama Aplikasi (App Name)
+                  </label>
+                  <SettingInput
+                    value={formData.pwaAppName || 'WARUNG BANG KOBRA'}
+                    onChange={(e) => handleFieldChange('pwaAppName', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-300 block mb-1">
+                    Nama Pendek (Short Name)
+                  </label>
+                  <SettingInput
+                    value={formData.pwaShortName || 'WARKOB'}
+                    onChange={(e) => handleFieldChange('pwaShortName', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-stone-950 border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="font-extrabold text-xs sm:text-sm text-stone-200">
+                    Instal Aplikasi ke Layar Utama
+                  </div>
+                  <p className="text-[11px] text-stone-400">
+                    Pasang ikon Bang Kobra langsung di HP untuk akses kasir cepat &amp; offline cache
+                  </p>
+                </div>
+                <div className="shrink-0">
+                  <PWAInstallButton />
+                </div>
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              19. PELANGGAN
+             ======================================================== */}
+          {activeTab === 'customer' && (
+            <SettingSectionCard
+              title="Portal &amp; Data Pelanggan"
+              subtitle="Atur autentikasi pelanggan, validasi WhatsApp dan privasi riwayat pesanan"
+              icon={Users}
+            >
+              <SettingToggle
+                label="Izinkan Pemesanan Tamu (Guest Checkout)"
+                description="Pelanggan dapat langsung memesan tanpa perlu login akun"
+                checked={formData.customerAllowGuest !== false}
+                onChange={(c) => handleFieldChange('customerAllowGuest', c)}
+              />
+
+              <SettingToggle
+                label="Wajib Mengisi Nomor WhatsApp Aktif"
+                description="Memastikan kasir dapat menghubungi pelanggan dan mengirim bukti struk"
+                checked={formData.customerRequireWhatsApp !== false}
+                onChange={(c) => handleFieldChange('customerRequireWhatsApp', c)}
+              />
+
+              <SettingToggle
+                label="Izinkan Pelanggan Melacak Status Pesanan Mandiri"
+                description="Pelanggan dapat melihat status antrian (Menunggu, Diproses, Siap) secara realtime"
+                checked={formData.customerAllowSelfHistory !== false}
+                onChange={(c) => handleFieldChange('customerAllowSelfHistory', c)}
+              />
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              20. PENGGUNA & RBAC
+             ======================================================== */}
+          {activeTab === 'users' && (
+            <SettingSectionCard
+              title="Manajemen Pengguna &amp; Matriks Hak Akses (RBAC)"
+              subtitle="Kelola staf kasir, kurir delivery, dan batasan akses per peran pengguna"
+              icon={Users}
+            >
+              <div className="space-y-3">
+                <div className="p-4 rounded-2xl bg-stone-950 border border-stone-800 space-y-2">
+                  <h4 className="font-extrabold text-xs sm:text-sm text-stone-200">
+                    Daftar Peran Pengguna (User Roles):
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="p-2.5 rounded-xl bg-stone-900 border border-stone-800">
+                      <div className="font-black text-red-400">1. OWNER (Pemilik)</div>
+                      <div className="text-[11px] text-stone-400">Akses penuh seluruh fitur, laporan laba rugi, pengaturan sensitif &amp; reset.</div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-stone-900 border border-stone-800">
+                      <div className="font-black text-amber-400">2. ADMIN</div>
+                      <div className="text-[11px] text-stone-400">Kelola katalog produk, stok opname, laporan transaksi &amp; antrian.</div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-stone-900 border border-stone-800">
+                      <div className="font-black text-emerald-400">3. KASIR</div>
+                      <div className="text-[11px] text-stone-400">Operasional transaksi POS, pembayaran, cetak struk &amp; antrian pesanan.</div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-stone-900 border border-stone-800">
+                      <div className="font-black text-teal-400">4. KURIR DELIVERY</div>
+                      <div className="text-[11px] text-stone-400">Akses dashboard pengantaran Pesantren DQM &amp; upload foto bukti antar.</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              21. KEAMANAN
+             ======================================================== */}
+          {activeTab === 'security' && (
+            <SettingSectionCard
+              title="Keamanan Cloud &amp; Autentikasi Firebase"
+              subtitle="Perlindungan database Firestore dengan aturan akses berlapis (Security Rules)"
+              icon={Shield}
+            >
+              <div className="p-4 rounded-2xl bg-stone-950 border border-stone-800 space-y-2">
+                <div className="flex items-center gap-2 text-emerald-400 font-extrabold text-xs sm:text-sm">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Firestore Security Rules Aktif &amp; Terlindungi</span>
+                </div>
+                <p className="text-[11px] text-stone-400 leading-relaxed">
+                  Database Anda diamankan oleh berkas <code className="text-amber-400 font-mono">firestore.rules</code> yang telah diverifikasi dan diuji terhadap ancaman akses tidak sah.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-stone-950 border border-stone-800 space-y-2 text-xs">
+                <div className="font-bold text-stone-200">Informasi Proyek Firebase:</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-stone-400 font-mono">
+                  <div>Project ID: <span className="text-white">{firebaseConfig.projectId}</span></div>
+                  <div>Auth Domain: <span className="text-white">{firebaseConfig.authDomain}</span></div>
+                </div>
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              22. AUDIT LOG CLOUD
+             ======================================================== */}
+          {activeTab === 'audit' && (
+            <SettingSectionCard
+              title="Audit Log Aktivitas Cloud (Firestore)"
+              subtitle="Catatan riil setiap aksi perubahan harga, stok, pengaturan, dan transaksi"
+              icon={History}
+            >
+              {/* Filter */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={auditSearch}
+                  onChange={(e) => setAuditSearch(e.target.value)}
+                  placeholder="Cari aktivitas, nama staf, atau aksi..."
+                  className="w-full min-h-[38px] bg-stone-950 border border-stone-800 rounded-xl px-3 text-xs text-stone-100 placeholder-stone-500"
+                />
+              </div>
+
+              {/* Log List */}
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {auditLogs.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-stone-500">
+                    Belum ada riwayat aktivitas yang tercatat.
+                  </div>
+                ) : (
+                  auditLogs
+                    .filter((log) => {
+                      if (!auditSearch) return true;
+                      const q = auditSearch.toLowerCase();
+                      return (
+                        (log.action || '').toLowerCase().includes(q) ||
+                        (log.actor || '').toLowerCase().includes(q) ||
+                        (log.details || '').toLowerCase().includes(q)
+                      );
+                    })
+                    .slice(0, 30)
+                    .map((log) => (
+                      <div
+                        key={log.id}
+                        className="p-3 rounded-xl bg-stone-950 border border-stone-800 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1.5"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-red-400">
+                              [{log.action}]
+                            </span>
+                            <span className="font-semibold text-stone-200">
+                              {log.details}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-stone-500 mt-0.5">
+                            Oleh: <span className="text-stone-300 font-bold">{log.actor || 'Kasir'}</span> • Peran: {log.role || 'Staff'}
+                          </div>
+                        </div>
+                        <div className="text-[10px] text-stone-500 font-mono shrink-0">
+                          {log.timestamp ? new Date(log.timestamp).toLocaleString('id-ID') : '-'}
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              23. DATA & BACKUP
+             ======================================================== */}
+          {activeTab === 'backup' && (
+            <SettingSectionCard
+              title="Ekspor Data &amp; Cadangan (Backup)"
+              subtitle="Unduh data produk, transaksi, pelanggan & laporan ke berkas Excel (.xlsx)"
+              icon={FileSpreadsheet}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    exportProductsToExcel(products);
+                    showToast('Data produk berhasil diekspor ke Excel!', 'success');
+                  }}
+                  className="min-h-[44px] p-3 rounded-2xl bg-stone-950 border border-stone-800 hover:border-emerald-500/50 text-left flex items-center justify-between gap-2 transition cursor-pointer"
+                >
+                  <div>
+                    <div className="text-xs font-bold text-stone-200">Ekspor Produk (.xlsx)</div>
+                    <div className="text-[10px] text-stone-400">{products.length} Menu</div>
+                  </div>
+                  <Download className="w-4 h-4 text-emerald-400 shrink-0" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const txs = StorageService.getTransactions();
+                    exportTransactionsToExcel(txs);
+                    showToast('Data transaksi berhasil diekspor ke Excel!', 'success');
+                  }}
+                  className="min-h-[44px] p-3 rounded-2xl bg-stone-950 border border-stone-800 hover:border-emerald-500/50 text-left flex items-center justify-between gap-2 transition cursor-pointer"
+                >
+                  <div>
+                    <div className="text-xs font-bold text-stone-200">Ekspor Transaksi (.xlsx)</div>
+                    <div className="text-[10px] text-stone-400">Riwayat Penjualan</div>
+                  </div>
+                  <Download className="w-4 h-4 text-emerald-400 shrink-0" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const custs = StorageService.getCustomers();
+                    exportCustomersToExcel(custs);
+                    showToast('Data pelanggan berhasil diekspor ke Excel!', 'success');
+                  }}
+                  className="min-h-[44px] p-3 rounded-2xl bg-stone-950 border border-stone-800 hover:border-emerald-500/50 text-left flex items-center justify-between gap-2 transition cursor-pointer"
+                >
+                  <div>
+                    <div className="text-xs font-bold text-stone-200">Ekspor Pelanggan (.xlsx)</div>
+                    <div className="text-[10px] text-stone-400">Buku Kontak WA</div>
+                  </div>
+                  <Download className="w-4 h-4 text-emerald-400 shrink-0" />
+                </button>
+              </div>
+
+              {/* DANGER ZONE (OWNER ONLY) */}
+              <div className="pt-4 border-t border-rose-900/40 space-y-3">
+                <div className="flex items-center gap-2 text-rose-400 font-extrabold text-sm">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>Zona Berbahaya (Khusus Owner)</span>
+                </div>
+                <div className="p-4 rounded-2xl bg-rose-950/20 border border-rose-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="font-bold text-xs text-rose-200">
+                      Reset Data Transaksi &amp; Kasir ke Default Demo
+                    </div>
+                    <p className="text-[11px] text-stone-400">
+                      Tindakan ini akan mengosongkan data demo lokal dan memuat ulang data awal warung.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsDangerResetDbOpen(true)}
+                    className="min-h-[40px] px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black shrink-0 transition active:scale-95 cursor-pointer"
+                  >
+                    Reset Data Demo
+                  </button>
+                </div>
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              24. TENTANG WARUNG BANG KOBRA
+             ======================================================== */}
+          {activeTab === 'about' && (
+            <SettingSectionCard
+              title="Tentang Aplikasi Warung Bang Kobra"
+              subtitle="Informasi arsitektur sistem, versi rilis, status konektivitas Firebase Firestore dan hak cipta"
+              icon={Sparkles}
+            >
+              <div className="space-y-6">
+                {/* App Identity Banner */}
+                <div className="p-5 rounded-2xl bg-gradient-to-br from-stone-900 to-stone-950 border border-stone-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-red-600 via-orange-600 to-amber-600 p-0.5 shadow-xl shadow-red-950/60 shrink-0">
+                      <div className="w-full h-full bg-stone-950 rounded-[14px] flex items-center justify-center p-2">
+                        <img
+                          src={formData.logoUrl || '/icon.svg'}
+                          alt={formData.storeName}
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src = '/icon.svg';
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-black text-lg text-white tracking-tight">
+                          {formData.storeName || 'WARUNG BANG KOBRA'}
+                        </h3>
+                        <span className="px-2 py-0.5 rounded-full bg-red-600/20 text-red-400 border border-red-500/30 text-[10px] font-black uppercase">
+                          v2.5.0 PRO
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-400 mt-0.5">
+                        {formData.tagline || 'Sistem Point of Sale, Manajemen Pesanan & Katalog Online Terpadu'}
+                      </p>
+                      <p className="text-[11px] text-stone-500 mt-1">
+                        {formData.address || formData.storeAddress || 'Area Pesantren DQM'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-stretch sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        showToast('Menguji koneksi ke cloud Firestore...', 'info');
+                        const res = await testFirestoreConnection();
+                        if (res.connected) {
+                          showToast('Firestore terhubung realtime!', 'success');
+                        } else {
+                          showToast(`Koneksi Firestore: ${res.message}`, 'error');
+                        }
+                      }}
+                      className="flex-1 sm:flex-none min-h-[42px] px-4 rounded-xl bg-stone-800 hover:bg-stone-750 text-stone-200 text-xs font-bold flex items-center justify-center gap-2 border border-stone-700 transition cursor-pointer"
+                    >
+                      <RefreshCw className="w-4 h-4 text-emerald-400" />
+                      <span>Tes Cloud Firestore</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Cloud & Architecture Specs Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="p-4 rounded-2xl bg-stone-950 border border-stone-850 space-y-1.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-stone-500 flex items-center gap-1.5">
+                      <Database className="w-3.5 h-3.5 text-orange-400" />
+                      Database Realtime
+                    </div>
+                    <div className="font-extrabold text-sm text-stone-100">Google Cloud Firestore</div>
+                    <div className="text-[11px] text-stone-400 font-mono truncate">
+                      {firebaseConfig.projectId || 'ai-studio-remixwarungbangk'}
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      Two-Way Realtime Sync
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-stone-950 border border-stone-850 space-y-1.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-stone-500 flex items-center gap-1.5">
+                      <Shield className="w-3.5 h-3.5 text-red-400" />
+                      Keamanan &amp; Autentikasi
+                    </div>
+                    <div className="font-extrabold text-sm text-stone-100">Firebase Auth &amp; RBAC</div>
+                    <div className="text-[11px] text-stone-400">
+                      Rules v2 Terverifikasi (Admin, Kasir, Kurir, Dapur)
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 text-[10px] font-bold text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full">
+                      <CheckCircle2 className="w-3 h-3" />
+                      PIN &amp; Session Protected
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-stone-950 border border-stone-850 space-y-1.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-stone-500 flex items-center gap-1.5">
+                      <Smartphone className="w-3.5 h-3.5 text-blue-400" />
+                      Platform &amp; Offline
+                    </div>
+                    <div className="font-extrabold text-sm text-stone-100">Progressive Web App (PWA)</div>
+                    <div className="text-[11px] text-stone-400">
+                      Service Worker + IndexedDB / Local Cache
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 text-[10px] font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full">
+                      <Sparkles className="w-3 h-3" />
+                      Offline-First Resilient
+                    </div>
+                  </div>
+                </div>
+
+                {/* Feature Capabilities Checklist */}
+                <div className="p-4 rounded-2xl bg-stone-950 border border-stone-850 space-y-3">
+                  <h4 className="font-bold text-xs uppercase tracking-wider text-stone-300">
+                    Modul Terintegrasi Aktif:
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-stone-300">
+                    <div className="flex items-center gap-2 p-2 rounded-xl bg-stone-900/60 border border-stone-850">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>POS Kasir Cepat &amp; Varian Sachet Minuman</span>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 rounded-xl bg-stone-900/60 border border-stone-850">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Layanan Bungkus (Takeaway) &amp; Panggilan Antrian Suara</span>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 rounded-xl bg-stone-900/60 border border-stone-850">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Delivery DQM (Min. Rp20.000) &amp; Kurir Internal</span>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 rounded-xl bg-stone-900/60 border border-stone-850">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Pesanan Acara / PO Katering dengan Down Payment (DP)</span>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 rounded-xl bg-stone-900/60 border border-stone-850">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Katalog Web Pelanggan Responsif &amp; Order WhatsApp Otomatis</span>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 rounded-xl bg-stone-900/60 border border-stone-850">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Audit Log Cloud, Rekap Kas &amp; Ekspor Excel .xlsx</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Developer & Legal Footer */}
+                <div className="p-4 rounded-2xl bg-stone-900/40 border border-stone-800 text-center space-y-1.5">
+                  <p className="text-xs font-bold text-stone-300">
+                    WARUNG BANG KOBRA · Sistem POS &amp; Order Operasional v2.5.0
+                  </p>
+                  <p className="text-[11px] text-stone-500">
+                    Dirancang khusus untuk operasional kuliner cepat, delivery santri &amp; acara katering pesantren.
+                  </p>
+                  <p className="text-[10px] text-stone-600 pt-1">
+                    Hak Cipta &copy; {new Date().getFullYear()} Warung Bang Kobra. Seluruh hak cipta dilindungi.
+                  </p>
+                </div>
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* Mobile Sticky Floating Save Bar */}
+          {isDirty && (
+            <div className="lg:hidden fixed bottom-4 inset-x-4 z-40 bg-stone-900/95 backdrop-blur-md border border-amber-500/40 rounded-2xl p-3 shadow-2xl flex items-center justify-between gap-3 animate-in slide-in-from-bottom">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                <span className="text-xs font-bold text-amber-300 truncate">
+                  Perubahan belum disimpan
                 </span>
               </div>
-
-              <button
-                type="button"
-                onClick={onSyncNow}
-                disabled={isSyncing}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition active:scale-95 disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? 'Menyinkronkan...' : 'Sinkronkan Sekarang'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Section 3: Konfigurasi Struk Kasir & Operasional */}
-        <div className="bg-stone-900 border border-stone-800 rounded-3xl p-6 space-y-4 shadow-xl">
-          <div className="flex items-center gap-2 pb-2 border-b border-stone-800">
-            <Sliders className="w-5 h-5 text-amber-500" />
-            <h3 className="font-extrabold text-stone-100 text-base">
-              Pengaturan Struk Kasir & POS
-            </h3>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-bold text-stone-300 mb-1 block">
-                Prefix Nomor Invoice
-              </label>
-              <input
-                type="text"
-                value={formData.invoicePrefix}
-                onChange={(e) => handleInputChange('invoicePrefix', e.target.value.toUpperCase())}
-                placeholder="WKB"
-                className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500 font-mono uppercase"
-              />
-              <span className="text-[10px] text-stone-400">Format: WKB-YYYYMMDD-001</span>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-stone-300 mb-1 block">
-                Ukuran Printer Thermal Struk
-              </label>
-              <select
-                value={formData.receiptPaperSize}
-                onChange={(e) => handleInputChange('receiptPaperSize', e.target.value)}
-                className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
-              >
-                <option value="58mm">58mm (Printer Kasir Mini / Bluetooth Portabel)</option>
-                <option value="80mm">80mm (Printer Kasir Lebar Desktop)</option>
-              </select>
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="text-xs font-bold text-stone-300 mb-1 block">
-                Catatan Kaki Struk (Footer Struk)
-              </label>
-              <input
-                type="text"
-                value={formData.receiptFooter}
-                onChange={(e) => handleInputChange('receiptFooter', e.target.value)}
-                className="w-full bg-stone-950 border border-stone-700 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
-              />
-            </div>
-
-            <div className="sm:col-span-2 flex items-center justify-between p-3 rounded-2xl bg-stone-950 border border-stone-800">
-              <div>
-                <div className="font-bold text-xs text-stone-200">
-                  Kontrol Stok Ketat (Stock Enforcement)
-                </div>
-                <div className="text-[11px] text-stone-400">
-                  Cegah kasir menjual menu apabila sisa stok telah habis (0).
-                </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleDiscard}
+                  className="px-3 py-1.5 rounded-xl bg-stone-800 text-stone-300 text-xs font-bold transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={handleSave}
+                  className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-red-600 to-orange-600 text-white font-black text-xs shadow-lg flex items-center gap-1.5 active:scale-95 transition cursor-pointer"
+                >
+                  {isSaving ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Save className="w-3.5 h-3.5" />
+                  )}
+                  <span>Simpan</span>
+                </button>
               </div>
-              <input
-                type="checkbox"
-                checked={formData.stockControl}
-                onChange={(e) => handleInputChange('stockControl', e.target.checked)}
-                className="w-5 h-5 accent-amber-500 cursor-pointer rounded"
-              />
             </div>
-          </div>
-        </div>
+          )}
+        </main>
+      </div>
 
-        {/* Section 4: Cadangan & Reset Data */}
-        <div className="bg-stone-900 border border-stone-800 rounded-3xl p-6 space-y-4 shadow-xl">
-          <div className="flex items-center gap-2">
-            <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
-            <h3 className="font-extrabold text-stone-100 text-base">Cadangan Data & Format Excel (.xlsx)</h3>
-          </div>
-          <p className="text-xs text-stone-400">
-            Unduh seluruh data produk menu, transaksi kasir, dan data pelanggan langsung ke dalam format Microsoft Excel (.xlsx) yang kompatibel dengan Excel, Google Sheets, maupun LibreOffice.
-          </p>
+      {/* MODALS */}
+      {/* 1. Receipt Live Preview Modal */}
+      <ReceiptPreviewModal
+        isOpen={isReceiptPreviewOpen}
+        onClose={() => setIsReceiptPreviewOpen(false)}
+        settings={formData}
+      />
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-            <button
-              type="button"
-              onClick={() => {
-                const prods = StorageService.getProducts();
-                if (prods.length === 0) {
-                  showToast('Belum ada data produk untuk diekspor.', 'info');
-                  return;
-                }
-                exportProductsToExcel(prods);
-                showToast(`Berhasil mengekspor ${prods.length} produk ke Excel!`, 'success');
-              }}
-              className="flex items-center justify-center gap-2 p-3 rounded-2xl bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 border border-emerald-800/60 text-xs font-bold transition active:scale-95 cursor-pointer"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-              <span>Ekspor Menu (Excel)</span>
-            </button>
+      {/* 2. WhatsApp Tester Modal */}
+      <WhatsAppTesterModal
+        isOpen={isWaTesterOpen}
+        onClose={() => setIsWaTesterOpen(false)}
+        settings={formData}
+        showToast={showToast}
+      />
 
-            <button
-              type="button"
-              onClick={() => {
-                const txs = StorageService.getTransactions();
-                const exps = StorageService.getExpenses();
-                if (txs.length === 0 && exps.length === 0) {
-                  showToast('Belum ada data transaksi/pengeluaran untuk diekspor.', 'info');
-                  return;
-                }
-                exportTransactionsToExcel(txs, exps);
-                showToast(`Berhasil mengekspor ${txs.length} transaksi ke Excel!`, 'success');
-              }}
-              className="flex items-center justify-center gap-2 p-3 rounded-2xl bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 border border-emerald-800/60 text-xs font-bold transition active:scale-95 cursor-pointer"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-              <span>Ekspor Penjualan (Excel)</span>
-            </button>
+      {/* 3. QR Code Generator Modal */}
+      <QRCodeGeneratorModal
+        isOpen={isQrGeneratorOpen}
+        onClose={() => setIsQrGeneratorOpen(false)}
+        settings={formData}
+        showToast={showToast}
+      />
 
-            <button
-              type="button"
-              onClick={() => {
-                const custs = StorageService.getCustomers();
-                if (custs.length === 0) {
-                  showToast('Belum ada data pelanggan untuk diekspor.', 'info');
-                  return;
-                }
-                exportCustomersToExcel(custs);
-                showToast(`Berhasil mengekspor ${custs.length} pelanggan ke Excel!`, 'success');
-              }}
-              className="flex items-center justify-center gap-2 p-3 rounded-2xl bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 border border-emerald-800/60 text-xs font-bold transition active:scale-95 cursor-pointer"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-              <span>Ekspor Pelanggan (Excel)</span>
-            </button>
-          </div>
-
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={() => {
-                downloadProductExcelTemplate();
-                showToast('Template Excel untuk impor menu berhasil diunduh.', 'success');
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-stone-950 border border-stone-700 hover:border-amber-500/60 text-stone-300 hover:text-amber-400 text-xs font-bold transition cursor-pointer"
-            >
-              <FileDown className="w-4 h-4 text-amber-500" />
-              <span>Download Template Excel Impor Menu</span>
-            </button>
-          </div>
-
-          <hr className="border-stone-800 my-2" />
-
-          <div>
-            <h4 className="font-bold text-stone-200 text-xs mb-1">Pemeliharaan & Reset Data</h4>
-            <p className="text-[11px] text-stone-400 mb-3">
-              Jika Anda ingin mengembalikan data menu & transaksi contoh ke versi awal Warung Bang Kobra:
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                try {
-                  if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-                    if (!window.confirm('PERINGATAN: Apakah Anda yakin ingin mengembalikan seluruh data ke data awal Warung Bang Kobra?')) {
-                      return;
-                    }
-                  }
-                } catch {
-                  // Continue if restricted
-                }
-                onResetData();
-                showToast('Data berhasil dikembalikan ke data awal.', 'info');
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800 text-xs font-bold transition active:scale-95 cursor-pointer"
-            >
-              <RotateCcw className="w-4 h-4" />
-              <span>Reset ke Data Demo Awal</span>
-            </button>
-          </div>
-        </div>
-        </>
-        )}
-
-        {/* Sticky Bottom Action Bar for Quick Saving & Status */}
-        <div className="sticky bottom-4 z-20 p-4 rounded-2xl bg-stone-900/95 backdrop-blur-md border border-stone-800 shadow-2xl flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <span className={`w-2.5 h-2.5 rounded-full ${isDirty ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
-            <div>
-              <p className="text-xs font-bold text-stone-200">
-                {isDirty ? 'Terdapat perubahan pengaturan lokal yang belum disimpan' : 'Semua data warung & alamat telah tersinkronisasi ke cloud'}
-              </p>
-              <p className="text-[10px] text-stone-400">
-                {isDirty
-                  ? 'Simpan perubahan untuk menyinkronkan alamat warung ke struk kasir & perangkat lain.'
-                  : 'Alamat warung aktif: ' + (formData.address || formData.storeAddress || '-')}
+      {/* 4. Reset Settings Confirmation Modal */}
+      {isResetConfirmOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-stone-900 border border-stone-800 rounded-3xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+              <RotateCcw className="w-6 h-6" />
+            </div>
+            <div className="text-center space-y-1">
+              <h3 className="font-black text-base text-stone-100">
+                Kembalikan Pengaturan ke Default?
+              </h3>
+              <p className="text-xs text-stone-400 leading-relaxed">
+                Nilai konfigurasi formulir akan dikembalikan ke pengaturan standar Bang Kobra. Pastikan menekan &quot;Simpan Perubahan&quot; sesudahnya.
               </p>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {isDirty && (
+            <div className="flex items-center gap-2 pt-2">
               <button
                 type="button"
-                onClick={handleDiscard}
-                className="px-3.5 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-xs transition active:scale-95 cursor-pointer"
+                onClick={() => setIsResetConfirmOpen(false)}
+                className="flex-1 min-h-[44px] rounded-xl bg-stone-800 text-stone-300 font-bold text-xs"
               >
-                Batalkan
+                Batal
               </button>
-            )}
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-black text-xs shadow-lg shadow-amber-950/40 transition active:scale-95 disabled:opacity-50 cursor-pointer"
-            >
-              <Save className={`w-4 h-4 ${isSaving ? 'animate-spin' : ''}`} />
-              <span>{isSaving ? 'Menyimpan...' : 'Simpan Perubahan Toko'}</span>
-            </button>
+              <button
+                type="button"
+                onClick={handleResetToDefault}
+                className="flex-1 min-h-[44px] rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-black text-xs shadow-lg"
+              >
+                Ya, Reset Default
+              </button>
+            </div>
           </div>
         </div>
-      </form>
+      )}
 
-      {/* Guide Modal: How to Deploy Google Apps Script */}
-      {showGuideModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-stone-900 border border-stone-800 rounded-3xl w-full max-w-2xl shadow-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-800">
-              <div className="flex items-center gap-2">
-                <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
-                <h3 className="font-extrabold text-stone-100 text-base">
-                  Panduan Menghubungkan Google Sheets
-                </h3>
-              </div>
+      {/* 5. Danger Database Reset Confirmation Modal */}
+      {isDangerResetDbOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-stone-900 border-2 border-rose-600 rounded-3xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-600/20 text-rose-400 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <div className="text-center space-y-1">
+              <h3 className="font-black text-base text-rose-300">
+                Konfirmasi Reset Data (Owner Only)
+              </h3>
+              <p className="text-xs text-stone-400 leading-relaxed">
+                Apakah Anda benar-benar yakin ingin mengatur ulang data demo aplikasi? Tindakan ini tidak dapat dibatalkan.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
               <button
-                onClick={() => setShowGuideModal(false)}
-                className="p-1.5 rounded-xl bg-stone-800 text-stone-400 hover:text-white"
+                type="button"
+                onClick={() => setIsDangerResetDbOpen(false)}
+                className="flex-1 min-h-[44px] rounded-xl bg-stone-800 text-stone-300 font-bold text-xs"
               >
-                ✕
+                Batal
               </button>
-            </div>
-
-            <div className="space-y-3 text-xs text-stone-300 leading-relaxed max-h-[70vh] overflow-y-auto pr-1">
-              <div className="p-3 rounded-2xl bg-stone-950 border border-stone-800 space-y-1">
-                <div className="font-bold text-amber-400">Langkah 1: Buka Google Sheets Baru</div>
-                <p>
-                  Buka sheets.new di browser Anda untuk membuat Google Spreadsheet baru, beri nama
-                  misalnya "Database Warung Bang Kobra".
-                </p>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-stone-950 border border-stone-800 space-y-1">
-                <div className="font-bold text-amber-400">Langkah 2: Buka Apps Script</div>
-                <p>
-                  Di menu atas Google Sheets, klik <strong>Ekstensi (Extensions)</strong> &gt;{' '}
-                  <strong>Apps Script</strong>.
-                </p>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-stone-950 border border-stone-800 space-y-1">
-                <div className="font-bold text-amber-400">Langkah 3: Tempel Kode Backend</div>
-                <p>
-                  Hapus isi default di editor, lalu salin seluruh isi dari file{' '}
-                  <code className="text-amber-300">google-apps-script.js</code> yang telah kami
-                  sediakan di dalam repositori ini.
-                </p>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-stone-950 border border-stone-800 space-y-1">
-                <div className="font-bold text-amber-400">Langkah 4: Deploy sebagai Web App</div>
-                <p>
-                  1. Klik tombol biru <strong>Deploy (Terapkan)</strong> &gt;{' '}
-                  <strong>New deployment (Penerapan baru)</strong>.<br />
-                  2. Pilih jenis gear ⚙️ &gt; <strong>Web app</strong>.<br />
-                  3. Isi deskripsi (misal: "API Warung Bang Kobra").<br />
-                  4. Execute as (Jalankan sebagai): <strong>Me (email Anda)</strong>.<br />
-                  5. Who has access (Siapa yang memiliki akses):{' '}
-                  <strong className="text-emerald-400">Anyone (Siapa saja)</strong>.<br />
-                  6. Klik Deploy dan salin URL Web App yang berakhiran{' '}
-                  <code className="text-amber-300">/exec</code>.
-                </p>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-stone-950 border border-stone-800 space-y-1">
-                <div className="font-bold text-amber-400">
-                  Langkah 5: Masukkan URL di Pengaturan
-                </div>
-                <p>
-                  Tempelkan URL Web App tersebut ke kotak input Google Sheets Web App URL di halaman
-                  pengaturan ini, lalu klik tombol <strong>Tes Koneksi</strong>. Seluruh 8 lembar
-                  sheet akan otomatis dibuat dan disinkronkan!
-                </p>
-              </div>
-            </div>
-
-            <div className="pt-2 flex justify-end">
               <button
-                onClick={() => setShowGuideModal(false)}
-                className="px-5 py-2 rounded-xl bg-amber-600 text-white font-bold text-xs"
+                type="button"
+                onClick={() => {
+                  onResetData();
+                  setIsDangerResetDbOpen(false);
+                  showToast('Data berhasil di-reset ke nilai awal!', 'info');
+                }}
+                className="flex-1 min-h-[44px] rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-lg shadow-rose-950/60"
               >
-                Mengerti
+                Konfirmasi Reset
               </button>
             </div>
           </div>

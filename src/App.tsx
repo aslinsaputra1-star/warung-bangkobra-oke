@@ -494,30 +494,7 @@ export default function App() {
           };
 
           // Guard against unnecessary state updates if nothing actually changed
-          if (
-            prev.address === merged.address &&
-            prev.storeAddress === merged.storeAddress &&
-            prev.storeName === merged.storeName &&
-            prev.tagline === merged.tagline &&
-            prev.whatsappNumber === merged.whatsappNumber &&
-            prev.logoUrl === merged.logoUrl &&
-            prev.receiptFooter === merged.receiptFooter &&
-            prev.receiptPaperSize === merged.receiptPaperSize &&
-            prev.taxPercent === merged.taxPercent &&
-            prev.currency === merged.currency &&
-            prev.qrisImageUrl === merged.qrisImageUrl &&
-            prev.qrisMerchantName === merged.qrisMerchantName &&
-            prev.qrisNmid === merged.qrisNmid &&
-            prev.qrisEnabled === merged.qrisEnabled &&
-            prev.qrisInstruction === merged.qrisInstruction &&
-            prev.qrisUpdatedAt === merged.qrisUpdatedAt &&
-            prev.deliveryFeeType === merged.deliveryFeeType &&
-            prev.deliveryFeeAmount === merged.deliveryFeeAmount &&
-            prev.onlineMenuIsOpen === merged.onlineMenuIsOpen &&
-            prev.onlineMenuAnnouncement === merged.onlineMenuAnnouncement &&
-            prev.onlineMenuMinOrder === merged.onlineMenuMinOrder &&
-            prev.activeCashier === merged.activeCashier
-          ) {
+          if (JSON.stringify(prev) === JSON.stringify(merged)) {
             return prev;
           }
 

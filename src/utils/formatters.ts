@@ -155,8 +155,14 @@ export interface DeliveryMinOrderValidation {
   warningMessage: string;
 }
 
-export function getDeliveryMinOrderValidation(subtotal: number): DeliveryMinOrderValidation {
-  const minAmount = DELIVERY_MIN_ORDER_AMOUNT;
+export function getDeliveryMinOrderValidation(
+  subtotal: number,
+  customMinAmount?: number
+): DeliveryMinOrderValidation {
+  const minAmount =
+    typeof customMinAmount === 'number' && customMinAmount > 0
+      ? customMinAmount
+      : DELIVERY_MIN_ORDER_AMOUNT;
   const currentAmount = Math.max(0, Math.round(Number(subtotal) || 0));
   const isMet = currentAmount >= minAmount;
   const remainingAmount = Math.max(0, minAmount - currentAmount);
@@ -178,6 +184,92 @@ export function getDeliveryMinOrderValidation(subtotal: number): DeliveryMinOrde
     progressPercent,
     statusMessage,
     warningMessage,
+  };
+}
+
+export interface StoreStatusResult {
+  isOpen: boolean;
+  reason: string;
+  isTempClosed?: boolean;
+  isOnlineOrderClosed?: boolean;
+  isScheduleClosed?: boolean;
+  scheduleText?: string;
+}
+
+export function checkStoreStatus(settings?: Partial<StoreSettings> | null): StoreStatusResult {
+  if (!settings) {
+    return { isOpen: true, reason: 'Toko buka', scheduleText: 'Buka Normal' };
+  }
+
+  if (settings.isTempClosed) {
+    return {
+      isOpen: false,
+      isTempClosed: true,
+      reason: settings.tempClosedReason || 'Toko sedang tutup sementara oleh pengelola.',
+      scheduleText: 'Tutup Sementara',
+    };
+  }
+
+  if (settings.onlineMenuIsOpen === false) {
+    return {
+      isOpen: false,
+      isOnlineOrderClosed: true,
+      reason: settings.onlineMenuAnnouncement || 'Pesanan online sedang ditutup.',
+      scheduleText: 'Order Online Ditutup',
+    };
+  }
+
+  if (settings.is24Hours) {
+    return {
+      isOpen: true,
+      reason: 'Toko buka 24 jam nonstop',
+      scheduleText: 'Buka 24 Jam',
+    };
+  }
+
+  if (Array.isArray(settings.operatingHours) && settings.operatingHours.length > 0) {
+    const daysMap = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'] as const;
+    const todayName = daysMap[new Date().getDay()];
+    const todaySchedule = settings.operatingHours.find((h) => h.day === todayName);
+
+    if (todaySchedule) {
+      if (!todaySchedule.isOpen) {
+        return {
+          isOpen: false,
+          isScheduleClosed: true,
+          reason: `Toko tutup pada hari ${todayName}.`,
+          scheduleText: `Libur ${todayName}`,
+        };
+      }
+
+      const now = new Date();
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const [openH, openM] = (todaySchedule.openTime || '09:00').split(':').map(Number);
+      const [closeH, closeM] = (todaySchedule.closeTime || '22:00').split(':').map(Number);
+      const openMinutes = (openH || 0) * 60 + (openM || 0);
+      const closeMinutes = (closeH || 0) * 60 + (closeM || 0);
+
+      if (currentMinutes < openMinutes || currentMinutes > closeMinutes) {
+        return {
+          isOpen: false,
+          isScheduleClosed: true,
+          reason: `Toko sedang tutup. Jam operasional hari ini: ${todaySchedule.openTime} - ${todaySchedule.closeTime} WIB.`,
+          scheduleText: `${todaySchedule.openTime} - ${todaySchedule.closeTime} WIB`,
+        };
+      }
+
+      return {
+        isOpen: true,
+        reason: `Toko buka hingga ${todaySchedule.closeTime} WIB`,
+        scheduleText: `${todaySchedule.openTime} - ${todaySchedule.closeTime} WIB`,
+      };
+    }
+  }
+
+  return {
+    isOpen: true,
+    reason: 'Toko buka normal',
+    scheduleText: settings.onlineMenuHours || '09:00 - 22:00 WIB',
   };
 }
 

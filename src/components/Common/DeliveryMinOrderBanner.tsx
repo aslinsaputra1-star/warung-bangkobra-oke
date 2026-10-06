@@ -8,6 +8,8 @@ import {
 
 interface DeliveryMinOrderBannerProps {
   subtotal: number;
+  minAmount?: number;
+  areaName?: string;
   variant?: 'page' | 'cart-bar' | 'checkout';
   onAddMoreItems?: () => void;
   deliveryFee?: number;
@@ -15,6 +17,8 @@ interface DeliveryMinOrderBannerProps {
 
 export const DeliveryMinOrderBanner: React.FC<DeliveryMinOrderBannerProps> = ({
   subtotal,
+  minAmount: customMinAmount,
+  areaName = 'DQM',
   variant = 'page',
   onAddMoreItems,
   deliveryFee = 0,
@@ -25,7 +29,7 @@ export const DeliveryMinOrderBanner: React.FC<DeliveryMinOrderBannerProps> = ({
     currentAmount,
     remainingAmount,
     progressPercent,
-  } = getDeliveryMinOrderValidation(subtotal);
+  } = getDeliveryMinOrderValidation(subtotal, customMinAmount);
 
   // Compact Floating Cart Bar Variant
   if (variant === 'cart-bar') {

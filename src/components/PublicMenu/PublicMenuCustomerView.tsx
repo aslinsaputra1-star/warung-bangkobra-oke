@@ -63,6 +63,7 @@ import {
   getTakeawayQueueNumber,
   DELIVERY_MIN_ORDER_AMOUNT,
   getDeliveryMinOrderValidation,
+  checkStoreStatus,
 } from '../../utils/formatters';
 import { StorageService } from '../../services/storage';
 import {
@@ -306,6 +307,8 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
   }, 0);
   const deliveryFee = getEffectiveDeliveryFee(settings, orderType);
   const grandTotal = cartSubtotal + deliveryFee;
+  const effectiveMinDelivery = Number(settings.deliveryMinOrder ?? DELIVERY_MIN_ORDER_AMOUNT);
+  const storeStatus = useMemo(() => checkStoreStatus(settings), [settings]);
 
   // Cart operations
   const getCartKey = (productId: string, variantId?: string) =>
@@ -884,6 +887,29 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
             </div>
           </div>
 
+          {/* Store Closed or Schedule Banner */}
+          {!storeStatus.isOpen && (
+            <div className="relative z-10 p-4 rounded-2xl bg-amber-500/15 border border-amber-500/40 flex items-start gap-3 shadow-lg shadow-black/40 animate-in fade-in">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5 border border-amber-500/30">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-extrabold text-sm text-amber-300 flex items-center gap-2">
+                  <span>Toko Sedang Tutup</span>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-[10px] uppercase font-black tracking-wider border border-amber-500/30">
+                    {storeStatus.scheduleText || 'Tutup'}
+                  </span>
+                </div>
+                <p className="text-xs text-stone-200 mt-1 leading-relaxed">
+                  {storeStatus.reason}
+                </p>
+                <p className="text-[11px] text-stone-400 mt-1">
+                  Anda tetap dapat menjelajahi menu dan melihat varian. Layanan checkout akan aktif kembali saat toko dibuka.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Integrated Service Mode Selector */}
           <div id="layanan" className="relative z-10 pt-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -968,7 +994,7 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                     <div className="text-xs text-stone-400 truncate mt-0.5">
                       Khusus Area DQM · Min. Belanja{' '}
                       <span className="font-mono font-semibold text-stone-200 tabular-nums">
-                        {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)}
+                        {formatRupiah(effectiveMinDelivery)}
                       </span>
                     </div>
                   </div>
@@ -988,6 +1014,7 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
             {orderType === 'DELIVERY_DQM' && (
               <DeliveryMinOrderBanner
                 subtotal={cartSubtotal}
+                minAmount={effectiveMinDelivery}
                 variant="page"
                 deliveryFee={deliveryFee}
               />
@@ -1799,6 +1826,7 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
           {orderType === 'DELIVERY_DQM' && (
             <DeliveryMinOrderBanner
               subtotal={cartSubtotal}
+              minAmount={effectiveMinDelivery}
               variant="cart-bar"
               deliveryFee={deliveryFee}
             />
@@ -1912,6 +1940,7 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                 {orderType === 'DELIVERY_DQM' && (
                   <DeliveryMinOrderBanner
                     subtotal={cartSubtotal}
+                    minAmount={effectiveMinDelivery}
                     variant="checkout"
                     deliveryFee={deliveryFee}
                     onAddMoreItems={() => setIsCartDrawerOpen(false)}
@@ -2251,15 +2280,15 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                       <span>Syarat Minimal Delivery</span>
                       <span
                         className={`font-semibold font-mono tabular-nums ${
-                          cartSubtotal >= DELIVERY_MIN_ORDER_AMOUNT
+                          cartSubtotal >= effectiveMinDelivery
                             ? 'text-emerald-400'
                             : 'text-amber-400'
                         }`}
                       >
-                        {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT)}{' '}
-                        {cartSubtotal >= DELIVERY_MIN_ORDER_AMOUNT
+                        {formatRupiah(effectiveMinDelivery)}{' '}
+                        {cartSubtotal >= effectiveMinDelivery
                           ? '(Terpenuhi)'
-                          : `(Kurang ${formatRupiah(DELIVERY_MIN_ORDER_AMOUNT - cartSubtotal)})`}
+                          : `(Kurang ${formatRupiah(effectiveMinDelivery - cartSubtotal)})`}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-stone-400">
@@ -2288,22 +2317,30 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
                 onClick={handleSubmitOrder}
                 disabled={
                   isSubmitting ||
+                  !storeStatus.isOpen ||
                   (orderType === 'DELIVERY_DQM' && selectedAreaOption === 'OUTSIDE') ||
-                  (orderType === 'DELIVERY_DQM' && cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT)
+                  (orderType === 'DELIVERY_DQM' && cartSubtotal < effectiveMinDelivery)
                 }
                 className={`w-full min-h-[48px] py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-                  orderType === 'DELIVERY_DQM' && cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT
+                  !storeStatus.isOpen
+                    ? 'bg-stone-800 border border-amber-500/40 text-amber-300'
+                    : orderType === 'DELIVERY_DQM' && cartSubtotal < effectiveMinDelivery
                     ? 'bg-stone-800 border border-amber-500/40 text-amber-300'
                     : 'bg-orange-500 hover:bg-orange-400 text-stone-950 active:scale-[0.99]'
                 }`}
               >
                 {isSubmitting ? (
                   <span>Mengirim Pesanan ke Antrian Kasir...</span>
-                ) : orderType === 'DELIVERY_DQM' && cartSubtotal < DELIVERY_MIN_ORDER_AMOUNT ? (
+                ) : !storeStatus.isOpen ? (
+                  <>
+                    <Clock className="w-4 h-4 shrink-0 text-amber-400" />
+                    <span className="truncate">Toko Tutup · {storeStatus.scheduleText || 'Tutup'}</span>
+                  </>
+                ) : orderType === 'DELIVERY_DQM' && cartSubtotal < effectiveMinDelivery ? (
                   <>
                     <AlertCircle className="w-4 h-4 shrink-0" />
                     <span>
-                      Tambah {formatRupiah(DELIVERY_MIN_ORDER_AMOUNT - cartSubtotal)} Lagi untuk Delivery DQM
+                      Tambah {formatRupiah(effectiveMinDelivery - cartSubtotal)} Lagi untuk Delivery {settings.deliveryAreaName || 'DQM'}
                     </span>
                   </>
                 ) : (

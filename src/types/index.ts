@@ -297,16 +297,40 @@ export interface CashRecord {
   saldo: number;
 }
 
+export interface DayOperatingHour {
+  day: 'Senin' | 'Selasa' | 'Rabu' | 'Kamis' | 'Jumat' | 'Sabtu' | 'Minggu';
+  isOpen: boolean;
+  openTime: string;
+  closeTime: string;
+}
+
+export interface EWalletAccount {
+  id: string;
+  provider: 'GoPay' | 'OVO' | 'DANA' | 'ShopeePay' | 'LinkAja' | string;
+  accountNumber: string;
+  accountName: string;
+  qrCodeUrl?: string;
+  isActive: boolean;
+}
+
 export interface StoreSettings {
   storeName: string;
+  ownerName?: string;
   tagline: string;
   storeSlogan?: string;
   address: string;
   storeAddress?: string;
   whatsappNumber: string;
+  storeEmail?: string;
+  storePhone?: string;
+  storeWebsite?: string;
+  storeInstagram?: string;
+  storeFacebook?: string;
+  storeDescription?: string;
   logoUrl: string;
+  receiptLogoUrl?: string;
   receiptFooter: string;
-  receiptPaperSize?: '58mm' | '80mm';
+  receiptPaperSize?: '58mm' | '80mm' | 'A4';
   currency: string;
   taxPercent: number;
   defaultDiscount: number;
@@ -327,8 +351,52 @@ export interface StoreSettings {
   qrisUpdatedAt?: string;
   activeCashier: string;
   role: UserRole;
-  theme: 'dark' | 'light';
+  theme: 'dark' | 'light' | 'system';
+  // Branding
+  themePrimaryColor?: string;
+  themeSecondaryColor?: string;
+  themeAccentColor?: string;
+  themeBgColor?: string;
+  themeTextColor?: string;
+  themeFont?: 'Inter' | 'Poppins' | 'System';
+  themeRadius?: 'small' | 'medium' | 'large';
+  themeDensity?: 'compact' | 'comfortable' | 'spacious';
+  // Operating Hours
+  operatingHours?: DayOperatingHour[];
+  is24Hours?: boolean;
+  isTempClosed?: boolean;
+  tempClosedReason?: string;
+  holidayDates?: string[];
+  specialHoursNote?: string;
+  allowBrowsingWhenClosed?: boolean;
+  // POS
   invoicePrefix: string;
+  invoiceCounterStart?: number;
+  invoiceResetPeriod?: 'DAILY' | 'MONTHLY' | 'NEVER';
+  dateFormat?: string;
+  timeFormat?: string;
+  roundingMethod?: 'NONE' | 'UP_100' | 'UP_500' | 'UP_1000' | 'DOWN_100';
+  posAllowDiscount?: boolean;
+  posAllowManualPrice?: boolean;
+  posAllowPriceEdit?: boolean;
+  posRequireCustomer?: boolean;
+  posAllowItemNotes?: boolean;
+  posConfirmCancel?: boolean;
+  posConfirmDeleteItem?: boolean;
+  posAutoPrintReceipt?: boolean;
+  posShowReceiptModal?: boolean;
+  posAutoSendWhatsApp?: boolean;
+  posAutoSendEmail?: boolean;
+  // Pembayaran
+  paymentCashEnabled?: boolean;
+  paymentTransferEnabled?: boolean;
+  paymentQrisEnabled?: boolean;
+  paymentEwalletEnabled?: boolean;
+  bankName?: string;
+  bankAccountNumber?: string;
+  bankAccountHolder?: string;
+  ewallets?: EWalletAccount[];
+  // Online Menu / Online Order
   onlineMenuEnabled?: boolean;
   onlineMenuBannerText?: string;
   onlineMenuHours?: string;
@@ -336,10 +404,113 @@ export interface StoreSettings {
   onlineMenuIsOpen?: boolean;
   onlineMenuAnnouncement?: string;
   onlineMenuMinOrder?: number;
+  onlineAllowGuest?: boolean;
+  onlineRequireLogin?: boolean;
+  onlineRequireWa?: boolean;
+  onlineRequireEmail?: boolean;
+  onlineRequireAddressForDelivery?: boolean;
+  onlineAllowNotes?: boolean;
+  onlineAutoConfirm?: boolean;
+  // Takeaway
+  takeawayEnabled?: boolean;
+  takeawayServiceName?: string;
+  takeawayEstimatedMinutes?: number;
+  takeawayQueuePrefix?: string;
+  takeawayPickupInstructions?: string;
+  // Delivery
   deliveryDqmEnabled?: boolean;
+  deliveryAreaName?: string;
+  deliveryMinOrder?: number;
   deliveryFeeType?: 'FREE' | 'FIXED';
   deliveryFeeAmount?: number;
+  deliveryFreeEnabled?: boolean;
+  deliveryFreeMinOrder?: number;
+  deliveryHours?: string;
+  deliveryEstimatedMinutes?: number;
+  deliveryMaxRadiusKm?: number;
+  deliveryAreasList?: string[];
   deliveryDqmNote?: string;
+  // Pre-Order (PO)
+  poEnabled?: boolean;
+  poServiceName?: string;
+  poMinOrderAmount?: number;
+  poMinDaysAhead?: number;
+  poRequireDp?: boolean;
+  poDpType?: 'PERCENT' | 'FIXED';
+  poDpPercent?: number;
+  poDpFixedAmount?: number;
+  poPaymentDeadlineDays?: number;
+  poReminderDaysBefore?: number;
+  poTermsAndConditions?: string;
+  poBankTransferInfo?: string;
+  poBankInfo?: string;
+  poTerms?: string;
+  poQrisInfo?: string;
+  // Produk & Varian
+  productOutOfStockBehavior?: 'HIDE' | 'SHOW_DISABLED';
+  defaultMinStock?: number;
+  defaultUnit?: string;
+  productImageMaxSizeBytes?: number;
+  productAutoCompressImages?: boolean;
+  variantsEnabled?: boolean;
+  variantsRequireSelection?: boolean;
+  variantsMaxPerProduct?: number;
+  // Stok
+  allowNegativeStock?: boolean;
+  notifyLowStock?: boolean;
+  notifyOutOfStock?: boolean;
+  adjustmentReasons?: string[];
+  // Struk
+  receiptShowLogo?: boolean;
+  receiptShowStoreName?: boolean;
+  receiptShowAddress?: boolean;
+  receiptShowWhatsApp?: boolean;
+  receiptShowEmail?: boolean;
+  receiptShowCashier?: boolean;
+  receiptShowCustomer?: boolean;
+  receiptShowQris?: boolean;
+  receiptShowQrCode?: boolean;
+  // Email
+  emailSenderName?: string;
+  emailSenderAddress?: string;
+  emailReceiptEnabled?: boolean;
+  emailOrderConfirmationEnabled?: boolean;
+  emailOrderReadyEnabled?: boolean;
+  emailPoNotificationEnabled?: boolean;
+  emailDeliveryNotificationEnabled?: boolean;
+  // WhatsApp
+  cashierWhatsappNumber?: string;
+  waTemplateChatKasir?: string;
+  waTemplateOrderConfirmation?: string;
+  waTemplateOrderReady?: string;
+  waTemplateDelivery?: string;
+  waTemplatePO?: string;
+  waTemplateReceipt?: string;
+  // QR Code
+  qrMenuTitle?: string;
+  qrOrderTitle?: string;
+  qrPromoTitle?: string;
+  qrTokoTitle?: string;
+  // Notifikasi
+  notificationSoundEnabled?: boolean;
+  notificationVibrateEnabled?: boolean;
+  notificationSoundVolume?: number;
+  notifyNewOrder?: boolean;
+  notifyPayment?: boolean;
+  notifyOrderReady?: boolean;
+  notifyDelivery?: boolean;
+  notifyPO?: boolean;
+  // PWA
+  pwaAppName?: string;
+  pwaShortName?: string;
+  pwaThemeColor?: string;
+  pwaBgColor?: string;
+  pwaInstallPromptEnabled?: boolean;
+  // Pelanggan
+  customerAllowGuest?: boolean;
+  customerRequireWhatsApp?: boolean;
+  customerAllowSelfHistory?: boolean;
+  // Menu Ad Promo Banner
   menuAdActive?: boolean;
   menuAdTitle?: string;
   menuAdText?: string;
@@ -350,17 +521,6 @@ export interface StoreSettings {
   menuAdButtonText?: string;
   menuAdTheme?: 'fire' | 'amber' | 'emerald' | 'purple';
   menuAdImageUrl?: string;
-  // Pre-Order (PO) Store Settings
-  poEnabled?: boolean;
-  poMinDaysAhead?: number;
-  poDpType?: 'PERCENT' | 'FIXED';
-  poDpPercent?: number;
-  poDpFixedAmount?: number;
-  poTermsAndConditions?: string;
-  poBankTransferInfo?: string;
-  poBankInfo?: string;
-  poTerms?: string;
-  poQrisInfo?: string;
 }
 
 export interface SyncState {

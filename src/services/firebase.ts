@@ -2514,53 +2514,32 @@ export async function updateSettingsInFirebase(
       updatedAt: serverTimestamp(),
     };
 
-    if (settings.storeName !== undefined) updatePayload.storeName = String(settings.storeName);
-    if (settings.tagline !== undefined) {
-      updatePayload.tagline = String(settings.tagline);
-      updatePayload.storeSlogan = String(settings.tagline);
-    }
+    // Dynamically and safely copy all defined setting keys
+    Object.entries(settings).forEach(([key, val]) => {
+      if (val !== undefined && typeof val !== 'function') {
+        updatePayload[key] = val;
+      }
+    });
+
+    // Ensure bidirectional aliases and normalized values
     if (storeAddr !== undefined) {
       updatePayload.address = storeAddr;
       updatePayload.storeAddress = storeAddr;
     }
-    if (settings.whatsappNumber !== undefined) updatePayload.whatsappNumber = String(settings.whatsappNumber);
-    if (settings.logoUrl !== undefined) updatePayload.logoUrl = String(settings.logoUrl);
-    if (settings.receiptFooter !== undefined) updatePayload.receiptFooter = String(settings.receiptFooter);
-    if (settings.receiptPaperSize !== undefined) updatePayload.receiptPaperSize = settings.receiptPaperSize;
-    if (settings.taxPercent !== undefined) updatePayload.taxPercent = Number(settings.taxPercent);
-    if (settings.currency !== undefined) updatePayload.currency = String(settings.currency);
+    if (settings.tagline !== undefined) {
+      updatePayload.tagline = String(settings.tagline);
+      updatePayload.storeSlogan = String(settings.tagline);
+    }
     if (resolvedQrisUrl !== undefined) {
       updatePayload.qrisImageUrl = resolvedQrisUrl;
       updatePayload.qrisUrl = resolvedQrisUrl;
     }
-    if (settings.qrisMerchantName !== undefined) updatePayload.qrisMerchantName = String(settings.qrisMerchantName);
-    if (settings.qrisNmid !== undefined) updatePayload.qrisNmid = String(settings.qrisNmid);
-    if (settings.qrisEnabled !== undefined) updatePayload.qrisEnabled = Boolean(settings.qrisEnabled);
-    if (settings.qrisInstruction !== undefined) updatePayload.qrisInstruction = String(settings.qrisInstruction);
-    if (settings.onlineMenuEnabled !== undefined) updatePayload.onlineMenuEnabled = Boolean(settings.onlineMenuEnabled);
-    if (settings.onlineMenuIsOpen !== undefined) updatePayload.onlineMenuIsOpen = Boolean(settings.onlineMenuIsOpen);
-    if (settings.onlineMenuAnnouncement !== undefined) updatePayload.onlineMenuAnnouncement = String(settings.onlineMenuAnnouncement);
-    if (settings.onlineMenuMinOrder !== undefined) updatePayload.onlineMenuMinOrder = Number(settings.onlineMenuMinOrder);
-    if (settings.deliveryDqmEnabled !== undefined) updatePayload.deliveryDqmEnabled = Boolean(settings.deliveryDqmEnabled);
-    if (settings.deliveryFeeType !== undefined) updatePayload.deliveryFeeType = settings.deliveryFeeType;
-    if (settings.deliveryFeeAmount !== undefined) updatePayload.deliveryFeeAmount = Number(settings.deliveryFeeAmount);
-    if (settings.deliveryDqmNote !== undefined) updatePayload.deliveryDqmNote = String(settings.deliveryDqmNote);
-    if (settings.poEnabled !== undefined) updatePayload.poEnabled = Boolean(settings.poEnabled);
-    if (settings.poMinDaysAhead !== undefined) updatePayload.poMinDaysAhead = Number(settings.poMinDaysAhead);
-    if (settings.poDpType !== undefined) updatePayload.poDpType = settings.poDpType;
-    if (settings.poDpPercent !== undefined) updatePayload.poDpPercent = Number(settings.poDpPercent);
-    if (settings.poDpFixedAmount !== undefined) updatePayload.poDpFixedAmount = Number(settings.poDpFixedAmount);
-    if (settings.poBankInfo !== undefined) updatePayload.poBankInfo = String(settings.poBankInfo);
-    if (settings.poTerms !== undefined) updatePayload.poTerms = String(settings.poTerms);
 
     try {
-      await updateDoc(docRef, updatePayload);
+      await setDoc(docRef, { id: 'warung', ...updatePayload }, { merge: true });
     } catch (updateErr: any) {
-      if (updateErr?.code === 'not-found' || updateErr?.message?.includes('No document to update')) {
-        await setDoc(docRef, { id: 'warung', ...updatePayload }, { merge: true });
-      } else {
-        throw updateErr;
-      }
+      console.warn('SetDoc settings error, attempting updateDoc fallback:', updateErr);
+      await updateDoc(docRef, updatePayload);
     }
 
     if (resolvedQrisUrl !== undefined || settings.qrisMerchantName !== undefined || settings.qrisNmid !== undefined || settings.qrisEnabled !== undefined) {
