@@ -521,6 +521,39 @@ export interface StoreSettings {
   menuAdButtonText?: string;
   menuAdTheme?: 'fire' | 'amber' | 'emerald' | 'purple';
   menuAdImageUrl?: string;
+  // WhatsApp Bot System
+  wabotEnabled?: boolean;
+  wabotConfig?: WABotConfig;
+}
+
+export interface WABotConfig {
+  isEnabled: boolean;
+  botPhoneNumber: string;
+  botName: string;
+  greetingMessage: string;
+  closedMessage: string;
+  orderConfirmationTemplate: string;
+  deliveryTemplate: string;
+  receiptTemplate: string;
+  poTemplate: string;
+  cashierWaLink: string;
+  minDeliveryAmount: number;
+  deliveryAreaName: string;
+  autoReplyUnknown: string;
+  webhookSecret?: string;
+  lastActiveAt?: string;
+}
+
+export interface WABotChatMessage {
+  id: string;
+  sender: 'user' | 'bot';
+  text: string;
+  timestamp: string;
+  quickReplies?: Array<{ id: string; label: string; payload: string }>;
+  imageUrl?: string;
+  isOrderSummary?: boolean;
+  orderData?: Partial<Transaction>;
+  poData?: any;
 }
 
 export interface SyncState {
@@ -538,6 +571,7 @@ export type ActiveTab =
   | 'preorders'
   | 'delivery_dqm'
   | 'whatsapp_order'
+  | 'wabot'
   | 'products'
   | 'categories'
   | 'stock'

@@ -986,6 +986,23 @@ export const INITIAL_SETTINGS: StoreSettings = {
   menuAdButtonText: 'Pesan Menu Promo Ini',
   menuAdTheme: 'fire',
   menuAdImageUrl: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=600&auto=format&fit=crop&q=80',
+  // WhatsApp Bot System
+  wabotEnabled: true,
+  wabotConfig: {
+    isEnabled: true,
+    botPhoneNumber: '6281234567890',
+    botName: 'WA BOT WARUNG BANG KOBRA',
+    greetingMessage: '👋 Halo, selamat datang di WARUNG BANG KOBRA.\n\nSaya asisten otomatis yang siap melayani pesanan Anda dengan cepat & ramah!\n\nSilakan pilih menu di bawah ini:',
+    closedMessage: 'Maaf, WARUNG BANG KOBRA saat ini sedang tutup. Silakan melakukan pemesanan kembali pada jam operasional kami. Anda tetap dapat melihat menu yang tersedia.',
+    orderConfirmationTemplate: '✅ Pesanan Anda berhasil dicatat dan diteruskan ke kasir!',
+    deliveryTemplate: '🛵 Pesanan delivery Anda siap diantar ke area Pesantren DQM.',
+    receiptTemplate: '🧾 Struk digital resmi Warung Bang Kobra.',
+    poTemplate: '🎉 Formulir Pre-Order Acara / Katering berhasil dibuat.',
+    cashierWaLink: 'https://wa.me/6281234567890',
+    minDeliveryAmount: 20000,
+    deliveryAreaName: 'Sekitar Pesantren DQM',
+    autoReplyUnknown: 'Maaf, saya belum memahami permintaan tersebut. Silakan pilih menu di bawah atau hubungi kasir langsung.',
+  },
 };
 
 export const INITIAL_CUSTOMERS: Customer[] = [

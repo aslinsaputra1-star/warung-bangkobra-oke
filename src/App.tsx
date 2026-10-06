@@ -33,6 +33,7 @@ import { ReportsView } from './components/Reports/ReportsView';
 import { ExpensesView } from './components/Expenses/ExpensesView';
 import { CustomersView } from './components/Customers/CustomersView';
 import { SettingsView } from './components/Settings/SettingsView';
+import { WABotManagementView } from './components/WhatsApp/WABotManagementView';
 import { LogoEditorModal } from './components/Settings/LogoEditorModal';
 import { AIBotView } from './components/AIBot/AIBotView';
 import { AIBotDrawer } from './components/AIBot/AIBotDrawer';
@@ -1351,6 +1352,7 @@ export default function App() {
         products={products}
         variants={productVariants}
         settings={settings}
+        onOpenStaffLogin={() => setIsStaffLoginMode(true)}
         onOrderCreated={(newTx) => {
           setTransactions((prev) => [newTx, ...prev]);
           const updatedProds = StorageService.getProducts();
@@ -1388,6 +1390,7 @@ export default function App() {
         products={products}
         variants={productVariants}
         settings={settings}
+        onOpenStaffLogin={() => setIsStaffLoginMode(true)}
         onOrderCreated={(newTx) => {
           setTransactions((prev) => [newTx, ...prev]);
           const updatedProds = StorageService.getProducts();
@@ -1694,6 +1697,18 @@ export default function App() {
               onLoginSuccess={handleLoginSuccess}
               onLogout={handleLogout}
               onNavigate={setActiveTab}
+              showToast={showToast}
+            />
+          )}
+
+          {activeTab === 'wabot' && (
+            <WABotManagementView
+              products={products}
+              productVariants={productVariants}
+              transactions={transactions}
+              settings={settings}
+              onUpdateSettings={handleSaveSettings}
+              onSelectTransaction={setReceiptTx}
               showToast={showToast}
             />
           )}

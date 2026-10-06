@@ -90,6 +90,7 @@ export const Navigation: React.FC<NavigationProps> = ({
     { id: 'orders', label: 'Antrian Kasir', icon: ShoppingBag },
     { id: 'preorders', label: 'Pre-Order (PO)', icon: Calendar, badge: pendingPOCount, badgeText: 'PO' },
     { id: 'delivery_dqm', label: 'Delivery DQM', icon: Truck, badgeText: 'DQM' },
+    { id: 'wabot', label: 'WA Bot', icon: Bot, badgeText: 'BOT' },
     { id: 'products', label: 'Produk', icon: Package },
     { id: 'categories', label: 'Kategori', icon: Tags },
     { id: 'stock', label: 'Stok', icon: Layers, badge: lowStockCount },
@@ -139,6 +140,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   }> = [
     { id: 'preorders', label: 'Pre-Order (PO) Acara', icon: Calendar, desc: 'Pemesanan katering acara, DP & kalender', badge: pendingPOCount, badgeText: 'PO' },
     { id: 'delivery_dqm', label: 'Delivery DQM', icon: Truck, desc: 'Antrian & status pengantaran Pesantren DQM', badgeText: 'DQM' },
+    { id: 'wabot', label: 'WA Bot Otomatis', icon: Bot, desc: 'Simulator WA Bot, pesanan otomatis, PO & konfigurasi', badgeText: 'BOT' },
     { id: 'products', label: 'Produk', icon: Package, desc: 'Kelola katalog makanan & minuman' },
     { id: 'categories', label: 'Kategori', icon: Tags, desc: 'Kelompok menu makanan & minuman' },
     { id: 'stock', label: 'Stok', icon: Layers, desc: 'Pantau sisa stok bahan & menu', badge: lowStockCount },

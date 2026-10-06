@@ -1,0 +1,33 @@
+{
+  "id": "/?mode=customer",
+  "name": "WARUNG BANG KOBRA",
+  "short_name": "Bang Kobra",
+  "description": "Aplikasi pemesanan makanan & minuman online modern Warung Bang Kobra",
+  "start_url": "/?mode=customer",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#dc2626",
+  "background_color": "#ffffff",
+  "categories": ["food", "shopping"],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

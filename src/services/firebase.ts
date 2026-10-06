@@ -75,6 +75,7 @@ export interface AuditLogEntry {
   module: string;
   details: string;
   actor: string;
+  user?: string;
   role?: string;
   timestamp: string;
   createdAt?: any;
