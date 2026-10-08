@@ -46,6 +46,8 @@ import { subscribeToFirebaseOrders } from '../../services/firebase';
 import { CustomerProductDetailModal } from './CustomerProductDetailModal';
 import { CustomerCheckoutModal, CustomerCartItem } from './CustomerCheckoutModal';
 import { CustomerOrderTrackingModal } from './CustomerOrderTrackingModal';
+import { BrandLogo } from '../Common/BrandLogo';
+import { parseCustomerSubRoute, syncCustomerUrl } from '../../utils/routes';
 
 interface CustomerAppProps {
   products: Product[];
@@ -70,8 +72,24 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
   onOrderCreated,
   showToast,
 }) => {
+  // Parse initial route parameters from URL (/customer/menu, /customer/checkout, ?order=delivery, etc.)
+  const initialRouteData = useMemo(() => {
+    return parseCustomerSubRoute(
+      typeof window !== 'undefined' ? window.location.pathname : '',
+      typeof window !== 'undefined' ? window.location.search : ''
+    );
+  }, []);
+
   // Navigation tab
-  const [activeTab, setActiveTab] = useState<TabType>('home');
+  const [activeTab, setActiveTab] = useState<TabType>(() => initialRouteData.tab || 'home');
+  const [currentServiceType, setCurrentServiceType] = useState<'Takeaway' | 'Delivery'>(() => {
+    return initialRouteData.serviceType || initialServiceType;
+  });
+
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab);
+    syncCustomerUrl(tab);
+  };
 
   // Search query & filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -101,8 +119,8 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-  // Checkout modal
-  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
+  // Checkout modal (pre-opened if route is /customer/checkout)
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(() => Boolean(initialRouteData.openCheckout));
 
   // Order Tracking modal & tracked order
   const [trackedOrder, setTrackedOrder] = useState<Transaction | null>(null);
@@ -326,7 +344,18 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
     const rawNumber = settings.whatsappNumber || '6281234567890';
     const cleanNumber = sanitizeWhatsAppNumber(rawNumber);
     const msg = customMsg || 'Halo WARUNG BANG KOBRA, saya ingin bertanya tentang pesanan.';
-    window.open(`https://wa.me/${cleanNumber}?text=${encodeURIComponent(msg)}`, '_blank');
+    const url = `https://wa.me/${cleanNumber}?text=${encodeURIComponent(msg)}`;
+    try {
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch {
+      window.location.href = url;
+    }
   };
 
   // PWA Install click
@@ -427,13 +456,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
           <div className="flex items-center justify-between gap-3">
             {/* Left: Brand Logo & Welcoming Greeting */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-red-600 to-rose-600 text-white flex items-center justify-center font-black text-lg shadow-md shadow-red-600/20 overflow-hidden shrink-0">
-                {settings.logoUrl ? (
-                  <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-cover" />
-                ) : (
-                  <span>WBK</span>
-                )}
-              </div>
+              <BrandLogo size="md" className="rounded-2xl shrink-0 shadow-md shadow-red-600/20" />
               <div>
                 <div className="flex items-center gap-1.5">
                   <h1 className="text-base font-black text-gray-900 tracking-tight leading-none">
@@ -1385,30 +1408,43 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
         {/* ================= FLOATING CART BAR (Section G) ================= */}
         {cart.length > 0 && activeTab !== 'cart' && (
           <div className="fixed bottom-20 sm:bottom-22 left-0 right-0 z-40 px-4 max-w-md sm:max-w-xl md:max-w-2xl lg:max-w-4xl mx-auto pointer-events-none">
-            <button
-              type="button"
-              onClick={() => setActiveTab('cart')}
-              className="w-full py-3.5 px-4.5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white shadow-xl shadow-red-600/40 flex items-center justify-between pointer-events-auto transition active:scale-[0.98] cursor-pointer animate-in slide-in-from-bottom duration-300 ring-2 ring-white/30"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center font-black text-sm">
-                  <ShoppingBag className="w-4 h-4" />
+            <div className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white shadow-xl shadow-red-600/40 flex items-center justify-between pointer-events-auto transition animate-in slide-in-from-bottom duration-300 ring-2 ring-white/30">
+              <button
+                type="button"
+                onClick={() => handleTabChange('cart')}
+                className="flex items-center gap-3 text-left cursor-pointer flex-1"
+              >
+                <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center font-black text-sm">
+                  <ShoppingBag className="w-4.5 h-4.5" />
                 </div>
-                <div className="text-left leading-tight">
+                <div className="leading-tight">
                   <span className="font-extrabold text-xs block">
                     {cartItemCount} Menu di Keranjang
                   </span>
-                  <span className="text-[11px] text-white/80 font-mono">
+                  <span className="text-xs text-white/90 font-mono font-bold">
                     {formatRupiah(cartSubtotal)}
                   </span>
                 </div>
-              </div>
+              </button>
 
-              <div className="flex items-center gap-1 font-black text-xs bg-white text-red-600 px-3 py-1.5 rounded-xl shadow-xs">
-                <span>Lihat Keranjang</span>
-                <ChevronRight className="w-3.5 h-3.5" />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleTabChange('cart')}
+                  className="text-xs font-bold bg-white/15 hover:bg-white/25 text-white px-2.5 py-1.5 rounded-xl transition cursor-pointer"
+                >
+                  Keranjang
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsCheckoutModalOpen(true)}
+                  className="flex items-center gap-1 font-black text-xs bg-white text-red-600 hover:bg-red-50 px-3.5 py-1.5 rounded-xl shadow-md transition active:scale-95 cursor-pointer"
+                >
+                  <span>Checkout</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
               </div>
-            </button>
+            </div>
           </div>
         )}
 
@@ -1428,7 +1464,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => setActiveTab(item.id as TabType)}
+                  onClick={() => handleTabChange(item.id as TabType)}
                   className={`flex flex-col items-center justify-center gap-1 transition-all cursor-pointer relative ${
                     isActive ? 'text-red-600 font-black' : 'text-gray-400 hover:text-gray-600 font-medium'
                   }`}
@@ -1458,22 +1494,35 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
           isOpen={isDetailModalOpen}
           onClose={() => setIsDetailModalOpen(false)}
           onAddToCart={handleAddToCart}
+          onDirectOrder={(prod, v, q, n) => {
+            handleAddToCart(prod, v, q, n);
+            setIsDetailModalOpen(false);
+            setIsCheckoutModalOpen(true);
+          }}
         />
 
         {/* ================= CHECKOUT MODAL ================= */}
         <CustomerCheckoutModal
           cart={cart}
           settings={settings}
+          initialServiceType={currentServiceType}
           isOpen={isCheckoutModalOpen}
           onClose={() => setIsCheckoutModalOpen(false)}
           onOrderSuccess={(newOrder) => {
             setCart([]); // Clear cart upon successful order
             setMyOrders((prev) => [newOrder, ...prev]);
             setTrackedOrder(newOrder);
-            setIsTrackingModalOpen(true); // Automatically open tracking
             if (onOrderCreated) {
-              onOrderCreated(newOrder);
+              try {
+                onOrderCreated(newOrder);
+              } catch (cbErr) {
+                console.warn('onOrderCreated handler notice:', cbErr);
+              }
             }
+          }}
+          onTrackOrder={(order) => {
+            setTrackedOrder(order);
+            setIsTrackingModalOpen(true);
           }}
           showToast={showToast}
         />

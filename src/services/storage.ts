@@ -855,6 +855,7 @@ export class StorageService {
 
     let maxSeq = 0;
     transactions.forEach((tx) => {
+      if (!tx) return;
       const idToCheck = tx.poNumber || (tx.id_transaksi && tx.id_transaksi.startsWith(todayPrefix) ? tx.id_transaksi : '');
       if (idToCheck && idToCheck.startsWith(todayPrefix)) {
         const seqPart = idToCheck.replace(todayPrefix, '');
@@ -989,35 +990,46 @@ export class StorageService {
     // 3. Update Customer Record
     const customers = this.getCustomers();
     let updatedCustomers = [...customers];
-    if (transaction.nama_pelanggan && transaction.nama_pelanggan.trim() !== '' && transaction.nama_pelanggan !== 'Pelanggan Umum') {
-      const existingIdx = customers.findIndex(
-        (c) =>
-          (transaction.no_whatsapp && transaction.no_whatsapp !== '-' && c.no_whatsapp === transaction.no_whatsapp) ||
-          c.nama.toLowerCase() === transaction.nama_pelanggan.toLowerCase()
-      );
+    try {
+      if (
+        transaction.nama_pelanggan &&
+        transaction.nama_pelanggan.trim() !== '' &&
+        transaction.nama_pelanggan !== 'Pelanggan Umum'
+      ) {
+        const cleanName = transaction.nama_pelanggan.trim().toLowerCase();
+        const cleanWa = transaction.no_whatsapp && transaction.no_whatsapp !== '-' ? transaction.no_whatsapp.trim() : '';
 
-      if (existingIdx >= 0) {
-        const exist = customers[existingIdx];
-        updatedCustomers[existingIdx] = {
-          ...exist,
-          total_transaksi: exist.total_transaksi + 1,
-          total_belanja: exist.total_belanja + transaction.total,
-          last_order: new Date().toISOString(),
-          no_whatsapp: (transaction.no_whatsapp && transaction.no_whatsapp !== '-') ? transaction.no_whatsapp : exist.no_whatsapp,
-          ...(transaction.email_pelanggan ? { email: transaction.email_pelanggan } : {}),
-        };
-      } else {
-        updatedCustomers.unshift({
-          id: 'CUST-' + Math.random().toString(36).substring(2, 7),
-          nama: transaction.nama_pelanggan,
-          no_whatsapp: transaction.no_whatsapp || '-',
-          ...(transaction.email_pelanggan ? { email: transaction.email_pelanggan } : {}),
-          total_transaksi: 1,
-          total_belanja: transaction.total,
-          last_order: new Date().toISOString(),
-        });
+        const existingIdx = customers.findIndex(
+          (c) =>
+            Boolean(c && cleanWa && c.no_whatsapp && c.no_whatsapp === cleanWa) ||
+            Boolean(c && c.nama && c.nama.trim().toLowerCase() === cleanName)
+        );
+
+        if (existingIdx >= 0) {
+          const exist = customers[existingIdx];
+          updatedCustomers[existingIdx] = {
+            ...exist,
+            total_transaksi: (exist.total_transaksi || 0) + 1,
+            total_belanja: (exist.total_belanja || 0) + Number(transaction.total || 0),
+            last_order: new Date().toISOString(),
+            no_whatsapp: cleanWa || exist.no_whatsapp || '-',
+            ...(transaction.email_pelanggan ? { email: transaction.email_pelanggan } : {}),
+          };
+        } else {
+          updatedCustomers.unshift({
+            id: 'CUST-' + Math.random().toString(36).substring(2, 7),
+            nama: transaction.nama_pelanggan.trim(),
+            no_whatsapp: cleanWa || '-',
+            ...(transaction.email_pelanggan ? { email: transaction.email_pelanggan } : {}),
+            total_transaksi: 1,
+            total_belanja: Number(transaction.total || 0),
+            last_order: new Date().toISOString(),
+          });
+        }
+        this.saveCustomers(updatedCustomers);
       }
-      this.saveCustomers(updatedCustomers);
+    } catch (custErr) {
+      console.warn('Customer record update notice in completeTransaction:', custErr);
     }
 
     // 4. Queue for offline sync

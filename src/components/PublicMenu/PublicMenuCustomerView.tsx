@@ -14,6 +14,7 @@ interface PublicMenuCustomerViewProps {
   products: Product[];
   variants?: ProductVariant[];
   settings: StoreSettings;
+  onBackToStaffDashboard?: () => void;
   onOpenStaffLogin?: () => void;
   onOrderCreated?: (transaction: Transaction) => void;
   showToast?: (msg: string, type?: 'success' | 'error' | 'info') => void;
@@ -23,6 +24,7 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
   products,
   variants = [],
   settings,
+  onBackToStaffDashboard,
   onOpenStaffLogin,
   onOrderCreated,
   showToast,
@@ -32,6 +34,7 @@ export const PublicMenuCustomerView: React.FC<PublicMenuCustomerViewProps> = ({
       products={products}
       variants={variants}
       settings={settings}
+      onBackToStaffDashboard={onBackToStaffDashboard}
       onOpenStaffLogin={onOpenStaffLogin}
       onOrderCreated={onOrderCreated}
       showToast={showToast}

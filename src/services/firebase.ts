@@ -713,7 +713,14 @@ export async function saveOrderToFirebase(order: Transaction): Promise<{ success
   const path = `orders/${order.id_transaksi}`;
   try {
     if (!auth.currentUser) {
-      await ensureFirebaseAuth();
+      try {
+        await Promise.race([
+          ensureFirebaseAuth(),
+          new Promise((resolve) => setTimeout(resolve, 2000)),
+        ]);
+      } catch (authErr) {
+        console.warn('Anonymous auth race notice in saveOrderToFirebase:', authErr);
+      }
     }
     const orderDocRef = doc(db, 'orders', order.id_transaksi);
 
@@ -726,7 +733,7 @@ export async function saveOrderToFirebase(order: Transaction): Promise<{ success
       : null;
 
     // Sanitize data for Firestore according to strict Database Order rules:
-    const firestorePayload = {
+    const rawPayload: Record<string, any> = {
       id_transaksi: String(order.id_transaksi || `WKB-${Date.now()}`).trim(),
       tanggal: order.tanggal || new Date().toISOString().split('T')[0],
       jam: order.jam || new Date().toTimeString().split(' ')[0],
@@ -755,15 +762,15 @@ export async function saveOrderToFirebase(order: Transaction): Promise<{ success
       deliveryDetail: isDeliveryDqm ? String(order.deliveryDetail || '') : null,
       deliveryNote: isDeliveryDqm ? String(order.deliveryNote || order.catatan_pesanan || '') : null,
       deliveryFee: isDeliveryDqm ? Number(order.deliveryFee ?? order.biaya ?? 0) : 0,
-      deliveryStatus: normalizedDelivStatus,
+      deliveryStatus: normalizedDelivStatus || (isDeliveryDqm ? 'MENUNGGU' : null),
       deliveryId: isDeliveryDqm ? String(order.deliveryId || `DLV-${order.id_transaksi}`) : null,
-      courierId: isDeliveryDqm ? String(order.courierId || '') : null,
-      courierName: isDeliveryDqm ? String(order.courierName || '') : null,
-      sentAt: isDeliveryDqm ? String(order.sentAt || '') : null,
-      deliveredAt: isDeliveryDqm ? String(order.deliveredAt || '') : null,
-      receiverName: isDeliveryDqm ? String(order.receiverName || '') : null,
-      receiverPhone: isDeliveryDqm ? String(order.receiverPhone || '') : null,
-      proofPhotoUrl: isDeliveryDqm ? String(order.proofPhotoUrl || '') : null,
+      courierId: isDeliveryDqm ? (order.courierId ? String(order.courierId) : null) : null,
+      courierName: isDeliveryDqm ? (order.courierName ? String(order.courierName) : null) : null,
+      sentAt: isDeliveryDqm ? (order.sentAt ? String(order.sentAt) : null) : null,
+      deliveredAt: isDeliveryDqm ? (order.deliveredAt ? String(order.deliveredAt) : null) : null,
+      receiverName: isDeliveryDqm ? (order.receiverName ? String(order.receiverName) : null) : null,
+      receiverPhone: isDeliveryDqm ? (order.receiverPhone ? String(order.receiverPhone) : null) : null,
+      proofPhotoUrl: isDeliveryDqm ? (order.proofPhotoUrl ? String(order.proofPhotoUrl) : null) : null,
       alamat_pengantaran: isDeliveryDqm
         ? order.alamat_pengantaran || `Pesantren DQM - ${order.deliveryLocation || ''} ${order.deliveryDetail ? `(${order.deliveryDetail})` : ''}`.trim()
         : '',
@@ -797,21 +804,24 @@ export async function saveOrderToFirebase(order: Transaction): Promise<{ success
             poStockDeducted: Boolean(order.poStockDeducted),
           }
         : {}),
-      items: (order.items || []).map((item) => ({
-        id_detail: item.id_detail || '',
+      items: (order.items || []).map((item, idx) => ({
+        id_detail: item.id_detail || `DET-${order.id_transaksi}-${idx + 1}`,
         id_transaksi: item.id_transaksi || order.id_transaksi,
-        id_produk: item.id_produk || '',
-        nama_produk: item.nama_produk || '',
+        id_produk: item.id_produk || `PROD-${idx + 1}`,
+        nama_produk: item.nama_produk || 'Menu',
         ...(item.productName ? { productName: item.productName } : {}),
         ...(item.variantId ? { variantId: item.variantId } : {}),
         ...(item.variantName ? { variantName: item.variantName } : {}),
-        ...(item.harga_modal !== undefined ? { harga_modal: Number(item.harga_modal) } : {}),
+        ...(item.harga_modal !== undefined && item.harga_modal !== null ? { harga_modal: Number(item.harga_modal) } : {}),
         harga: Number(item.harga || 0),
-        qty: Number(item.qty || 0),
-        subtotal: Number(item.subtotal || 0),
+        qty: Number(item.qty || 1),
+        subtotal: Number(item.subtotal || (Number(item.harga || 0) * Number(item.qty || 1))),
         catatan: item.catatan || '',
       })),
     };
+
+    // Remove any undefined values recursively to ensure Firestore never throws undefined field error
+    const firestorePayload = JSON.parse(JSON.stringify(rawPayload, (_k, v) => (v === undefined ? null : v)));
 
     await setDoc(
       orderDocRef,
@@ -826,17 +836,16 @@ export async function saveOrderToFirebase(order: Transaction): Promise<{ success
 
     // Automatically ensure a corresponding document in `delivery_proofs` for every DELIVERY_DQM order
     if (isDeliveryDqm) {
-      const proofDocRef = doc(db, 'delivery_proofs', firestorePayload.id_transaksi);
-      const detailLoc = [
-        firestorePayload.deliveryLocation || 'Area DQM',
-        firestorePayload.deliveryDetail || '',
-      ]
-        .filter(Boolean)
-        .join(' - ');
-      const nowIso = new Date().toISOString();
-      await setDoc(
-        proofDocRef,
-        {
+      try {
+        const proofDocRef = doc(db, 'delivery_proofs', firestorePayload.id_transaksi);
+        const detailLoc = [
+          firestorePayload.deliveryLocation || 'Area DQM',
+          firestorePayload.deliveryDetail || '',
+        ]
+          .filter(Boolean)
+          .join(' - ');
+        const nowIso = new Date().toISOString();
+        const rawProofPayload = {
           deliveryId: firestorePayload.deliveryId || `DLV-${firestorePayload.id_transaksi}`,
           orderId: firestorePayload.id_transaksi,
           orderNumber: firestorePayload.id_transaksi,
@@ -860,9 +869,12 @@ export async function saveOrderToFirebase(order: Transaction): Promise<{ success
           ...(firestorePayload.deliveredAt ? { deliveredAt: firestorePayload.deliveredAt } : {}),
           createdAt: firestorePayload.created_at || nowIso,
           updatedAt: nowIso,
-        },
-        { merge: true }
-      );
+        };
+        const proofPayload = JSON.parse(JSON.stringify(rawProofPayload, (_k, v) => (v === undefined ? null : v)));
+        await setDoc(proofDocRef, proofPayload, { merge: true });
+      } catch (proofErr) {
+        console.warn('Notice: delivery_proofs doc sync handled safely:', proofErr);
+      }
     }
 
     logAuditActivity(

@@ -250,14 +250,20 @@ export const WhatsAppStatusView: React.FC<WhatsAppStatusViewProps> = ({
     setCopiedCaption(true);
     setTimeout(() => setCopiedCaption(false), 3000);
 
-    // Open WhatsApp Web or App
-    const cleanNumber = sanitizeWhatsAppNumber(settings.whatsappNumber || '');
-    const waUrl = cleanNumber
-      ? `https://wa.me/${cleanNumber}?text=${encodeURIComponent(caption)}`
-      : `https://api.whatsapp.com/send?text=${encodeURIComponent(caption)}`;
-
-    window.open(waUrl, '_blank');
-    showToast('Gambar telah diunduh & teks promosi disalin ke clipboard!', 'success');
+    // Open WhatsApp with text prefilled for status / chat
+    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(caption)}`;
+    try {
+      const a = document.createElement('a');
+      a.href = waUrl;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch {
+      window.location.href = waUrl;
+    }
+    showToast('Gambar telah diunduh & teks promosi Customer Layout siap dibagikan ke WhatsApp Status!', 'success');
   };
 
   // Save current design as Template (Section 10)

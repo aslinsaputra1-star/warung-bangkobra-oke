@@ -21,6 +21,7 @@ import {
 import { StoreSettings } from '../../types';
 import { generateQRCodeDataURL } from '../../utils/qrcode';
 import { BrandLogo } from '../Common/BrandLogo';
+import { getCustomerAppUrl } from '../../utils/routes';
 
 interface QRCodeOrderManagerViewProps {
   settings: StoreSettings;
@@ -42,14 +43,15 @@ export const QRCodeOrderManagerView: React.FC<QRCodeOrderManagerViewProps> = ({
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
-  // Compute Current Base URL
+  // Compute Current Base URL — Always points to Customer Layout (/customer)
   const getOrderUrl = (type: QRTargetType) => {
-    const origin = window.location.origin;
-    const pathname = window.location.pathname;
-    if (type === 'menu') {
-      return `${origin}${pathname}?menu=public`;
+    if (type === 'delivery') {
+      return getCustomerAppUrl(settings, 'menu', { order: 'delivery' });
     }
-    return `${origin}${pathname}?order=${type}`;
+    if (type === 'takeaway') {
+      return getCustomerAppUrl(settings, 'menu', { order: 'takeaway' });
+    }
+    return getCustomerAppUrl(settings, 'menu');
   };
 
   const currentUrl = getOrderUrl(selectedTarget);

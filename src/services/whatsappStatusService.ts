@@ -15,6 +15,7 @@ import {
   WhatsAppStatusTemplateType,
   StoreSettings,
 } from '../types';
+import { getCustomerAppUrl } from '../utils/routes';
 
 export const PRESET_STATUS_TEMPLATES: WhatsAppStatusTemplate[] = [
   {
@@ -156,16 +157,10 @@ const LOCAL_STORAGE_KEY_HISTORY = 'wbk_wa_status_history';
 
 export class WhatsAppStatusService {
   /**
-   * Resolve default customer app URL
+   * Resolve default customer app URL — Guaranteed to always point to Customer Layout (/customer)
    */
   static getCustomerAppUrl(settings?: StoreSettings): string {
-    if (settings?.customerAppUrl && settings.customerAppUrl.trim().length > 0) {
-      return settings.customerAppUrl.trim();
-    }
-    if (typeof window !== 'undefined') {
-      return `${window.location.origin}/?mode=customer`;
-    }
-    return 'https://warungbangkobra.com/?mode=customer';
+    return getCustomerAppUrl(settings);
   }
 
   /**

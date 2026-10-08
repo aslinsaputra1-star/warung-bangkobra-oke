@@ -151,7 +151,18 @@ export const CustomerOrderTrackingModal: React.FC<CustomerOrderTrackingModalProp
     const text = encodeURIComponent(
       `Halo WARUNG BANG KOBRA, saya ingin bertanya tentang status pesanan saya: *${currentOrder.id_transaksi}* (${currentOrder.nama_pelanggan}).`
     );
-    window.open(`https://wa.me/${cleanPhone}?text=${text}`, '_blank');
+    const url = `https://wa.me/${cleanPhone}?text=${text}`;
+    try {
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch {
+      window.location.href = url;
+    }
   };
 
   return (

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { X, Plus, Minus, ShoppingBag, Sparkles, AlertCircle } from 'lucide-react';
+import { X, Plus, Minus, ShoppingBag, Sparkles, AlertCircle, Zap } from 'lucide-react';
 import { Product, ProductVariant } from '../../types';
 import { formatRupiah } from '../../utils/formatters';
 
@@ -9,6 +9,7 @@ interface CustomerProductDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddToCart: (product: Product, variant: ProductVariant | undefined, qty: number, notes: string) => void;
+  onDirectOrder?: (product: Product, variant: ProductVariant | undefined, qty: number, notes: string) => void;
 }
 
 export const CustomerProductDetailModal: React.FC<CustomerProductDetailModalProps> = ({
@@ -17,6 +18,7 @@ export const CustomerProductDetailModal: React.FC<CustomerProductDetailModalProp
   isOpen,
   onClose,
   onAddToCart,
+  onDirectOrder,
 }) => {
   const [selectedVariantId, setSelectedVariantId] = useState<string>('');
   const [qty, setQty] = useState<number>(1);
@@ -65,6 +67,16 @@ export const CustomerProductDetailModal: React.FC<CustomerProductDetailModalProp
   const handleAdd = () => {
     if (isOutOfStock) return;
     onAddToCart(product, selectedVariant, qty, notes.trim());
+    onClose();
+  };
+
+  const handleDirectOrder = () => {
+    if (isOutOfStock) return;
+    if (onDirectOrder) {
+      onDirectOrder(product, selectedVariant, qty, notes.trim());
+    } else {
+      onAddToCart(product, selectedVariant, qty, notes.trim());
+    }
     onClose();
   };
 
@@ -222,7 +234,7 @@ export const CustomerProductDetailModal: React.FC<CustomerProductDetailModalProp
           </div>
         </div>
 
-        {/* Bottom Sticky Action Button */}
+        {/* Bottom Sticky Action Buttons */}
         <div className="p-4 sm:p-5 border-t border-gray-100 bg-white shadow-lg">
           {isOutOfStock ? (
             <button
@@ -233,19 +245,29 @@ export const CustomerProductDetailModal: React.FC<CustomerProductDetailModalProp
               Stok Produk Sedang Habis
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={handleAdd}
-              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 active:scale-[0.98] text-white font-bold text-sm sm:text-base shadow-lg shadow-red-600/30 flex items-center justify-between px-5 transition cursor-pointer"
-            >
-              <span className="flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5" />
-                Tambah ke Keranjang
-              </span>
-              <span className="font-black bg-white/20 px-3 py-1 rounded-xl text-xs sm:text-sm backdrop-blur-sm">
-                {formatRupiah(totalPrice)}
-              </span>
-            </button>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={handleAdd}
+                className="py-3.5 px-3 rounded-2xl bg-gray-100 hover:bg-gray-200 active:scale-95 text-gray-800 font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition cursor-pointer border border-gray-200"
+              >
+                <ShoppingBag className="w-4 h-4 text-red-600" />
+                <span>+ Keranjang</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleDirectOrder}
+                className="py-3.5 px-4 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 active:scale-[0.98] text-white font-bold text-xs sm:text-sm flex items-center justify-between shadow-lg shadow-red-600/30 transition cursor-pointer"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Zap className="w-4 h-4 fill-white" />
+                  Pesan Sekarang
+                </span>
+                <span className="text-[11px] sm:text-xs font-black bg-white/20 px-2 py-0.5 rounded-lg">
+                  {formatRupiah(totalPrice)}
+                </span>
+              </button>
+            </div>
           )}
         </div>
       </div>

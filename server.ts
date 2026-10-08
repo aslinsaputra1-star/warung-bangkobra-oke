@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import fs from "fs";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 
@@ -8,7 +9,7 @@ dotenv.config();
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Middleware JSON body parser
   app.use(express.json({ limit: "15mb" }));
@@ -24,6 +25,10 @@ async function startServer() {
       app: "Warung Bang Kobra POS API",
       timestamp: new Date().toISOString(),
     });
+  });
+
+  app.get("/healthz", (_req, res) => {
+    res.status(200).send("OK");
   });
 
   // Endpoint Proxy Sinkronisasi Google Sheets (Menghindari masalah CORS di Browser)
@@ -141,22 +146,26 @@ async function startServer() {
   // ==========================================
   // 2. VITE MIDDLEWARE / STATIC ASSETS
   // ==========================================
-  if (process.env.NODE_ENV !== "production") {
+  const distPath = path.join(process.cwd(), "dist");
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    fs.existsSync(path.join(distPath, "index.html"));
+
+  if (isProduction) {
+    app.use(express.static(distPath));
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  } else {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (_req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server Warung Bang Kobra POS berjalan di http://localhost:${PORT}`);
+    console.log(`Server Warung Bang Kobra POS berjalan di port ${PORT}`);
   });
 }
 

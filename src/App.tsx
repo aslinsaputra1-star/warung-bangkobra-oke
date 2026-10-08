@@ -43,6 +43,7 @@ import { QRCodeOrderManagerView } from './components/QRCodeOrder/QRCodeOrderMana
 import { CustomerOrderView } from './components/CustomerOrder/CustomerOrderView';
 import { PublicMenuCustomerView } from './components/PublicMenu/PublicMenuCustomerView';
 import { PublicMenuManagerView } from './components/PublicMenu/PublicMenuManagerView';
+import { isCustomerUrl, isStoreUrl } from './utils/routes';
 import { CategoriesView } from './components/Categories/CategoriesView';
 import { UsersManagementView } from './components/Users/UsersManagementView';
 import { OrdersManagementView } from './components/Orders/OrdersManagementView';
@@ -206,42 +207,17 @@ export default function App() {
   );
   const [settings, setSettings] = useState<StoreSettings>(() => StorageService.getSettings());
 
-  // Helper to check if current URL is a dedicated Customer Pesan Online / QR Menu link
+  // Helper to check if current URL is a dedicated Customer Layout (/customer, /customer/menu, etc.)
   const isDirectCustomerUrl = (() => {
     if (typeof window === 'undefined') return false;
-    const search = window.location.search.toLowerCase();
-    const path = window.location.pathname.toLowerCase();
-    return (
-      search.includes('menu=public') ||
-      search.includes('menu=online') ||
-      search.includes('mode=public') ||
-      search.includes('order=') ||
-      search.includes('mode=order') ||
-      search.includes('scan=') ||
-      path.includes('/menu') ||
-      path.includes('/order') ||
-      path.includes('/pesan')
-    );
+    return isCustomerUrl(window.location.pathname, window.location.search);
   })();
 
   // User Authentication State & RBAC
   const [currentUser, setCurrentUser] = useState<WarungUser | null>(() => {
-    // 1. CRITICAL: If accessed via Pesan Online / Customer URL, strictly isolate as Customer (null staff user)
-    if (typeof window !== 'undefined') {
-      const search = window.location.search.toLowerCase();
-      const path = window.location.pathname.toLowerCase();
-      if (
-        search.includes('menu=') ||
-        search.includes('mode=public') ||
-        search.includes('order=') ||
-        search.includes('mode=order') ||
-        search.includes('scan=') ||
-        path.includes('/menu') ||
-        path.includes('/order') ||
-        path.includes('/pesan')
-      ) {
-        return null;
-      }
+    // 1. CRITICAL: If accessed via Customer Layout URL (/customer, /customer/*, /menu, /order, /pesan, ?mode=customer, etc.), strictly isolate as Customer (null staff user)
+    if (typeof window !== 'undefined' && isCustomerUrl(window.location.pathname, window.location.search)) {
+      return null;
     }
     // 2. If existing authenticated staff session exists on internal POS URL, restore it
     const saved = StorageService.getAuthUser();
@@ -253,15 +229,17 @@ export default function App() {
     ) {
       return saved;
     }
-    // 3. Default to the primary Owner account (Rayyan) only on internal POS workspace root
-    const users = StorageService.getUsers();
-    const owner =
-      users.find((u) => u.email?.toLowerCase() === 'rayyanarasid549@gmail.com') ||
-      users.find((u) => u.role === 'Owner') ||
-      users[0];
-    if (owner) {
-      StorageService.setAuthUser(owner);
-      return owner;
+    // 3. Default to the primary Owner account (Rayyan) only on explicit store workspace URL (/store)
+    if (typeof window !== 'undefined' && isStoreUrl(window.location.pathname)) {
+      const users = StorageService.getUsers();
+      const owner =
+        users.find((u) => u.email?.toLowerCase() === 'rayyanarasid549@gmail.com') ||
+        users.find((u) => u.role === 'Owner') ||
+        users[0];
+      if (owner) {
+        StorageService.setAuthUser(owner);
+        return owner;
+      }
     }
     return null;
   });
@@ -1332,6 +1310,7 @@ export default function App() {
         variants={productVariants}
         settings={settings}
         initialOrderType={customerOrderType}
+        onBackToApp={() => setIsCustomerMode(false)}
         onOrderCreated={(newTx) => {
           setTransactions((prev) => [newTx, ...prev]);
           const updatedProds = StorageService.getProducts();
@@ -1353,6 +1332,7 @@ export default function App() {
         products={products}
         variants={productVariants}
         settings={settings}
+        onBackToStaffDashboard={isPublicMenuMode ? () => setIsPublicMenuMode(false) : undefined}
         onOpenStaffLogin={() => setIsStaffLoginMode(true)}
         onOrderCreated={(newTx) => {
           setTransactions((prev) => [newTx, ...prev]);

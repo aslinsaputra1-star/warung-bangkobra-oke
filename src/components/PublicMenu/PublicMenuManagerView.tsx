@@ -25,6 +25,7 @@ import {
 import { Product, StoreSettings } from '../../types';
 import { generateQRCodeDataURL } from '../../utils/qrcode';
 import { formatRupiah, sanitizeWhatsAppNumber } from '../../utils/formatters';
+import { getCustomerAppUrl } from '../../utils/routes';
 
 interface PublicMenuManagerViewProps {
   products: Product[];
@@ -43,8 +44,8 @@ export const PublicMenuManagerView: React.FC<PublicMenuManagerViewProps> = ({
   onNavigateToAds,
   showToast,
 }) => {
-  // Public Menu URL
-  const publicMenuUrl = `${typeof window !== 'undefined' ? window.location.origin + window.location.pathname : ''}?menu=public`;
+  // Canonical Customer Menu URL (strictly Customer Layout /customer)
+  const publicMenuUrl = getCustomerAppUrl(settings);
 
   // QR Code State
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
@@ -102,9 +103,19 @@ export const PublicMenuManagerView: React.FC<PublicMenuManagerViewProps> = ({
 
   // Share via WhatsApp
   const handleShareWhatsApp = () => {
-    const text = `🍽️ *Katalog Menu Digital ${settings.storeName}*\n\nPesan makanan lezat & minuman segar favorit langsung dari rumah tanpa antre! Klik link berikut:\n👉 ${publicMenuUrl}\n\nBuka Setiap Hari • Halal & Mantap!`;
+    const text = `🍽️ *Katalog Menu Digital ${settings.storeName}*\n\nPesan makanan lezat & minuman segar favorit langsung dari HP tanpa antre! Klik link berikut:\n👉 ${publicMenuUrl}\n\nBuka Setiap Hari • Halal, Enak & Mantap!`;
     const shareUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-    window.open(shareUrl, '_blank', 'noopener,noreferrer');
+    try {
+      const a = document.createElement('a');
+      a.href = shareUrl;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch {
+      window.location.href = shareUrl;
+    }
   };
 
   // Download QR Code
