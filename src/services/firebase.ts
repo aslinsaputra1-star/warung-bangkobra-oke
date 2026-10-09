@@ -2973,12 +2973,12 @@ export function subscribeToFirebaseDeliveryProofs(
 
 /**
  * RECORD RECEIPT SHARE METADATA TO FIREBASE (`orders` & `delivery_proofs`)
- * Menyimpan receiptSharedAt, receiptSharedBy, receiptShareMethod (contoh: GOOGLE_CHAT)
+ * Menyimpan receiptSharedAt, receiptSharedBy, receiptShareMethod (contoh: WHATSAPP)
  */
 export async function recordReceiptShareToFirebase(
   orderId: string,
   sharedBy = 'Kasir',
-  method: 'GOOGLE_CHAT' | 'WHATSAPP' | 'PRINT' | 'PDF' | 'EMAIL' = 'GOOGLE_CHAT',
+  method: 'WHATSAPP' | 'PRINT' | 'PDF' | 'EMAIL' | string = 'WHATSAPP',
   isDeliveryOrder = false
 ): Promise<boolean> {
   if (!orderId) return false;

@@ -89,7 +89,6 @@ export interface MaintenanceSettings {
   scheduledCheckInterval: 'DAILY' | 'WEEKLY' | 'MANUAL';
   maintenanceMode: boolean;
   maintenanceMessage: string;
-  notifyErrorToGoogleChat: boolean;
   notifySound: boolean;
   lastCheckTimestamp: string | null;
   lastBackupTimestamp: string | null;

@@ -20,7 +20,6 @@ import {
   Sparkles,
   Flame,
   CheckCircle2,
-  MessageSquare,
 } from 'lucide-react';
 import { Transaction, Product, ActiveTab, StoreSettings, WarungUser } from '../../types';
 import {
@@ -557,39 +556,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         >
           <QrCode className="w-4 h-4" />
           <span>Buka & Cetak QR Code</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      {/* Google Chat Otomatis Callout Card */}
-      <div className="bg-gradient-to-r from-emerald-950/40 via-stone-900 to-teal-950/40 border border-emerald-500/30 rounded-3xl p-4 sm:p-5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
-            <MessageSquare className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h4 className="text-sm font-extrabold text-stone-100">
-                GOOGLE CHAT OTOMATIS (PESANAN, DELIVERY & LAPORAN HARIAN)
-              </h4>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                Notifikasi Real-time
-              </span>
-            </div>
-            <p className="text-xs text-stone-400 mt-0.5">
-              Notifikasi pesanan masuk, delivery DQM santri, peringatan stok menipis, dan laporan harian otomatis terkirim langsung ke ruang Google Chat toko.
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          id="btn-dash-open-gchat"
-          onClick={() => onNavigate('google_chat')}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-black text-xs shadow-lg shadow-emerald-950/40 transition active:scale-95 shrink-0 cursor-pointer"
-        >
-          <MessageSquare className="w-4 h-4" />
-          <span>Buka Google Chat</span>
           <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>

@@ -1,10 +1,19 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "cleanUrls": true,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "trailingSlash": false,
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/customer",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/customer/(.*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/((?!assets/|favicon.ico|manifest.webmanifest|registerSW.js|sw.js|icon.svg|apple-touch-icon.png|pwa-.*).*)",
       "destination": "/index.html"
     }
   ],

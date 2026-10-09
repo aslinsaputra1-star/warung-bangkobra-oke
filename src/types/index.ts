@@ -72,7 +72,7 @@ export interface DeliveryProof {
   updatedAt: string;
   receiptSharedAt?: string;
   receiptSharedBy?: string;
-  receiptShareMethod?: 'GOOGLE_CHAT' | 'WHATSAPP' | 'PRINT' | 'PDF' | string;
+  receiptShareMethod?: 'WHATSAPP' | 'PRINT' | 'PDF' | string;
 }
 
 export type OrderQueueStatus =
@@ -223,7 +223,7 @@ export interface Transaction {
   catatan_pesanan?: string;
   receiptSharedAt?: string;
   receiptSharedBy?: string;
-  receiptShareMethod?: 'GOOGLE_CHAT' | 'WHATSAPP' | 'PRINT' | 'PDF' | 'EMAIL' | string;
+  receiptShareMethod?: 'WHATSAPP' | 'PRINT' | 'PDF' | 'EMAIL' | string;
   emailReceiptStatus?: EmailReceiptStatus;
   emailReceiptSentAt?: string;
   emailReceiptTarget?: string;
@@ -336,7 +336,6 @@ export interface StoreSettings {
   defaultDiscount: number;
   googleAppsScriptUrl?: string;
   googleSheetsUrl?: string;
-  googleChatWebhookUrl?: string;
   isGoogleSheetsConnected?: boolean;
   lastSyncTime?: string;
   autoSync: boolean;
@@ -574,7 +573,6 @@ export type ActiveTab =
   | 'whatsapp_order'
   | 'wabot'
   | 'whatsapp_status'
-  | 'google_chat'
   | 'products'
   | 'categories'
   | 'stock'
@@ -590,7 +588,6 @@ export type ActiveTab =
   | 'maintenance'
   | 'ai_bot';
 
-export * from './googleChat';
 export * from './maintenance';
 
 export interface CategoryItem {

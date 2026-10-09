@@ -1,4 +1,4 @@
-import { StoreSettings } from '../types';
+import type { StoreSettings } from '../types/index.ts';
 
 export type CustomerSubRoute = 'home' | 'menu' | 'cart' | 'checkout' | 'orders' | 'profile';
 export type StoreSubRoute = 'dashboard' | 'pos' | 'orders' | 'preorders' | 'delivery' | 'wabot' | 'products' | 'reports' | 'settings' | 'login';

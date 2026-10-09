@@ -27,6 +27,8 @@ import {
   Check,
   X,
   Share2,
+  Copy,
+  ExternalLink,
 } from 'lucide-react';
 import {
   Product,
@@ -46,8 +48,14 @@ import { subscribeToFirebaseOrders } from '../../services/firebase';
 import { CustomerProductDetailModal } from './CustomerProductDetailModal';
 import { CustomerCheckoutModal, CustomerCartItem } from './CustomerCheckoutModal';
 import { CustomerOrderTrackingModal } from './CustomerOrderTrackingModal';
+import { CustomerShareModal } from './CustomerShareModal';
 import { BrandLogo } from '../Common/BrandLogo';
-import { parseCustomerSubRoute, syncCustomerUrl } from '../../utils/routes';
+import {
+  parseCustomerSubRoute,
+  syncCustomerUrl,
+  getCustomerAppUrl,
+  VERCEL_CUSTOMER_URL,
+} from '../../utils/routes';
 
 interface CustomerAppProps {
   products: Product[];
@@ -125,6 +133,23 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
   // Order Tracking modal & tracked order
   const [trackedOrder, setTrackedOrder] = useState<Transaction | null>(null);
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
+
+  // Share Menu & Link Pelanggan Modal State (WhatsApp Status)
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+
+  // Production Canonical Customer URL
+  const customerAppUrl = useMemo(() => {
+    return getCustomerAppUrl(settings);
+  }, [settings]);
+
+  const handleQuickCopyCustomerLink = async () => {
+    try {
+      await navigator.clipboard.writeText(customerAppUrl);
+      showToast?.('Tautan Pelanggan berhasil disalin! Siap ditempel ke WhatsApp Status.', 'success');
+    } catch {
+      showToast?.('Gagal menyalin tautan pelanggan', 'error');
+    }
+  };
 
   // My Orders list from storage & Firebase
   const [myOrders, setMyOrders] = useState<Transaction[]>(() => {
@@ -471,6 +496,16 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
 
             {/* Right Quick Action Icons */}
             <div className="flex items-center gap-1.5 shrink-0">
+              {/* Bagikan Menu & Salin Link WhatsApp Status Button */}
+              <button
+                type="button"
+                onClick={() => setIsShareModalOpen(true)}
+                title="Bagikan Menu & Salin Link Pelanggan (WhatsApp Status)"
+                className="w-9 h-9 rounded-full bg-amber-50 text-amber-700 hover:bg-amber-100 flex items-center justify-center transition active:scale-95 cursor-pointer shadow-xs"
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
+
               {/* WhatsApp Kasir Button */}
               <button
                 type="button"
@@ -523,17 +558,55 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="🔍 Cari makanan atau minuman favorit..."
-                className="w-full pl-11 pr-4 py-3 bg-gray-100/80 hover:bg-gray-100 focus:bg-white rounded-2xl text-xs sm:text-sm text-gray-800 placeholder-gray-400 border border-gray-200/60 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition shadow-xs"
+                className="w-full pl-11 pr-4 py-3 bg-gray-100 focus:bg-white rounded-2xl text-xs sm:text-sm text-gray-800 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition shadow-inner"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   <X className="w-4 h-4" />
                 </button>
               )}
+            </div>
+
+            {/* Promo Card: Bagikan Menu & Salin Link Pelanggan ke WhatsApp Status */}
+            <div className="bg-gradient-to-r from-stone-900 via-stone-800 to-red-950 rounded-3xl p-4 text-white shadow-xl border border-stone-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-red-600/30 border border-red-500/40 flex items-center justify-center shrink-0 shadow-inner">
+                  <Share2 className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-black text-sm text-white">Bagikan Menu Online</span>
+                    <span className="text-[10px] bg-red-500/30 text-red-300 border border-red-500/40 px-2 py-0.5 rounded-full font-bold">
+                      WhatsApp Status
+                    </span>
+                  </div>
+                  <p className="text-xs text-stone-300 mt-0.5 font-medium leading-relaxed">
+                    Salin link resmi pelanggan atau pasang ke WhatsApp Status sekarang.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 pt-1 sm:pt-0">
+                <button
+                  type="button"
+                  onClick={handleQuickCopyCustomerLink}
+                  className="flex-1 sm:flex-initial px-3.5 py-2.5 rounded-xl bg-stone-700 hover:bg-stone-600 active:scale-95 text-stone-100 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5 text-stone-300" />
+                  <span>Salin Link</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsShareModalOpen(true)}
+                  className="flex-1 sm:flex-initial px-3.5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-md shadow-red-600/30"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>Bagikan Menu</span>
+                </button>
+              </div>
             </div>
 
             {/* 2. Premium Banner Carousel (Section B) */}
@@ -750,6 +823,32 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
               <span className="text-xs text-gray-400 font-bold bg-gray-100 px-2.5 py-1 rounded-full">
                 {filteredProducts.length} Produk
               </span>
+            </div>
+
+            {/* Quick Share Menu & Copy Link Strip */}
+            <div className="bg-amber-50/90 border border-amber-200/90 rounded-2xl p-3 flex items-center justify-between gap-2 shadow-xs">
+              <div className="flex items-center gap-2 text-amber-950 font-bold text-xs truncate">
+                <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                <span className="truncate">Bagikan menu ini ke WhatsApp Status</span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleQuickCopyCustomerLink}
+                  className="px-2.5 py-1.5 rounded-xl bg-white border border-amber-300 hover:bg-amber-100/70 font-bold text-amber-900 text-[11px] flex items-center gap-1 cursor-pointer active:scale-95 transition shadow-2xs"
+                >
+                  <Copy className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Salin Link</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsShareModalOpen(true)}
+                  className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer active:scale-95 transition shadow-xs"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>Bagikan</span>
+                </button>
+              </div>
             </div>
 
             {/* Search Bar */}
@@ -1543,6 +1642,15 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
             }}
           />
         )}
+
+        {/* ================= CUSTOMER SHARE MENU MODAL ================= */}
+        <CustomerShareModal
+          isOpen={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+          customerUrl={customerAppUrl}
+          settings={settings}
+          showToast={showToast}
+        />
       </div>
     </div>
   );

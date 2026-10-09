@@ -967,7 +967,6 @@ export class MaintenanceService {
       scheduledCheckInterval: 'DAILY',
       maintenanceMode: false,
       maintenanceMessage: 'Warung Bang Kobra sedang dalam pemeliharaan sistem berkala. Silakan kembali beberapa saat lagi!',
-      notifyErrorToGoogleChat: true,
       notifySound: true,
       lastCheckTimestamp: null,
       lastBackupTimestamp: null,

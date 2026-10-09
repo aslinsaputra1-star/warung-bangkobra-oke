@@ -4,7 +4,6 @@ import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
-import { createGoogleChatRouter } from "./serverGoogleChat.ts";
 import { createMaintenanceRouter } from "./serverMaintenance.ts";
 
 dotenv.config();
@@ -32,9 +31,6 @@ async function startServer() {
   app.get("/healthz", (_req, res) => {
     res.status(200).send("OK");
   });
-
-  // Google Chat Integration API
-  app.use("/api/google-chat", createGoogleChatRouter());
 
   // Maintenance & System Health API
   app.use("/api/maintenance", createMaintenanceRouter());

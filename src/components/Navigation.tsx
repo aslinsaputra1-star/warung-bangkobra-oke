@@ -28,7 +28,6 @@ import {
   Truck,
   Calendar,
   Smartphone,
-  MessageSquare,
 } from 'lucide-react';
 import { ActiveTab, UserRole, WarungUser } from '../types';
 import { hasTabAccess, normalizeRole, getRoleBadgeInfo } from '../utils/rbac';
@@ -94,7 +93,6 @@ export const Navigation: React.FC<NavigationProps> = ({
     { id: 'delivery_dqm', label: 'Delivery DQM', icon: Truck, badgeText: 'DQM' },
     { id: 'wabot', label: 'WA Bot', icon: Bot, badgeText: 'BOT' },
     { id: 'whatsapp_status', label: 'Status WhatsApp', icon: Smartphone, badgeText: 'WA' },
-    { id: 'google_chat', label: 'Google Chat', icon: MessageSquare, badgeText: 'CHAT' },
     { id: 'products', label: 'Produk', icon: Package },
     { id: 'categories', label: 'Kategori', icon: Tags },
     { id: 'stock', label: 'Stok', icon: Layers, badge: lowStockCount },
@@ -146,7 +144,6 @@ export const Navigation: React.FC<NavigationProps> = ({
     { id: 'delivery_dqm', label: 'Delivery DQM', icon: Truck, desc: 'Antrian & status pengantaran Pesantren DQM', badgeText: 'DQM' },
     { id: 'wabot', label: 'WA Bot Otomatis', icon: Bot, desc: 'Simulator WA Bot, pesanan otomatis, PO & konfigurasi', badgeText: 'BOT' },
     { id: 'whatsapp_status', label: 'Status WhatsApp', icon: Smartphone, desc: 'Pembuat promo visual 9:16 untuk dibagikan ke WhatsApp Status', badgeText: 'WA' },
-    { id: 'google_chat', label: 'Google Chat Otomatis', icon: MessageSquare, desc: 'Notifikasi otomatis pesanan, delivery DQM, stok & laporan harian ke Google Chat', badgeText: 'CHAT' },
     { id: 'products', label: 'Produk', icon: Package, desc: 'Kelola katalog makanan & minuman' },
     { id: 'categories', label: 'Kategori', icon: Tags, desc: 'Kelompok menu makanan & minuman' },
     { id: 'stock', label: 'Stok', icon: Layers, desc: 'Pantau sisa stok bahan & menu', badge: lowStockCount },
