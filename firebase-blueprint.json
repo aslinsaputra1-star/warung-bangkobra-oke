@@ -783,6 +783,38 @@
     "/receipt_emails/{logId}": {
       "schema": "ReceiptEmailLog",
       "description": "Email receipt delivery records and history (PENDING, SENT, FAILED) for POS and online orders."
+    },
+    "/google_chat_settings/{settingId}": {
+      "schema": "GoogleChatSettings",
+      "description": "Store Google Chat connection and notification event configuration."
+    },
+    "/google_chat_spaces/{spaceId}": {
+      "schema": "GoogleChatSpace",
+      "description": "Configured Google Chat spaces with name, ID, and connection status."
+    },
+    "/google_chat_notifications/{notifId}": {
+      "schema": "GoogleChatNotificationConfig",
+      "description": "Configuration toggles and space mappings for 14 automated notification event types."
+    },
+    "/google_chat_templates/{templateId}": {
+      "schema": "GoogleChatTemplate",
+      "description": "Customizable message templates with dynamic variables and preview."
+    },
+    "/google_chat_logs/{logId}": {
+      "schema": "GoogleChatLog",
+      "description": "Idempotent notification delivery audit logs, response codes, errors, and retries."
+    },
+    "/system_maintenance/{docId}": {
+      "schema": "MaintenanceSettings",
+      "description": "System health configuration, maintenance mode status, and last check metrics."
+    },
+    "/system_backups/{backupId}": {
+      "schema": "DatabaseBackup",
+      "description": "Full database backups, snapshots, item counts, checksum, and verification records."
+    },
+    "/system_error_logs/{logId}": {
+      "schema": "SystemErrorLog",
+      "description": "Sanitized runtime application error logs, priority levels, stack traces, and resolution status."
     }
   }
 }

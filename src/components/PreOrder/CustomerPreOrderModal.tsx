@@ -45,6 +45,7 @@ import {
 } from '../../utils/formatters';
 import { StorageService } from '../../services/storage';
 import { saveOrderToFirebase } from '../../services/firebase';
+import { GoogleChatService } from '../../services/googleChatService';
 
 interface CustomerPreOrderModalProps {
   isOpen: boolean;
@@ -403,6 +404,9 @@ export const CustomerPreOrderModal: React.FC<CustomerPreOrderModalProps> = ({
 
       // 2. Save locally
       StorageService.completeTransaction(newTx);
+
+      // 3. Dispatch Google Chat PO Notification
+      GoogleChatService.dispatchOrderNotifications(newTx, settings).catch(() => {});
 
       if (onOrderCreated) {
         onOrderCreated(newTx);

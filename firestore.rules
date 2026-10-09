@@ -305,5 +305,49 @@ service cloud.firestore {
       allow create, update: if isValidId(historyId);
       allow delete: if isValidId(historyId);
     }
+
+    // GOOGLE CHAT OTOMATIS (Owner full access, Admin manage, Kasir view, Customer blocked)
+    match /google_chat_settings/{settingId} {
+      allow get, list: if isSignedIn() && (isKasir() || isAdmin() || isOwner());
+      allow write: if isSignedIn() && (isAdmin() || isOwner());
+    }
+
+    match /google_chat_spaces/{spaceId} {
+      allow get, list: if isSignedIn() && (isKasir() || isAdmin() || isOwner());
+      allow write: if isSignedIn() && (isAdmin() || isOwner());
+    }
+
+    match /google_chat_notifications/{notifId} {
+      allow get, list: if isSignedIn() && (isKasir() || isAdmin() || isOwner());
+      allow write: if isSignedIn() && (isAdmin() || isOwner());
+    }
+
+    match /google_chat_templates/{templateId} {
+      allow get, list: if isSignedIn() && (isKasir() || isAdmin() || isOwner());
+      allow write: if isSignedIn() && (isAdmin() || isOwner());
+    }
+
+    match /google_chat_logs/{logId} {
+      allow get, list: if isSignedIn() && (isKasir() || isAdmin() || isOwner());
+      allow create, update: if isSignedIn() && (isKasir() || isAdmin() || isOwner());
+      allow delete: if isSignedIn() && isOwner();
+    }
+
+    // SYSTEM MAINTENANCE & REPAIR CENTER
+    match /system_maintenance/{docId} {
+      allow get, list: if isSignedIn() && (isKasir() || isAdmin() || isOwner());
+      allow write: if isSignedIn() && (isAdmin() || isOwner());
+    }
+
+    match /system_backups/{backupId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOwner());
+      allow write: if isSignedIn() && (isAdmin() || isOwner());
+    }
+
+    match /system_error_logs/{logId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOwner());
+      allow create, update: if isValidId(logId);
+      allow delete: if isSignedIn() && isOwner();
+    }
   }
 }

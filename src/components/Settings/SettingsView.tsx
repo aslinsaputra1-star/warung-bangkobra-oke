@@ -47,6 +47,7 @@ import {
   ArrowLeft,
   Copy,
   Info,
+  MessageSquare,
 } from 'lucide-react';
 import { StoreSettings, Product, DayOperatingHour, EWalletAccount } from '../../types';
 import { formatRupiah } from '../../utils/formatters';
@@ -85,6 +86,7 @@ interface SettingsViewProps {
   onSyncNow: () => void;
   isSyncing: boolean;
   onResetData: () => void;
+  onNavigateToGoogleChat?: () => void;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
@@ -104,6 +106,7 @@ export type SettingsTabId =
   | 'receipt'
   | 'email'
   | 'whatsapp'
+  | 'google_chat'
   | 'qrcode'
   | 'notification'
   | 'pwa'
@@ -139,6 +142,7 @@ const SETTINGS_CATEGORIES: NavCategory[] = [
   { id: 'receipt', label: 'Struk & Printer', icon: Receipt, badge: 'Preview', description: 'Ukuran 58mm/80mm, logo struk & preview cetak', keywords: ['struk', 'printer', '58mm', '80mm', 'a4', 'cetak', 'footer', 'preview'] },
   { id: 'email', label: 'Email Notifikasi', icon: Mail, description: 'Struk digital via email & pengirim toko', keywords: ['email', 'surat', 'inbox', 'notifikasi email', 'sender'] },
   { id: 'whatsapp', label: 'WhatsApp Notifikasi', icon: MessageCircle, badge: 'Tester', description: 'Template pesan WA, chat kasir & live tester', keywords: ['whatsapp', 'wa', 'chat', 'template', 'pesan', 'tester', 'kasir'] },
+  { id: 'google_chat', label: 'Google Chat Otomatis', icon: MessageSquare, badge: 'Baru', description: 'Webhook Google Chat, notifikasi otomatis & laporan harian', keywords: ['google', 'chat', 'webhook', 'notifikasi', 'otomatis', 'space', 'pesanan', 'laporan'] },
   { id: 'qrcode', label: 'QR Code Generator', icon: QrCode, description: 'QR Menu Meja, QR Order Standee & cetak', keywords: ['qr', 'qrcode', 'barcode', 'menu', 'standee', 'cetak', 'download'] },
   { id: 'notification', label: 'Notifikasi & Suara', icon: Bell, description: 'Lonceng pesanan baru, getar & slider volume', keywords: ['notifikasi', 'suara', 'chime', 'bell', 'audio', 'volume', 'getar', 'pesanan baru'] },
   { id: 'pwa', label: 'PWA Mobile App', icon: Smartphone, description: 'Aplikasi Android tanpa instal playstore', keywords: ['pwa', 'aplikasi', 'mobile', 'install', 'apk', 'offline', 'homescreen'] },
@@ -157,6 +161,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onSyncNow,
   isSyncing,
   onResetData,
+  onNavigateToGoogleChat,
   showToast,
 }) => {
   const [activeTab, setActiveTab] = useState<SettingsTabId>('profile');
@@ -1362,6 +1367,44 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onChange={(c) => handleFieldChange('onlineAllowGuest', c)}
               />
 
+              <div className="pt-2">
+                <label className="text-xs font-bold text-stone-300 block mb-1">
+                  URL / Domain Halaman Pelanggan (Production Vercel)
+                </label>
+                <div className="flex gap-2">
+                  <SettingInput
+                    value={formData.customerAppUrl || 'https://warung-bangkobra-oke.vercel.app/customer'}
+                    onChange={(e) => handleFieldChange('customerAppUrl', e.target.value)}
+                    placeholder="https://warung-bangkobra-oke.vercel.app/customer"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(formData.customerAppUrl || 'https://warung-bangkobra-oke.vercel.app/customer');
+                      showToast('Tautan pelanggan berhasil disalin!', 'success');
+                    }}
+                    className="px-3 py-2 bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shrink-0 cursor-pointer"
+                    title="Salin Tautan Pelanggan"
+                  >
+                    <Copy className="w-4 h-4 text-emerald-400" />
+                    <span>Salin</span>
+                  </button>
+                  <a
+                    href={formData.customerAppUrl || 'https://warung-bangkobra-oke.vercel.app/customer'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-2 bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shrink-0 cursor-pointer"
+                    title="Uji Buka Halaman Pelanggan"
+                  >
+                    <ExternalLink className="w-4 h-4 text-sky-400" />
+                    <span>Buka</span>
+                  </a>
+                </div>
+                <p className="text-[11px] text-stone-400 mt-1">
+                  Alamat resmi yang dibuka pelanggan saat scan QR Meja, Status WhatsApp, atau pesan online.
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                 <div>
                   <label className="text-xs font-bold text-stone-300 block mb-1">
@@ -2026,6 +2069,66 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     onChange={(e) => handleFieldChange('waTemplateOrderReady', e.target.value)}
                     className="w-full bg-stone-950 border border-stone-800 focus:border-emerald-500 rounded-xl p-3 text-xs sm:text-sm text-stone-100 font-sans focus:outline-none transition shadow-inner"
                   />
+                </div>
+              </div>
+            </SettingSectionCard>
+          )}
+
+          {/* ========================================================
+              GOOGLE CHAT OTOMATIS
+             ======================================================== */}
+          {activeTab === 'google_chat' && (
+            <SettingSectionCard
+              title="Google Chat Otomatis (Notifikasi & Laporan)"
+              subtitle="Hubungkan ruang Google Chat toko untuk menerima notifikasi pesanan masuk, delivery DQM, dan laporan harian"
+              icon={MessageSquare}
+              headerAction={
+                onNavigateToGoogleChat && (
+                  <button
+                    type="button"
+                    onClick={onNavigateToGoogleChat}
+                    className="min-h-[40px] px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black shadow-lg shadow-emerald-950/40 flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    <span>Buka Menu Google Chat</span>
+                  </button>
+                )
+              }
+            >
+              <div className="space-y-4">
+                <div className="p-4 rounded-2xl bg-stone-950 border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="font-extrabold text-xs sm:text-sm text-stone-200">
+                      Sistem Notifikasi Google Chat Warung Bang Kobra
+                    </div>
+                    <p className="text-[11px] text-stone-400 mt-0.5">
+                      Kelola webhook URL aman, daftar Ruang/Space, 14 pilihan event otomatis, template pesan, dan log riwayat terkirim.
+                    </p>
+                  </div>
+                  {onNavigateToGoogleChat && (
+                    <button
+                      type="button"
+                      onClick={onNavigateToGoogleChat}
+                      className="min-h-[38px] px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs transition active:scale-95 shadow-md shadow-amber-950/30 cursor-pointer shrink-0"
+                    >
+                      Buka Dashboard Google Chat →
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div className="bg-stone-950/70 border border-stone-800/80 p-3 rounded-xl">
+                    <div className="font-bold text-amber-400 mb-1">🔔 Pesanan Realtime</div>
+                    <p className="text-[11px] text-stone-400">Order online, WhatsApp & Delivery DQM langsung terkirim saat dibuat.</p>
+                  </div>
+                  <div className="bg-stone-950/70 border border-stone-800/80 p-3 rounded-xl">
+                    <div className="font-bold text-emerald-400 mb-1">📊 Rekap Harian</div>
+                    <p className="text-[11px] text-stone-400">Ringkasan transaksi, omset, cash/transfer, dan laba estimasi malam hari.</p>
+                  </div>
+                  <div className="bg-stone-950/70 border border-stone-800/80 p-3 rounded-xl">
+                    <div className="font-bold text-sky-400 mb-1">🛡️ Aman & Idempotent</div>
+                    <p className="text-[11px] text-stone-400">Secret tersimpan aman di server, bebas duplikasi reload atau retry.</p>
+                  </div>
                 </div>
               </div>
             </SettingSectionCard>

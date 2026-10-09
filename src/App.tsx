@@ -35,6 +35,8 @@ import { CustomersView } from './components/Customers/CustomersView';
 import { SettingsView } from './components/Settings/SettingsView';
 import { WABotManagementView } from './components/WhatsApp/WABotManagementView';
 import { WhatsAppStatusView } from './components/WhatsAppStatus/WhatsAppStatusView';
+import { GoogleChatView } from './components/GoogleChat/GoogleChatView';
+import { GoogleChatService } from './services/googleChatService';
 import { LogoEditorModal } from './components/Settings/LogoEditorModal';
 import { AIBotView } from './components/AIBot/AIBotView';
 import { AIBotDrawer } from './components/AIBot/AIBotDrawer';
@@ -740,6 +742,11 @@ export default function App() {
       console.warn('Firebase save warning:', err);
     });
 
+    // Automated Google Chat Notification (Order & Low Stock)
+    GoogleChatService.dispatchOrderNotifications(newTx, settings).catch((err) => {
+      console.warn('Google Chat notification notice:', err);
+    });
+
     // Re-read products, variants, and mutations as they were modified by completeTransaction
     const updatedProds = StorageService.getProducts();
     const updatedVars = StorageService.getProductVariants();
@@ -827,6 +834,31 @@ export default function App() {
     ).catch((err) => {
       console.warn('Firebase status update error:', err);
     });
+
+    // Notify Google Chat on order status changed (SELESAI / DIBATALKAN)
+    if (finalTx.status === 'SELESAI' || finalTx.status === 'Selesai') {
+      GoogleChatService.sendNotification({
+        eventId: `${finalTx.id_transaksi}_ORDER_COMPLETED`,
+        notificationType: 'ORDER_COMPLETED',
+        referenceId: finalTx.id_transaksi,
+        templateVariables: {
+          orderNumber: finalTx.id_transaksi,
+          customerName: finalTx.nama_pelanggan || 'Pelanggan',
+          total: formatRupiah(finalTx.total),
+        },
+      }).catch(() => {});
+    } else if (finalTx.status === 'DIBATALKAN' || finalTx.status === 'Dibatalkan') {
+      GoogleChatService.sendNotification({
+        eventId: `${finalTx.id_transaksi}_ORDER_CANCELLED`,
+        notificationType: 'ORDER_CANCELLED',
+        referenceId: finalTx.id_transaksi,
+        templateVariables: {
+          orderNumber: finalTx.id_transaksi,
+          customerName: finalTx.nama_pelanggan || 'Pelanggan',
+          reason: finalTx.catatan_pesanan || finalTx.notes || 'Pesanan dibatalkan',
+        },
+      }).catch(() => {});
+    }
   };
 
   const handleUpdateDeliveryStatus = (
@@ -1052,6 +1084,10 @@ export default function App() {
     syncProductsToFirebase(prods).catch(() => {});
     if (muts && muts.length > 0) {
       saveStockMutationToFirebase(muts[0]).catch(() => {});
+      const changedProd = prods.find((p) => p.id === (muts[0] as any).id_produk || p.id === (muts[0] as any).productId);
+      if (changedProd) {
+        GoogleChatService.dispatchStockNotification(changedProd, changedProd.stok).catch(() => {});
+      }
     }
   };
 
@@ -1088,6 +1124,7 @@ export default function App() {
     const updated = StorageService.addExpense(expense);
     setExpenses(updated);
     saveExpenseToFirebase(expense).catch(() => {});
+    GoogleChatService.dispatchExpenseNotification(expense, currentUser?.nama).catch(() => {});
   };
 
   const handleDeleteExpense = (id: string) => {
@@ -1319,6 +1356,7 @@ export default function App() {
           setProductVariants(updatedVars);
           syncProductsToFirebase(updatedProds, false).catch(() => {});
           syncProductVariantsToFirebase(updatedVars, false).catch(() => {});
+          GoogleChatService.dispatchOrderNotifications(newTx, settings).catch(() => {});
         }}
         showToast={showToast}
       />
@@ -1342,6 +1380,7 @@ export default function App() {
           setProductVariants(updatedVars);
           syncProductsToFirebase(updatedProds, false).catch(() => {});
           syncProductVariantsToFirebase(updatedVars, false).catch(() => {});
+          GoogleChatService.dispatchOrderNotifications(newTx, settings).catch(() => {});
         }}
         showToast={showToast}
       />
@@ -1380,6 +1419,7 @@ export default function App() {
           setProductVariants(updatedVars);
           syncProductsToFirebase(updatedProds, false).catch(() => {});
           syncProductVariantsToFirebase(updatedVars, false).catch(() => {});
+          GoogleChatService.dispatchOrderNotifications(newTx, settings).catch(() => {});
         }}
         showToast={showToast}
       />
@@ -1703,6 +1743,18 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'google_chat' && (
+            <GoogleChatView
+              currentUser={currentUser}
+              settings={settings}
+              transactions={transactions}
+              products={products}
+              expenses={expenses}
+              onBackToDashboard={() => setActiveTab('dashboard')}
+              showToast={showToast}
+            />
+          )}
+
           {activeTab === 'settings' && (
             <SettingsView
               settings={settings}
@@ -1711,6 +1763,7 @@ export default function App() {
               onSyncNow={handleSync}
               isSyncing={isSyncing}
               onResetData={handleResetData}
+              onNavigateToGoogleChat={() => setActiveTab('google_chat')}
               showToast={showToast}
             />
           )}

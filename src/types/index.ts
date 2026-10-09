@@ -573,6 +573,8 @@ export type ActiveTab =
   | 'delivery_dqm'
   | 'whatsapp_order'
   | 'wabot'
+  | 'whatsapp_status'
+  | 'google_chat'
   | 'products'
   | 'categories'
   | 'stock'
@@ -585,8 +587,11 @@ export type ActiveTab =
   | 'menu_ads'
   | 'login'
   | 'settings'
-  | 'whatsapp_status'
+  | 'maintenance'
   | 'ai_bot';
+
+export * from './googleChat';
+export * from './maintenance';
 
 export interface CategoryItem {
   id: string;

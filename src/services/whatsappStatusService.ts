@@ -15,7 +15,13 @@ import {
   WhatsAppStatusTemplateType,
   StoreSettings,
 } from '../types';
-import { getCustomerAppUrl } from '../utils/routes';
+import {
+  getCustomerAppUrl,
+  VERCEL_PRODUCTION_DOMAIN,
+  VERCEL_CUSTOMER_URL,
+} from '../utils/routes';
+
+export { VERCEL_PRODUCTION_DOMAIN, VERCEL_CUSTOMER_URL };
 
 export const PRESET_STATUS_TEMPLATES: WhatsAppStatusTemplate[] = [
   {
