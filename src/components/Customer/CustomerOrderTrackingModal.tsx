@@ -19,6 +19,7 @@ import { Transaction, StoreSettings, OrderType } from '../../types';
 import { formatRupiah, sanitizeWhatsAppNumber } from '../../utils/formatters';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
+import { BrandLogo } from '../Common/BrandLogo';
 
 interface CustomerOrderTrackingModalProps {
   order: Transaction;
@@ -174,9 +175,12 @@ export const CustomerOrderTrackingModal: React.FC<CustomerOrderTrackingModalProp
         {/* Header */}
         <div className="p-5 bg-gradient-to-r from-red-600 to-rose-600 text-white relative flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white font-bold shadow-inner">
-              {isDelivery ? <Bike className="w-6 h-6" /> : <Store className="w-6 h-6" />}
-            </div>
+            <BrandLogo
+              src={settings.logoUrl}
+              alt={settings.storeName || 'WARUNG BANG KOBRA'}
+              size="md"
+              className="rounded-2xl border-white/30 shrink-0 shadow-inner"
+            />
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs uppercase font-extrabold tracking-wider bg-white/20 px-2 py-0.5 rounded-full">
@@ -189,7 +193,7 @@ export const CustomerOrderTrackingModal: React.FC<CustomerOrderTrackingModalProp
                   </span>
                 )}
               </div>
-              <h2 className="text-lg font-black mt-0.5">Status Pesanan</h2>
+              <h2 className="text-lg font-black mt-0.5">{settings.storeName || 'Status Pesanan'}</h2>
             </div>
           </div>
 

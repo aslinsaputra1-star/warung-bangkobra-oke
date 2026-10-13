@@ -31,6 +31,7 @@ import {
 } from '../../utils/formatters';
 import { StorageService } from '../../services/storage';
 import { saveOrderToFirebase } from '../../services/firebase';
+import { BrandLogo } from '../Common/BrandLogo';
 
 export interface CustomerCartItem {
   cartKey: string;
@@ -776,6 +777,24 @@ export const CustomerCheckoutModal: React.FC<CustomerCheckoutModalProps> = ({
               <p className="text-xs sm:text-sm text-gray-500 mt-1">
                 Pesanan Anda telah diterima oleh sistem Warung Bang Kobra
               </p>
+            </div>
+
+            {/* Store Brand Header (Identik dengan Logo Toko) */}
+            <div className="flex items-center gap-3 p-3 px-4 rounded-2xl bg-gray-50 border border-gray-100 w-full">
+              <BrandLogo
+                src={settings.logoUrl}
+                alt={settings.storeName || 'WARUNG BANG KOBRA'}
+                size="md"
+                className="rounded-xl shadow-xs"
+              />
+              <div className="text-left min-w-0">
+                <span className="text-xs font-black text-gray-900 block truncate">
+                  {settings.storeName || 'WARUNG BANG KOBRA'}
+                </span>
+                <span className="text-[10px] text-gray-500 block truncate">
+                  {settings.address || 'Pesantren DQM'}
+                </span>
+              </div>
             </div>
 
             {/* Order Card */}

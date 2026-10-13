@@ -15,7 +15,6 @@ import {
   Bell,
   ChevronRight,
   Flame,
-  Sparkles,
   ArrowRight,
   Download,
   AlertCircle,
@@ -29,6 +28,11 @@ import {
   Share2,
   Copy,
   ExternalLink,
+  MapPin,
+  Tag,
+  ShieldCheck,
+  Heart,
+  Grid,
 } from 'lucide-react';
 import {
   Product,
@@ -42,6 +46,7 @@ import {
   sanitizeWhatsAppNumber,
   DELIVERY_MIN_ORDER_AMOUNT,
   checkStoreStatus,
+  DQM_LOCATIONS,
 } from '../../utils/formatters';
 import { StorageService } from '../../services/storage';
 import { subscribeToFirebaseOrders } from '../../services/firebase';
@@ -49,12 +54,15 @@ import { CustomerProductDetailModal } from './CustomerProductDetailModal';
 import { CustomerCheckoutModal, CustomerCartItem } from './CustomerCheckoutModal';
 import { CustomerOrderTrackingModal } from './CustomerOrderTrackingModal';
 import { CustomerShareModal } from './CustomerShareModal';
+import { CustomerPromoModal, PromoItem, PROMO_LIST } from './CustomerPromoModal';
+import { CustomerNotificationModal, CustomerNotification } from './CustomerNotificationModal';
+import { CustomerAddressModal } from './CustomerAddressModal';
+import { CustomerFAQModal } from './CustomerFAQModal';
 import { BrandLogo } from '../Common/BrandLogo';
 import {
   parseCustomerSubRoute,
   syncCustomerUrl,
   getCustomerAppUrl,
-  VERCEL_CUSTOMER_URL,
 } from '../../utils/routes';
 
 interface CustomerAppProps {
@@ -69,6 +77,7 @@ interface CustomerAppProps {
 }
 
 type TabType = 'home' | 'menu' | 'cart' | 'orders' | 'profile';
+type FeaturedSection = 'terlaris' | 'rekomendasi' | 'promo' | 'terbaru';
 
 export const CustomerApp: React.FC<CustomerAppProps> = ({
   products,
@@ -80,7 +89,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
   onOrderCreated,
   showToast,
 }) => {
-  // Parse initial route parameters from URL (/customer/menu, /customer/checkout, ?order=delivery, etc.)
+  // Parse initial route parameters from URL
   const initialRouteData = useMemo(() => {
     return parseCustomerSubRoute(
       typeof window !== 'undefined' ? window.location.pathname : '',
@@ -99,12 +108,13 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
     syncCustomerUrl(tab);
   };
 
-  // Search query & filter states
+  // Search & filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('Semua');
   const [sortBy, setSortBy] = useState<'popular' | 'price-asc' | 'price-desc' | 'name'>('popular');
+  const [featuredTab, setFeaturedTab] = useState<FeaturedSection>('terlaris');
 
-  // Cart state persisted to sessionStorage/localStorage
+  // Cart state persisted to localStorage
   const [cart, setCart] = useState<CustomerCartItem[]>(() => {
     try {
       const saved = localStorage.getItem('wbk_customer_cart');
@@ -118,51 +128,62 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
   useEffect(() => {
     try {
       localStorage.setItem('wbk_customer_cart', JSON.stringify(cart));
-    } catch {
-      // ignore
+    } catch (e) {
+      console.warn('Failed to save cart to localStorage:', e);
     }
   }, [cart]);
 
-  // Selected product for Detail modal
+  // Selected product for detail modal
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-  // Checkout modal (pre-opened if route is /customer/checkout)
+  // Checkout modal
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(() => Boolean(initialRouteData.openCheckout));
 
   // Order Tracking modal & tracked order
   const [trackedOrder, setTrackedOrder] = useState<Transaction | null>(null);
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
 
-  // Share Menu & Link Pelanggan Modal State (WhatsApp Status)
+  // Customer share modal
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const customerAppUrl = useMemo(() => getCustomerAppUrl(), []);
 
-  // Production Canonical Customer URL
-  const customerAppUrl = useMemo(() => {
-    return getCustomerAppUrl(settings);
-  }, [settings]);
+  // Promo modal
+  const [isPromoModalOpen, setIsPromoModalOpen] = useState(false);
 
-  const handleQuickCopyCustomerLink = async () => {
+  // Notification modal
+  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+  const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => {
     try {
-      await navigator.clipboard.writeText(customerAppUrl);
-      showToast?.('Tautan Pelanggan berhasil disalin! Siap ditempel ke WhatsApp Status.', 'success');
+      const saved = localStorage.getItem('wbk_read_notifications');
+      return saved ? JSON.parse(saved) : [];
     } catch {
-      showToast?.('Gagal menyalin tautan pelanggan', 'error');
+      return [];
     }
-  };
-
-  // My Orders list from storage & Firebase
-  const [myOrders, setMyOrders] = useState<Transaction[]>(() => {
-    const all = StorageService.getTransactions();
-    const phone = localStorage.getItem('wbk_customer_phone') || '';
-    if (phone) {
-      return all.filter((tx) => tx.no_whatsapp && tx.no_whatsapp.includes(phone.slice(-6)));
-    }
-    return all.slice(0, 10);
   });
+
+  // Address modal
+  const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
+
+  // FAQ modal
+  const [isFAQModalOpen, setIsFAQModalOpen] = useState(false);
+  const [faqModalTab, setFaqModalTab] = useState<'faq' | 'privacy' | 'about'>('faq');
+
+  // Customer orders (live subscribed)
+  const [myOrders, setMyOrders] = useState<Transaction[]>(() => {
+    try {
+      const allTx = StorageService.getTransactions();
+      const phone = localStorage.getItem('wbk_customer_phone') || '';
+      if (!phone) return allTx.slice(0, 10);
+      return allTx.filter((t) => t.no_whatsapp && t.no_whatsapp.includes(phone.slice(-6)));
+    } catch {
+      return [];
+    }
+  });
+
   const [orderFilterTab, setOrderFilterTab] = useState<'Semua' | 'Diproses' | 'Selesai' | 'Dibatalkan'>('Semua');
 
-  // PWA Install prompt state
+  // PWA install prompt
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
 
@@ -171,8 +192,9 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
     name: localStorage.getItem('wbk_customer_name') || 'Pelanggan Bang Kobra',
     phone: localStorage.getItem('wbk_customer_phone') || '',
     email: localStorage.getItem('wbk_customer_email') || '',
-    savedAddress: localStorage.getItem('wbk_customer_address') || 'Komplek Asrama DQM',
+    savedAddress: localStorage.getItem('wbk_customer_address') || 'Asrama DQM (Komplek Utama)',
   }));
+
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [editName, setEditName] = useState(customerProfile.name);
   const [editPhone, setEditPhone] = useState(customerProfile.phone);
@@ -209,19 +231,82 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
     };
   }, []);
 
+  // System Notifications derived from real order status + warung promos
+  const notifications: CustomerNotification[] = useMemo(() => {
+    const list: CustomerNotification[] = [];
+
+    // Order status notifications
+    myOrders.slice(0, 5).forEach((order) => {
+      const st = (order.status || 'MENUNGGU').toUpperCase();
+      let msg = 'Pesanan Anda telah diterima oleh kasir.';
+      if (st === 'DIPROSES') msg = 'Pesanan Anda sedang dipersiapkan di dapur warung.';
+      if (st === 'SIAP') msg = 'Pesanan Anda siap diambil / dalam perjalanan kurir!';
+      if (st === 'SELESAI') msg = 'Pesanan telah selesai dinikmati. Terima kasih!';
+      if (st === 'DIBATALKAN') msg = 'Pesanan Anda telah dibatalkan.';
+
+      list.push({
+        id: `notif-order-${order.id_transaksi}`,
+        type: 'order',
+        title: `Status Pesanan: ${order.id_transaksi}`,
+        message: msg,
+        time: `${order.jam || 'Hari ini'}`,
+        read: readNotificationIds.includes(`notif-order-${order.id_transaksi}`),
+        orderId: order.id_transaksi,
+      });
+    });
+
+    // Promo notification
+    list.push({
+      id: 'notif-promo-1',
+      type: 'promo',
+      title: 'Voucher KOBRA15 Aktif!',
+      message: 'Gunakan kode voucher KOBRA15 untuk hemat 15% pada menu makanan & Indomie spesial.',
+      time: 'Promo Hari Ini',
+      read: readNotificationIds.includes('notif-promo-1'),
+    });
+
+    // Info warung notification
+    list.push({
+      id: 'notif-info-dqm',
+      type: 'info',
+      title: 'Layanan Delivery DQM Beroperasi',
+      message: 'Kurir warung siap mengantar hangat pesanan Anda ke asrama & staf Pesantren DQM.',
+      time: 'Info Warung',
+      read: readNotificationIds.includes('notif-info-dqm'),
+    });
+
+    return list;
+  }, [myOrders, readNotificationIds]);
+
+  const unreadNotifCount = notifications.filter((n) => !n.read).length;
+
+  const handleMarkAsRead = (id: string) => {
+    setReadNotificationIds((prev) => {
+      const updated = Array.from(new Set([...prev, id]));
+      localStorage.setItem('wbk_read_notifications', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleMarkAllAsRead = () => {
+    const allIds = notifications.map((n) => n.id);
+    setReadNotificationIds(allIds);
+    localStorage.setItem('wbk_read_notifications', JSON.stringify(allIds));
+    showToast?.('Semua notifikasi ditandai telah dibaca.', 'info');
+  };
+
   // Check store status
   const storeStatus = useMemo(() => checkStoreStatus(settings), [settings]);
 
-  // Categories definitions (Section C)
+  // Categories definitions (Horizontal Scrollable)
   const categoriesList = [
     { id: 'Semua', label: '🌟 Semua' },
     { id: 'Makanan', label: '🍚 Makanan' },
-    { id: 'Mie', label: '🍜 Mie' },
     { id: 'Minuman', label: '🥤 Minuman' },
-    { id: 'Kopi', label: '☕ Kopi' },
-    { id: 'Jus', label: '🍹 Jus' },
     { id: 'Snack', label: '🍟 Snack' },
-    { id: 'Paket', label: '📦 Paket' },
+    { id: 'Sembako', label: '🌾 Sembako' },
+    { id: 'Kebutuhan Harian', label: '🧴 Kebutuhan Harian' },
+    { id: 'Produk Lainnya', label: '✨ Produk Lainnya' },
   ];
 
   // Filtered & Sorted Products
@@ -243,26 +328,23 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
         const nameLower = p.nama.toLowerCase();
         const catLower = p.kategori.toLowerCase();
 
-        if (selectedCategory === 'Mie') {
-          return catLower.includes('mie') || nameLower.includes('mie') || nameLower.includes('indomie');
-        }
-        if (selectedCategory === 'Kopi') {
-          return catLower.includes('kopi') || nameLower.includes('kopi') || nameLower.includes('coffee');
-        }
-        if (selectedCategory === 'Jus') {
-          return catLower.includes('jus') || nameLower.includes('jus') || nameLower.includes('juice');
-        }
-        if (selectedCategory === 'Snack') {
-          return catLower.includes('snack') || catLower.includes('gorengan') || nameLower.includes('snack') || nameLower.includes('kentang');
-        }
-        if (selectedCategory === 'Paket') {
-          return catLower.includes('paket') || nameLower.includes('paket') || nameLower.includes('combo');
-        }
         if (selectedCategory === 'Makanan') {
-          return catLower.includes('makanan') || nameLower.includes('nasi') || nameLower.includes('ayam');
+          return catLower.includes('makanan') || nameLower.includes('nasi') || nameLower.includes('ayam') || nameLower.includes('mie') || nameLower.includes('indomie');
         }
         if (selectedCategory === 'Minuman') {
           return catLower.includes('minuman') || catLower.includes('jus') || catLower.includes('kopi') || catLower.includes('teh');
+        }
+        if (selectedCategory === 'Snack') {
+          return catLower.includes('snack') || catLower.includes('gorengan') || nameLower.includes('snack') || nameLower.includes('kentang') || nameLower.includes('keripik');
+        }
+        if (selectedCategory === 'Sembako') {
+          return catLower.includes('sembako') || catLower.includes('beras') || catLower.includes('minyak') || catLower.includes('gula') || nameLower.includes('beras') || nameLower.includes('telur');
+        }
+        if (selectedCategory === 'Kebutuhan Harian') {
+          return catLower.includes('kebutuhan') || catLower.includes('sabun') || catLower.includes('pasta') || nameLower.includes('sabun') || nameLower.includes('shampoo');
+        }
+        if (selectedCategory === 'Produk Lainnya') {
+          return !['makanan', 'minuman', 'snack', 'sembako'].some((k) => catLower.includes(k));
         }
         return p.kategori === selectedCategory;
       })
@@ -270,16 +352,34 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
         if (sortBy === 'price-asc') return a.harga_jual - b.harga_jual;
         if (sortBy === 'price-desc') return b.harga_jual - a.harga_jual;
         if (sortBy === 'name') return a.nama.localeCompare(b.nama);
-        // Popular: items with higher sales or in-stock priority
         return (b.stok > 0 ? 1 : 0) - (a.stok > 0 ? 1 : 0);
       });
   }, [products, searchQuery, selectedCategory, sortBy]);
 
-  // Favorite products (Section D)
-  const favoriteProducts = useMemo(() => {
+  // Featured lists
+  const bestSellerProducts = useMemo(() => {
+    return products.filter((p) => p.status !== 'Nonaktif').slice(0, 6);
+  }, [products]);
+
+  const recommendedProducts = useMemo(() => {
     return products
       .filter((p) => p.status !== 'Nonaktif')
-      .slice(0, 8); // Top favorites
+      .slice(2, 8);
+  }, [products]);
+
+  const promoProducts = useMemo(() => {
+    return products
+      .filter((p) => p.status !== 'Nonaktif')
+      .slice(0, 6)
+      .map((p, idx) => ({
+        ...p,
+        discountPercent: idx % 2 === 0 ? 15 : 10,
+        originalPrice: Math.round(p.harga_jual * (idx % 2 === 0 ? 1.15 : 1.10)),
+      }));
+  }, [products]);
+
+  const newProducts = useMemo(() => {
+    return [...products].reverse().filter((p) => p.status !== 'Nonaktif').slice(0, 6);
   }, [products]);
 
   // Total cart calculation
@@ -301,13 +401,20 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
     qty: number,
     notes: string
   ) => {
+    const availableStock = Math.max(0, variant ? variant.stock : product.stok);
+    if (availableStock <= 0) {
+      showToast?.('Maaf, produk ini sedang habis.', 'error');
+      return;
+    }
+
     const cartKey = `${product.id}_${variant ? variant.variantId : 'def'}_${notes.trim()}`;
 
     setCart((prev) => {
       const idx = prev.findIndex((item) => item.cartKey === cartKey);
       if (idx >= 0) {
         const next = [...prev];
-        next[idx].qty += qty;
+        const newQty = Math.min(availableStock, next[idx].qty + qty);
+        next[idx].qty = newQty;
         return next;
       }
       return [
@@ -316,7 +423,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
           cartKey,
           product,
           variant,
-          qty,
+          qty: Math.min(availableStock, qty),
           notes,
         },
       ];
@@ -328,9 +435,11 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
   // Quick plus button from product cards
   const handleQuickAdd = (product: Product, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (product.stok <= 0) return;
+    if (product.stok <= 0) {
+      showToast?.('Stok produk sedang habis', 'error');
+      return;
+    }
 
-    // If product has variants, open detail modal so customer can choose flavor/variant
     const hasVar =
       product.hasVariants ||
       variants.some((v) => v.productId === product.id || v.productId === product.sku) ||
@@ -351,7 +460,15 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
       prev
         .map((item) => {
           if (item.cartKey === cartKey) {
+            const availableStock = Math.max(
+              0,
+              item.variant ? item.variant.stock : item.product.stok
+            );
             const nextQty = item.qty + delta;
+            if (nextQty > availableStock) {
+              showToast?.(`Maksimal pesanan sesuai stok: ${availableStock}`, 'error');
+              return item;
+            }
             return nextQty > 0 ? { ...item, qty: nextQty } : null;
           }
           return item;
@@ -362,13 +479,14 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
 
   const handleRemoveCartItem = (cartKey: string) => {
     setCart((prev) => prev.filter((it) => it.cartKey !== cartKey));
+    showToast?.('Item dihapus dari keranjang', 'info');
   };
 
-  // Chat Kasir WhatsApp handler (Section P)
+  // Chat Kasir WhatsApp handler
   const handleChatKasir = (customMsg?: string) => {
     const rawNumber = settings.whatsappNumber || '6281234567890';
     const cleanNumber = sanitizeWhatsAppNumber(rawNumber);
-    const msg = customMsg || 'Halo WARUNG BANG KOBRA, saya ingin bertanya tentang pesanan.';
+    const msg = customMsg || 'Halo WARUNG BANG KOBRA, saya ingin bertanya mengenai pesanan.';
     const url = `https://wa.me/${cleanNumber}?text=${encodeURIComponent(msg)}`;
     try {
       const a = document.createElement('a');
@@ -399,28 +517,36 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
   // Banner carousel items
   const bannerList = [
     {
-      title: 'MENU FAVORIT HARI INI',
-      subtitle: 'Pesan sekarang, nikmati lebih cepat & lezat',
-      bg: 'from-red-600 via-rose-600 to-amber-600',
-      badge: '🔥 PALING LARIS',
+      title: 'Menu Spesial Hari Ini',
+      subtitle: 'Lezat, praktis, dan bersahabat di kantong.',
+      bg: 'from-[#E50914] via-[#A80710] to-[#151515]',
+      badge: '🔥 MENU SPESIAL HARI INI',
       actionText: 'Lihat Menu',
       img: 'https://images.unsplash.com/photo-1546173159-315724a31696?w=600&auto=format&fit=crop&q=80',
     },
     {
-      title: 'DELIVERY AREA DQM',
-      subtitle: 'Antar hangat ke asrama & staf Pesantren DQM',
+      title: 'Delivery Cepat Area DQM',
+      subtitle: 'Antar hangat ke santri & staf Pesantren DQM.',
       bg: 'from-amber-600 via-orange-600 to-red-600',
       badge: '🛵 MIN. BELANJA RP20.000',
-      actionText: 'Pesan Antar',
+      actionText: 'Pesan Sekarang',
       img: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=600&auto=format&fit=crop&q=80',
     },
     {
-      title: 'SPESIAL INDOMIE & MIE',
-      subtitle: 'Rasa Aceh, Rendang, Geprek, Soto & Telur',
+      title: 'Spesial Indomie & Kopi Mantap',
+      subtitle: 'Rasa Aceh, Rendang, Geprek, Soto & Telur Hangat.',
       bg: 'from-red-700 via-red-600 to-orange-600',
-      badge: '🍜 BANYAK PILIHAN RASA',
+      badge: '🍜 PILIHAN RASA LENGKAP',
       actionText: 'Pilih Rasa',
       img: 'https://images.unsplash.com/photo-1585032226651-759b368d7246?w=600&auto=format&fit=crop&q=80',
+    },
+    {
+      title: 'Sembako & Kebutuhan Harian',
+      subtitle: 'Harga bersahabat, selalu lengkap di hati.',
+      bg: 'from-stone-900 via-stone-800 to-[#A80710]',
+      badge: '🌾 HEMAT SETIAP HARI',
+      actionText: 'Belanja Sekarang',
+      img: 'https://images.unsplash.com/photo-1588964895597-cfccd6e2dbf9?w=600&auto=format&fit=crop&q=80',
     },
   ];
 
@@ -433,13 +559,13 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
   }, [bannerList.length]);
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] text-gray-900 flex flex-col font-sans select-none antialiased">
+    <div className="min-h-screen bg-[#F5F6F8] text-[#151515] flex flex-col font-sans select-none antialiased">
       {/* Container: Centered on larger displays to preserve mobile-first app feel */}
-      <div className="w-full max-w-md sm:max-w-xl md:max-w-2xl lg:max-w-4xl mx-auto flex-1 flex flex-col bg-white shadow-xl relative min-h-screen pb-24 sm:pb-28">
+      <div className="w-full max-w-md sm:max-w-xl md:max-w-2xl lg:max-w-4xl mx-auto flex-1 flex flex-col bg-white shadow-2xl relative min-h-screen pb-24 sm:pb-28 border-x border-gray-100">
         
         {/* ================= PWA INSTALL PROMPT BANNER ================= */}
         {showInstallBanner && deferredPrompt && (
-          <div className="bg-gradient-to-r from-red-600 to-rose-600 text-white px-4 py-2.5 flex items-center justify-between shadow-md text-xs sticky top-0 z-40 animate-in slide-in-from-top duration-300">
+          <div className="bg-gradient-to-r from-[#E50914] to-[#A80710] text-white px-4 py-2.5 flex items-center justify-between shadow-md text-xs sticky top-0 z-40 animate-in slide-in-from-top duration-300">
             <div className="flex items-center gap-2">
               <Download className="w-4 h-4 shrink-0 text-white animate-bounce" />
               <div>
@@ -451,7 +577,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
               <button
                 type="button"
                 onClick={handleInstallPWA}
-                className="bg-white text-red-600 px-3 py-1 rounded-xl font-bold shadow-sm hover:bg-gray-100 transition cursor-pointer"
+                className="bg-white text-[#E50914] px-3 py-1 rounded-xl font-bold shadow-sm hover:bg-gray-100 transition cursor-pointer"
               >
                 Pasang
               </button>
@@ -468,154 +594,134 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
 
         {/* ================= STORE STATUS ALERT (If closed) ================= */}
         {!storeStatus.isOpen && (
-          <div className="bg-amber-500 text-stone-950 px-4 py-2 text-xs font-bold flex items-center justify-between">
+          <div className="bg-[#FF8A00] text-stone-950 px-4 py-2 text-xs font-bold flex items-center justify-between shadow-xs">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 shrink-0" />
-              <span>{storeStatus.reason || 'Warung sedang tutup sementara.'} Tetap dapat melihat menu.</span>
+              <span>{storeStatus.reason || 'Warung sedang tutup sementara.'} Anda tetap dapat melihat menu.</span>
             </div>
           </div>
         )}
 
-        {/* ================= TOP CUSTOMER HEADER ================= */}
-        <header className="px-4 py-3.5 bg-white border-b border-gray-100 sticky top-0 z-30 shadow-xs">
-          <div className="flex items-center justify-between gap-3">
-            {/* Left: Brand Logo & Welcoming Greeting */}
-            <div className="flex items-center gap-3">
-              <BrandLogo size="md" className="rounded-2xl shrink-0 shadow-md shadow-red-600/20" />
-              <div>
+        {/* ================= TOP CUSTOMER HEADER (Requirement 2) ================= */}
+        <header className="px-4 py-3 bg-white border-b border-gray-100 sticky top-0 z-30 shadow-xs">
+          <div className="flex items-center justify-between gap-2.5">
+            {/* Left: Brand Logo & Personal Greeting (Identik dengan Logo Toko) */}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <BrandLogo
+                src={settings.logoUrl}
+                alt={settings.storeName || 'WARUNG BANG KOBRA'}
+                size="md"
+                className="rounded-2xl shrink-0 shadow-md shadow-red-600/20"
+              />
+              <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <h1 className="text-base font-black text-gray-900 tracking-tight leading-none">
+                  <h1 className="text-sm sm:text-base font-black text-gray-900 tracking-tight leading-none truncate">
                     {settings.storeName || 'WARUNG BANG KOBRA'}
                   </h1>
                 </div>
-                <p className="text-[11px] text-gray-500 font-medium mt-0.5">
-                  Selamat Datang 👋 • Mau pesan apa hari ini?
-                </p>
+                {/* Greeting & Location Switcher */}
+                <div className="flex items-center gap-1 text-[11px] text-gray-500 mt-1">
+                  <span className="font-medium text-gray-700 truncate">
+                    Halo, {customerProfile.name !== 'Pelanggan Bang Kobra' ? customerProfile.name : 'selamat datang!'}
+                  </span>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddressModalOpen(true)}
+                    className="flex items-center gap-0.5 text-[#E50914] font-bold hover:underline cursor-pointer truncate max-w-[140px] sm:max-w-[200px]"
+                    title="Ubah Alamat Pengantaran"
+                  >
+                    <MapPin className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{customerProfile.savedAddress || 'Pilih Lokasi'}</span>
+                  </button>
+                </div>
               </div>
             </div>
 
             {/* Right Quick Action Icons */}
             <div className="flex items-center gap-1.5 shrink-0">
-              {/* Bagikan Menu & Salin Link WhatsApp Status Button */}
-              <button
-                type="button"
-                onClick={() => setIsShareModalOpen(true)}
-                title="Bagikan Menu & Salin Link Pelanggan (WhatsApp Status)"
-                className="w-9 h-9 rounded-full bg-amber-50 text-amber-700 hover:bg-amber-100 flex items-center justify-center transition active:scale-95 cursor-pointer shadow-xs"
-              >
-                <Share2 className="w-4 h-4" />
-              </button>
-
-              {/* WhatsApp Kasir Button */}
+              {/* WhatsApp Bantuan Kasir */}
               <button
                 type="button"
                 onClick={() => handleChatKasir()}
-                title="Hubungi Kasir via WhatsApp"
-                className="w-9 h-9 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center transition active:scale-95 cursor-pointer shadow-xs"
+                title="Bantuan WhatsApp Kasir"
+                className="w-9 h-9 rounded-full bg-emerald-50 text-[#16A34A] hover:bg-emerald-100 flex items-center justify-center transition active:scale-95 cursor-pointer shadow-xs"
               >
                 <MessageCircle className="w-4 h-4" />
               </button>
 
-              {/* Order Status Notification Icon */}
+              {/* Notification Center Icon */}
               <button
                 type="button"
-                onClick={() => setActiveTab('orders')}
-                title="Status Pesanan"
+                onClick={() => setIsNotificationModalOpen(true)}
+                title="Pusat Notifikasi"
                 className="w-9 h-9 rounded-full bg-gray-50 text-gray-700 hover:bg-gray-100 flex items-center justify-center transition active:scale-95 cursor-pointer relative shadow-xs"
               >
                 <Bell className="w-4 h-4" />
-                {myOrders.some((o) => o.status === 'MENUNGGU' || o.status === 'DIPROSES' || o.status === 'SIAP') && (
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-600 border-2 border-white absolute top-1 right-1 animate-pulse" />
+                {unreadNotifCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-[#E50914] text-white text-[9px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center shadow-xs animate-pulse">
+                    {unreadNotifCount}
+                  </span>
                 )}
               </button>
 
-              {/* Cart Counter Icon */}
+              {/* Cart Icon */}
               <button
                 type="button"
-                onClick={() => setActiveTab('cart')}
+                onClick={() => handleTabChange('cart')}
                 title="Keranjang Belanja"
-                className="w-9 h-9 rounded-full bg-red-50 text-red-600 hover:bg-red-100 flex items-center justify-center transition active:scale-95 cursor-pointer relative shadow-xs"
+                className="w-9 h-9 rounded-full bg-red-50 text-[#E50914] hover:bg-red-100 flex items-center justify-center transition active:scale-95 cursor-pointer relative shadow-xs"
               >
                 <ShoppingBag className="w-4 h-4" />
                 {cartItemCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-sm">
+                  <span className="absolute -top-1 -right-1 bg-[#E50914] text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-sm">
                     {cartItemCount > 9 ? '9+' : cartItemCount}
                   </span>
                 )}
               </button>
             </div>
           </div>
+
+          {/* Quick Search Bar inside Sticky Header */}
+          <div className="mt-2.5 relative">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cari makanan, minuman, sembako..."
+              className="w-full pl-10 pr-9 py-2.5 bg-[#F5F6F8] focus:bg-white rounded-2xl text-xs sm:text-sm text-gray-800 border border-gray-200/80 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E50914] transition shadow-inner"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                title="Hapus pencarian"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </header>
 
         {/* ================= TAB 1: HOME (BERANDA) ================= */}
         {activeTab === 'home' && (
-          <div className="space-y-6 p-4 animate-in fade-in duration-200">
-            {/* 1. Search Bar */}
-            <div className="relative">
-              <Search className="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="🔍 Cari makanan atau minuman favorit..."
-                className="w-full pl-11 pr-4 py-3 bg-gray-100 focus:bg-white rounded-2xl text-xs sm:text-sm text-gray-800 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition shadow-inner"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+          <div className="space-y-5 p-4 animate-in fade-in duration-200">
+            {/* Tagline Badge */}
+            <div className="text-center py-1 bg-red-50/70 border border-red-100 rounded-2xl">
+              <p className="text-[11px] font-bold text-[#A80710] tracking-wide">
+                ✨ "Rasa Enak, Harga Bersahabat, Selalu di Hati."
+              </p>
             </div>
 
-            {/* Promo Card: Bagikan Menu & Salin Link Pelanggan ke WhatsApp Status */}
-            <div className="bg-gradient-to-r from-stone-900 via-stone-800 to-red-950 rounded-3xl p-4 text-white shadow-xl border border-stone-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-red-600/30 border border-red-500/40 flex items-center justify-center shrink-0 shadow-inner">
-                  <Share2 className="w-5 h-5 text-red-400" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-black text-sm text-white">Bagikan Menu Online</span>
-                    <span className="text-[10px] bg-red-500/30 text-red-300 border border-red-500/40 px-2 py-0.5 rounded-full font-bold">
-                      WhatsApp Status
-                    </span>
-                  </div>
-                  <p className="text-xs text-stone-300 mt-0.5 font-medium leading-relaxed">
-                    Salin link resmi pelanggan atau pasang ke WhatsApp Status sekarang.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0 pt-1 sm:pt-0">
-                <button
-                  type="button"
-                  onClick={handleQuickCopyCustomerLink}
-                  className="flex-1 sm:flex-initial px-3.5 py-2.5 rounded-xl bg-stone-700 hover:bg-stone-600 active:scale-95 text-stone-100 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
-                >
-                  <Copy className="w-3.5 h-3.5 text-stone-300" />
-                  <span>Salin Link</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsShareModalOpen(true)}
-                  className="flex-1 sm:flex-initial px-3.5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-md shadow-red-600/30"
-                >
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>Bagikan Menu</span>
-                </button>
-              </div>
-            </div>
-
-            {/* 2. Premium Banner Carousel (Section B) */}
-            <div className="relative overflow-hidden rounded-3xl shadow-lg">
+            {/* 1. Hero Banner Promosi (Requirement 3) */}
+            <div className="relative overflow-hidden rounded-3xl shadow-xl">
               <div
-                className={`p-5 bg-gradient-to-r ${bannerList[activeBanner].bg} text-white flex items-center justify-between gap-4 min-h-[140px] sm:min-h-[160px] transition-all duration-500`}
+                className={`p-5 bg-gradient-to-r ${bannerList[activeBanner].bg} text-white flex items-center justify-between gap-4 min-h-[145px] sm:min-h-[165px] transition-all duration-500`}
               >
                 <div className="flex-1 space-y-1.5 z-10">
-                  <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-white/20 backdrop-blur-md inline-block">
+                  <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-white/20 backdrop-blur-md inline-block shadow-xs">
                     {bannerList[activeBanner].badge}
                   </span>
                   <h3 className="text-base sm:text-lg font-black tracking-tight leading-tight">
@@ -626,25 +732,25 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                   </p>
                   <button
                     type="button"
-                    onClick={() => setActiveTab('menu')}
-                    className="mt-2 text-xs font-bold bg-white text-gray-900 px-3.5 py-1.5 rounded-xl shadow-md hover:bg-gray-100 transition inline-flex items-center gap-1 active:scale-95 cursor-pointer"
+                    onClick={() => handleTabChange('menu')}
+                    className="mt-2 text-xs font-bold bg-white text-gray-900 px-4 py-2 rounded-xl shadow-md hover:bg-gray-100 transition inline-flex items-center gap-1 active:scale-95 cursor-pointer"
                   >
                     {bannerList[activeBanner].actionText}
                     <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
-                <div className="w-28 sm:w-36 h-28 sm:h-36 rounded-2xl overflow-hidden shadow-inner shrink-0 rotate-2 border-2 border-white/20">
+                <div className="w-28 sm:w-36 h-28 sm:h-36 rounded-2xl overflow-hidden shadow-inner shrink-0 rotate-1 border-2 border-white/20">
                   <img
                     src={bannerList[activeBanner].img}
-                    alt="Promo"
+                    alt="Promo Banner"
                     className="w-full h-full object-cover"
                   />
                 </div>
               </div>
 
               {/* Dots Indicator */}
-              <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 flex items-center gap-1.5">
+              <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-20">
                 {bannerList.map((_, i) => (
                   <button
                     key={i}
@@ -658,14 +764,59 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
               </div>
             </div>
 
-            {/* 3. Horizontal Categories (Section C) */}
+            {/* 2. Menu Akses Cepat (3 Kartu Ikon Utama: Semua Menu, Pesanan Saya, Bantuan WA) */}
+            <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+              {/* Kartu 1: Semua Menu */}
+              <button
+                type="button"
+                onClick={() => handleTabChange('menu')}
+                className="p-3 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md hover:border-red-200 transition-all active:scale-95 cursor-pointer flex flex-col items-center text-center gap-1.5 group"
+              >
+                <div className="w-11 h-11 rounded-2xl bg-red-50 text-[#E50914] group-hover:bg-[#E50914] group-hover:text-white transition flex items-center justify-center shadow-2xs">
+                  <UtensilsCrossed className="w-5 h-5" />
+                </div>
+                <span className="text-[11px] font-bold text-gray-800 leading-tight">
+                  Semua Menu
+                </span>
+              </button>
+
+              {/* Kartu 2: Pesanan Saya */}
+              <button
+                type="button"
+                onClick={() => handleTabChange('orders')}
+                className="p-3 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all active:scale-95 cursor-pointer flex flex-col items-center text-center gap-1.5 group"
+              >
+                <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition flex items-center justify-center shadow-2xs">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <span className="text-[11px] font-bold text-gray-800 leading-tight">
+                  Pesanan Saya
+                </span>
+              </button>
+
+              {/* Kartu 3: Bantuan WhatsApp */}
+              <button
+                type="button"
+                onClick={() => handleChatKasir()}
+                className="p-3 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md hover:border-emerald-200 transition-all active:scale-95 cursor-pointer flex flex-col items-center text-center gap-1.5 group"
+              >
+                <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-[#16A34A] group-hover:bg-[#16A34A] group-hover:text-white transition flex items-center justify-center shadow-2xs">
+                  <MessageCircle className="w-5 h-5" />
+                </div>
+                <span className="text-[11px] font-bold text-gray-800 leading-tight">
+                  Bantuan WA
+                </span>
+              </button>
+            </div>
+
+            {/* 3. Kategori Produk Horizontal (Requirement 5) */}
             <div>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-black text-gray-900">Kategori</h3>
+              <div className="flex items-center justify-between mb-2.5">
+                <h3 className="text-sm font-black text-gray-900">Kategori Pilihan</h3>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('menu')}
-                  className="text-xs font-bold text-red-600 hover:text-red-700 flex items-center gap-0.5 cursor-pointer"
+                  onClick={() => handleTabChange('menu')}
+                  className="text-xs font-bold text-[#E50914] hover:text-[#A80710] flex items-center gap-0.5 cursor-pointer"
                 >
                   Lihat Semua
                   <ChevronRight className="w-3.5 h-3.5" />
@@ -680,11 +831,14 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                     <button
                       key={cat.id}
                       type="button"
-                      onClick={() => setSelectedCategory(cat.id)}
+                      onClick={() => {
+                        setSelectedCategory(cat.id);
+                        if (activeTab !== 'home') handleTabChange('home');
+                      }}
                       className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                         isActive
-                          ? 'bg-red-600 text-white shadow-md shadow-red-600/30 scale-[1.02]'
-                          : 'bg-gray-100/90 text-gray-700 hover:bg-gray-200/80 border border-gray-200/50'
+                          ? 'bg-[#E50914] text-white shadow-md shadow-red-600/30 scale-[1.02]'
+                          : 'bg-[#F5F6F8] text-gray-700 hover:bg-gray-200/80 border border-gray-200/60'
                       }`}
                     >
                       {cat.label}
@@ -694,19 +848,48 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
               </div>
             </div>
 
-            {/* 4. Section: Favorit Pelanggan (Section D - Grid 2 Kolom) */}
+            {/* 4. Produk Unggulan Section (Requirement 6) */}
             <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-1.5">
-                  <Flame className="w-4 h-4 text-orange-500 fill-orange-500" />
-                  <h3 className="text-sm font-black text-gray-900">Favorit Pelanggan</h3>
+              {/* Tabs Produk Unggulan: Terlaris / Rekomendasi / Promo / Terbaru */}
+              <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
+                <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
+                  {[
+                    { id: 'terlaris', label: '🔥 Terlaris' },
+                    { id: 'rekomendasi', label: '⭐ Rekomendasi' },
+                    { id: 'promo', label: '⚡ Promo Hari Ini' },
+                    { id: 'terbaru', label: '🆕 Menu Baru' },
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setFeaturedTab(t.id as FeaturedSection)}
+                      className={`text-xs font-bold px-3 py-1.5 rounded-xl transition cursor-pointer shrink-0 ${
+                        featuredTab === t.id
+                          ? 'bg-red-50 text-[#E50914] border border-red-200'
+                          : 'text-gray-500 hover:text-gray-900'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
                 </div>
-                <span className="text-[11px] text-gray-400 font-medium">Menu Terlaris</span>
               </div>
 
+              {/* Product Grid 2 Kolom (HP) & Responsive Grid */}
               <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                {favoriteProducts.map((p) => {
+                {(featuredTab === 'terlaris'
+                  ? bestSellerProducts
+                  : featuredTab === 'rekomendasi'
+                  ? recommendedProducts
+                  : featuredTab === 'promo'
+                  ? promoProducts
+                  : newProducts
+                ).map((p: any) => {
                   const isOut = p.stok <= 0;
+                  const inCartQty = cart
+                    .filter((c) => c.product.id === p.id)
+                    .reduce((sum, c) => sum + c.qty, 0);
+
                   return (
                     <div
                       key={p.id}
@@ -728,16 +911,48 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                           }}
                         />
 
-                        {/* Top Badges */}
+                        {/* Badges on product image */}
                         <div className="absolute top-2 left-2 flex flex-col gap-1">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white shadow-xs">
-                            ⭐ Favorit
-                          </span>
+                          {p.discountPercent ? (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-[#E50914] text-white shadow-xs">
+                              DISKON {p.discountPercent}%
+                            </span>
+                          ) : featuredTab === 'terlaris' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-[#FF8A00] text-white shadow-xs">
+                              ⭐ Terlaris
+                            </span>
+                          ) : featuredTab === 'rekomendasi' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-blue-600 text-white shadow-xs">
+                              Rekomendasi
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-600 text-white shadow-xs">
+                              Menu Baru
+                            </span>
+                          )}
                         </div>
 
+                        {/* Stock status indicator */}
+                        <div className="absolute bottom-1.5 left-1.5 right-1.5 flex justify-between items-center">
+                          {isOut ? (
+                            <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-black/70 text-rose-300">
+                              Habis
+                            </span>
+                          ) : p.stok <= 5 ? (
+                            <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-amber-500/90 text-white">
+                              Sisa {p.stok}
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-md text-[9px] font-medium bg-black/40 text-white/90">
+                              Tersedia
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Out of stock overlay */}
                         {isOut && (
                           <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center">
-                            <span className="px-3 py-1 rounded-xl bg-red-600 text-white text-xs font-black shadow-md">
+                            <span className="px-3 py-1 rounded-xl bg-[#E50914] text-white text-xs font-black shadow-md">
                               HABIS
                             </span>
                           </div>
@@ -746,7 +961,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
 
                       {/* Product Info */}
                       <div>
-                        <h4 className="text-xs sm:text-sm font-bold text-gray-900 line-clamp-1 leading-tight group-hover:text-red-600 transition">
+                        <h4 className="text-xs sm:text-sm font-bold text-gray-900 line-clamp-1 leading-tight group-hover:text-[#E50914] transition">
                           {p.nama}
                         </h4>
                         <span className="text-[11px] text-gray-400 capitalize block mt-0.5">
@@ -754,24 +969,36 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                         </span>
                       </div>
 
-                      {/* Price & Add Button */}
+                      {/* Price & Add to Cart Action */}
                       <div className="mt-3 flex items-center justify-between">
-                        <span className="text-xs sm:text-sm font-black text-red-600">
-                          {formatRupiah(p.harga_jual)}
-                        </span>
+                        <div>
+                          {p.originalPrice && (
+                            <span className="text-[10px] text-gray-400 line-through block leading-none">
+                              {formatRupiah(p.originalPrice)}
+                            </span>
+                          )}
+                          <span className="text-xs sm:text-sm font-black text-[#E50914]">
+                            {formatRupiah(p.harga_jual)}
+                          </span>
+                        </div>
 
                         <button
                           type="button"
                           disabled={isOut}
                           onClick={(e) => handleQuickAdd(p, e)}
                           title={isOut ? 'Stok Habis' : 'Tambah ke Keranjang'}
-                          className={`w-8 h-8 rounded-full flex items-center justify-center font-bold transition active:scale-90 cursor-pointer shadow-sm ${
+                          className={`w-8 h-8 rounded-full flex items-center justify-center font-bold transition active:scale-90 cursor-pointer shadow-sm relative ${
                             isOut
                               ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                              : 'bg-red-600 text-white hover:bg-red-700 shadow-red-600/30'
+                              : 'bg-[#E50914] text-white hover:bg-[#A80710] shadow-red-600/30'
                           }`}
                         >
                           <Plus className="w-4 h-4" />
+                          {inCartQty > 0 && (
+                            <span className="absolute -top-1 -right-1 bg-[#151515] text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+                              {inCartQty}
+                            </span>
+                          )}
                         </button>
                       </div>
                     </div>
@@ -781,17 +1008,17 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
             </div>
 
             {/* 5. Delivery Information Card */}
-            <div className="p-4 rounded-3xl bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200/70 flex items-center justify-between gap-3">
+            <div className="p-4 rounded-3xl bg-gradient-to-r from-orange-50 via-amber-50 to-red-50 border border-orange-200/70 flex items-center justify-between gap-3 shadow-xs">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-white shadow-sm flex items-center justify-center text-red-600 shrink-0">
+                <div className="w-12 h-12 rounded-2xl bg-white shadow-sm flex items-center justify-center text-[#E50914] shrink-0">
                   <Bike className="w-6 h-6" />
                 </div>
                 <div>
                   <h4 className="text-xs sm:text-sm font-black text-gray-900">
-                    Layanan Delivery Pesantren DQM
+                    Layanan Delivery Area Pesantren DQM
                   </h4>
                   <p className="text-[11px] text-gray-600 mt-0.5">
-                    Minimal belanja {formatRupiah(settings.deliveryMinOrder || DELIVERY_MIN_ORDER_AMOUNT)}, pesanan diantar kurir sampai tujuan.
+                    Minimal belanja {formatRupiah(settings.deliveryMinOrder || DELIVERY_MIN_ORDER_AMOUNT)}, pesanan diantar kurir sampai asrama atau pos tujuan.
                   </p>
                 </div>
               </div>
@@ -799,9 +1026,9 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                 type="button"
                 onClick={() => {
                   setSelectedCategory('Semua');
-                  setActiveTab('menu');
+                  handleTabChange('menu');
                 }}
-                className="shrink-0 p-2 text-red-600 hover:text-red-700"
+                className="shrink-0 p-2 text-[#E50914] hover:text-[#A80710]"
               >
                 <ChevronRight className="w-5 h-5" />
               </button>
@@ -809,67 +1036,20 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
           </div>
         )}
 
-        {/* ================= TAB 2: MENU PRODUK (Section E) ================= */}
+        {/* ================= TAB 2: MENU PRODUK (Requirement 5 & 6) ================= */}
         {activeTab === 'menu' && (
           <div className="p-4 space-y-4 animate-in fade-in duration-200">
             {/* Header */}
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-black text-gray-900">Menu Kami</h2>
+                <h2 className="text-lg font-black text-gray-900">Daftar Menu</h2>
                 <p className="text-xs text-gray-500">
-                  Pilihan lengkap makanan & minuman segar
+                  Pilihan makanan, minuman, dan sembako segar
                 </p>
               </div>
-              <span className="text-xs text-gray-400 font-bold bg-gray-100 px-2.5 py-1 rounded-full">
+              <span className="text-xs text-gray-600 font-bold bg-gray-100 px-3 py-1 rounded-full">
                 {filteredProducts.length} Produk
               </span>
-            </div>
-
-            {/* Quick Share Menu & Copy Link Strip */}
-            <div className="bg-amber-50/90 border border-amber-200/90 rounded-2xl p-3 flex items-center justify-between gap-2 shadow-xs">
-              <div className="flex items-center gap-2 text-amber-950 font-bold text-xs truncate">
-                <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
-                <span className="truncate">Bagikan menu ini ke WhatsApp Status</span>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={handleQuickCopyCustomerLink}
-                  className="px-2.5 py-1.5 rounded-xl bg-white border border-amber-300 hover:bg-amber-100/70 font-bold text-amber-900 text-[11px] flex items-center gap-1 cursor-pointer active:scale-95 transition shadow-2xs"
-                >
-                  <Copy className="w-3.5 h-3.5 text-amber-700" />
-                  <span>Salin Link</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsShareModalOpen(true)}
-                  className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer active:scale-95 transition shadow-xs"
-                >
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>Bagikan</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Search Bar */}
-            <div className="relative">
-              <Search className="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="🔍 Cari menu..."
-                className="w-full pl-11 pr-4 py-2.5 bg-gray-100 focus:bg-white rounded-2xl text-xs sm:text-sm text-gray-800 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
             </div>
 
             {/* Horizontal Filter Chips */}
@@ -881,10 +1061,10 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                     key={cat.id}
                     type="button"
                     onClick={() => setSelectedCategory(cat.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer shrink-0 ${
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer shrink-0 ${
                       isActive
-                        ? 'bg-red-600 text-white shadow-sm'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        ? 'bg-[#E50914] text-white shadow-sm'
+                        : 'bg-[#F5F6F8] text-gray-600 hover:bg-gray-200'
                     }`}
                   >
                     {cat.label}
@@ -894,8 +1074,8 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
             </div>
 
             {/* Sort Options */}
-            <div className="flex items-center justify-between text-xs text-gray-500">
-              <span>Urutkan:</span>
+            <div className="flex items-center justify-between text-xs text-gray-500 bg-[#F5F6F8] px-3 py-2 rounded-xl">
+              <span>Urutkan Produk:</span>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
@@ -921,15 +1101,19 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                     setSearchQuery('');
                     setSelectedCategory('Semua');
                   }}
-                  className="text-xs text-red-600 font-bold hover:underline"
+                  className="text-xs text-[#E50914] font-bold hover:underline"
                 >
-                  Reset Filter
+                  Reset Filter Pencarian
                 </button>
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 {filteredProducts.map((p) => {
                   const isOut = p.stok <= 0;
+                  const inCartQty = cart
+                    .filter((c) => c.product.id === p.id)
+                    .reduce((sum, c) => sum + c.qty, 0);
+
                   return (
                     <div
                       key={p.id}
@@ -937,7 +1121,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                         setSelectedProduct(p);
                         setIsDetailModalOpen(true);
                       }}
-                      className="bg-white rounded-3xl p-3 border border-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group"
+                      className="bg-white rounded-3xl p-3 border border-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group relative overflow-hidden"
                     >
                       <div className="w-full aspect-square rounded-2xl overflow-hidden bg-gray-100 relative mb-2">
                         <img
@@ -947,15 +1131,22 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                         />
                         {isOut && (
                           <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                            <span className="px-3 py-1 rounded-xl bg-red-600 text-white text-xs font-black shadow-md">
+                            <span className="px-3 py-1 rounded-xl bg-[#E50914] text-white text-xs font-black shadow-md">
                               HABIS
                             </span>
                           </div>
                         )}
+                        <div className="absolute bottom-1.5 left-1.5 right-1.5 flex justify-between items-center text-[9px] font-bold">
+                          {!isOut && (
+                            <span className="px-1.5 py-0.5 rounded bg-black/40 text-white backdrop-blur-2xs">
+                              Stok {p.stok}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       <div>
-                        <h4 className="text-xs sm:text-sm font-bold text-gray-900 line-clamp-1 leading-tight group-hover:text-red-600 transition">
+                        <h4 className="text-xs sm:text-sm font-bold text-gray-900 line-clamp-1 leading-tight group-hover:text-[#E50914] transition">
                           {p.nama}
                         </h4>
                         <span className="text-[10px] text-gray-400 capitalize block mt-0.5">
@@ -964,20 +1155,25 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                       </div>
 
                       <div className="mt-3 flex items-center justify-between">
-                        <span className="text-xs sm:text-sm font-black text-red-600">
+                        <span className="text-xs sm:text-sm font-black text-[#E50914]">
                           {formatRupiah(p.harga_jual)}
                         </span>
                         <button
                           type="button"
                           disabled={isOut}
                           onClick={(e) => handleQuickAdd(p, e)}
-                          className={`w-8 h-8 rounded-full flex items-center justify-center font-bold transition active:scale-90 cursor-pointer shadow-sm ${
+                          className={`w-8 h-8 rounded-full flex items-center justify-center font-bold transition active:scale-90 cursor-pointer shadow-sm relative ${
                             isOut
                               ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                              : 'bg-red-600 text-white hover:bg-red-700 shadow-red-600/30'
+                              : 'bg-[#E50914] text-white hover:bg-[#A80710] shadow-red-600/30'
                           }`}
                         >
                           <Plus className="w-4 h-4" />
+                          {inCartQty > 0 && (
+                            <span className="absolute -top-1 -right-1 bg-[#151515] text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+                              {inCartQty}
+                            </span>
+                          )}
                         </button>
                       </div>
                     </div>
@@ -988,12 +1184,12 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
           </div>
         )}
 
-        {/* ================= TAB 3: KERANJANG SAYA (Section H) ================= */}
+        {/* ================= TAB 3: KERANJANG SAYA (Requirement 8) ================= */}
         {activeTab === 'cart' && (
           <div className="p-4 space-y-4 animate-in fade-in duration-200">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div>
-                <h2 className="text-lg font-black text-gray-900">Keranjang Saya</h2>
+                <h2 className="text-lg font-black text-gray-900">Keranjang Belanja</h2>
                 <p className="text-xs text-gray-500">
                   {cart.length} Jenis menu dipilih
                 </p>
@@ -1021,8 +1217,8 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                 </p>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('menu')}
-                  className="mt-2 px-5 py-2.5 rounded-2xl bg-red-600 hover:bg-red-700 active:scale-95 text-white font-bold text-xs shadow-md shadow-red-600/20 transition cursor-pointer"
+                  onClick={() => handleTabChange('menu')}
+                  className="mt-2 px-5 py-2.5 rounded-2xl bg-[#E50914] hover:bg-[#A80710] active:scale-95 text-white font-bold text-xs shadow-md shadow-red-600/20 transition cursor-pointer"
                 >
                   Mulai Pesan Menu
                 </button>
@@ -1050,7 +1246,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                             {item.product.nama}
                           </h4>
                           {item.variant && (
-                            <span className="text-[11px] text-red-600 font-semibold block">
+                            <span className="text-[11px] text-[#E50914] font-semibold block">
                               Varian: {item.variant.variantName}
                             </span>
                           )}
@@ -1075,7 +1271,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
 
-                          <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-xl">
+                          <div className="flex items-center gap-2 bg-[#F5F6F8] p-1 rounded-xl">
                             <button
                               type="button"
                               onClick={() => handleUpdateCartQty(item.cartKey, -1)}
@@ -1089,7 +1285,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                             <button
                               type="button"
                               onClick={() => handleUpdateCartQty(item.cartKey, 1)}
-                              className="w-6 h-6 rounded-lg bg-red-600 text-white flex items-center justify-center font-bold shadow-xs hover:bg-red-700 active:scale-95"
+                              className="w-6 h-6 rounded-lg bg-[#E50914] text-white flex items-center justify-center font-bold shadow-xs hover:bg-[#A80710] active:scale-95"
                             >
                               <Plus className="w-3 h-3" />
                             </button>
@@ -1100,19 +1296,37 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                   })}
                 </div>
 
+                {/* Voucher Promo Trigger Strip */}
+                <div
+                  onClick={() => setIsPromoModalOpen(true)}
+                  className="p-3 rounded-2xl bg-gradient-to-r from-red-50 to-orange-50 border border-red-200/70 flex items-center justify-between cursor-pointer hover:shadow-xs transition"
+                >
+                  <div className="flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-[#E50914]" />
+                    <span className="text-xs font-bold text-gray-800">
+                      Punya Voucher Diskon Belanja?
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-bold text-[#E50914] flex items-center">
+                    Gunakan Voucher <ChevronRight className="w-3.5 h-3.5" />
+                  </span>
+                </div>
+
                 {/* Order Summary Card */}
-                <div className="p-4 rounded-3xl bg-gray-50 border border-gray-100 space-y-2 text-xs">
+                <div className="p-4 rounded-3xl bg-[#F5F6F8] border border-gray-100 space-y-2 text-xs">
                   <div className="flex justify-between text-gray-600">
-                    <span>Subtotal</span>
+                    <span>Subtotal Menu</span>
                     <span className="font-bold text-gray-900">{formatRupiah(cartSubtotal)}</span>
                   </div>
                   <div className="flex justify-between text-gray-600">
-                    <span>Diskon</span>
-                    <span className="font-bold text-emerald-600">Rp0</span>
+                    <span>Ongkos Kirim</span>
+                    <span className="font-bold text-gray-900">
+                      {currentServiceType === 'Delivery' ? 'Dihitung saat checkout' : 'Gratis (Takeaway)'}
+                    </span>
                   </div>
                   <div className="pt-2 border-t border-gray-200 flex justify-between text-sm">
-                    <span className="font-black text-gray-900">Total Sementara</span>
-                    <span className="font-black text-red-600 text-base">
+                    <span className="font-black text-gray-900">Total Belanja</span>
+                    <span className="font-black text-[#E50914] text-base">
                       {formatRupiah(cartSubtotal)}
                     </span>
                   </div>
@@ -1122,9 +1336,9 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsCheckoutModalOpen(true)}
-                  className="w-full py-4 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 active:scale-[0.98] text-white font-bold text-sm sm:text-base shadow-lg shadow-red-600/30 flex items-center justify-between px-5 transition cursor-pointer"
+                  className="w-full py-4 rounded-2xl bg-gradient-to-r from-[#E50914] to-[#A80710] hover:from-[#A80710] hover:to-[#151515] active:scale-[0.98] text-white font-bold text-sm sm:text-base shadow-lg shadow-red-600/30 flex items-center justify-between px-5 transition cursor-pointer"
                 >
-                  <span>Lanjut Checkout</span>
+                  <span>Lanjutkan Pesanan</span>
                   <div className="flex items-center gap-1.5 font-black">
                     <span>{formatRupiah(cartSubtotal)}</span>
                     <ArrowRight className="w-5 h-5" />
@@ -1135,7 +1349,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
           </div>
         )}
 
-        {/* ================= TAB 4: PESANAN SAYA (Section N) ================= */}
+        {/* ================= TAB 4: PESANAN SAYA (Requirement 10) ================= */}
         {activeTab === 'orders' && (
           <div className="p-4 space-y-4 animate-in fade-in duration-200">
             <div>
@@ -1156,8 +1370,8 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                     onClick={() => setOrderFilterTab(tab)}
                     className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
                       isActive
-                        ? 'bg-red-600 text-white shadow-xs'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        ? 'bg-[#E50914] text-white shadow-xs'
+                        : 'bg-[#F5F6F8] text-gray-600 hover:bg-gray-200'
                     }`}
                   >
                     {tab}
@@ -1172,12 +1386,12 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                 <Clock className="w-12 h-12 mx-auto text-gray-300 stroke-1" />
                 <h3 className="text-base font-bold text-gray-700">Belum Ada Riwayat Pesanan</h3>
                 <p className="text-xs text-gray-400 max-w-xs mx-auto">
-                  Semua pesanan yang Anda buat akan muncul di sini secara real-time.
+                  Semua pesanan yang Anda buat akan muncul di sini secara real-time dari Firebase Firestore.
                 </p>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('menu')}
-                  className="px-4 py-2 rounded-2xl bg-red-600 text-white font-bold text-xs shadow-md shadow-red-600/20"
+                  onClick={() => handleTabChange('menu')}
+                  className="px-4 py-2 rounded-2xl bg-[#E50914] text-white font-bold text-xs shadow-md shadow-red-600/20"
                 >
                   Pesan Sekarang
                 </button>
@@ -1201,14 +1415,14 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                   .map((order) => {
                     const st = (order.status || 'MENUNGGU').toUpperCase();
                     let badgeClass = 'bg-amber-100 text-amber-800';
-                    let badgeLabel = '🟡 Menunggu';
+                    let badgeLabel = '🟡 Menunggu Konfirmasi';
 
                     if (st === 'DIPROSES') {
                       badgeClass = 'bg-blue-100 text-blue-800';
-                      badgeLabel = '🔵 Diproses';
+                      badgeLabel = '🔵 Sedang Diproses';
                     } else if (st === 'SIAP') {
                       badgeClass = 'bg-orange-100 text-orange-800';
-                      badgeLabel = '🟠 Siap Diambil';
+                      badgeLabel = '🟠 Siap / Diantar';
                     } else if (st === 'SELESAI') {
                       badgeClass = 'bg-emerald-100 text-emerald-800';
                       badgeLabel = '🟢 Selesai';
@@ -1242,7 +1456,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                           <span className="text-gray-600">
                             {order.items?.length || 0} Item • {order.tipe_pesanan || order.orderType}
                           </span>
-                          <span className="font-black text-red-600 text-sm">
+                          <span className="font-black text-[#E50914] text-sm">
                             {formatRupiah(order.total)}
                           </span>
                         </div>
@@ -1255,16 +1469,15 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                               setTrackedOrder(order);
                               setIsTrackingModalOpen(true);
                             }}
-                            className="px-3.5 py-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 font-bold text-xs transition cursor-pointer flex items-center gap-1.5"
+                            className="px-3.5 py-2 rounded-xl bg-red-50 text-[#E50914] hover:bg-red-100 font-bold text-xs transition cursor-pointer flex items-center gap-1.5"
                           >
                             <Clock className="w-3.5 h-3.5" />
-                            Lihat Status Real-time
+                            Lacak Status Real-time
                           </button>
 
                           <button
                             type="button"
                             onClick={() => {
-                              // Re-add items to cart
                               if (order.items) {
                                 order.items.forEach((it) => {
                                   const prod = products.find((p) => p.id === it.id_produk) || {
@@ -1284,7 +1497,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                                   };
                                   handleAddToCart(prod, undefined, it.qty, it.catatan || '');
                                 });
-                                setActiveTab('cart');
+                                handleTabChange('cart');
                                 showToast?.('Item pesanan dimasukkan kembali ke keranjang!', 'info');
                               }
                             }}
@@ -1302,11 +1515,11 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
           </div>
         )}
 
-        {/* ================= TAB 5: PROFIL PELANGGAN (Section O) ================= */}
+        {/* ================= TAB 5: PROFIL / AKUN PELANGGAN (Requirement 12) ================= */}
         {activeTab === 'profile' && (
           <div className="p-4 space-y-5 animate-in fade-in duration-200">
             {/* Profile Avatar Card */}
-            <div className="p-5 rounded-3xl bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 text-white shadow-lg flex items-center gap-4">
+            <div className="p-5 rounded-3xl bg-gradient-to-r from-[#E50914] via-[#A80710] to-[#151515] text-white shadow-xl flex items-center gap-4">
               <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-2xl font-black shadow-inner shrink-0 border-2 border-white/40">
                 {customerProfile.name.charAt(0).toUpperCase()}
               </div>
@@ -1316,7 +1529,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                   {customerProfile.phone || 'Nomor WhatsApp belum disimpan'}
                 </span>
                 <span className="text-[11px] text-white/70 block truncate">
-                  {customerProfile.email || 'Email belum diatur'}
+                  {customerProfile.savedAddress || 'Alamat belum diatur'}
                 </span>
               </div>
             </div>
@@ -1335,7 +1548,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                 className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 transition cursor-pointer"
               >
                 <div className="flex items-center gap-3">
-                  <User className="w-5 h-5 text-red-600" />
+                  <User className="w-5 h-5 text-[#E50914]" />
                   <span className="font-bold text-gray-900">Edit Profil & Data Saya</span>
                 </div>
                 <ChevronRight className="w-4 h-4 text-gray-400" />
@@ -1343,12 +1556,99 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
 
               <button
                 type="button"
-                onClick={() => setActiveTab('orders')}
+                onClick={() => setIsAddressModalOpen(true)}
                 className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 transition cursor-pointer"
               >
                 <div className="flex items-center gap-3">
-                  <Clock className="w-5 h-5 text-red-600" />
+                  <MapPin className="w-5 h-5 text-[#E50914]" />
+                  <div>
+                    <span className="font-bold text-gray-900 block">Alamat Tersimpan</span>
+                    <span className="text-[11px] text-gray-500 block truncate">
+                      {customerProfile.savedAddress}
+                    </span>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleTabChange('orders')}
+                className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 transition cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <Clock className="w-5 h-5 text-[#E50914]" />
                   <span className="font-bold text-gray-900">Riwayat Pesanan Saya</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsNotificationModalOpen(true)}
+                className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 transition cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <Bell className="w-5 h-5 text-[#E50914]" />
+                  <span className="font-bold text-gray-900">Pusat Notifikasi</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {unreadNotifCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-[#E50914] text-white">
+                      {unreadNotifCount} baru
+                    </span>
+                  )}
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFaqModalTab('faq');
+                  setIsFAQModalOpen(true);
+                }}
+                className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 transition cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <HelpCircle className="w-5 h-5 text-gray-600" />
+                  <span className="font-bold text-gray-900">Bantuan & FAQ</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFaqModalTab('privacy');
+                  setIsFAQModalOpen(true);
+                }}
+                className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 transition cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className="w-5 h-5 text-gray-600" />
+                  <span className="font-bold text-gray-900">Kebijakan Privasi</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFaqModalTab('about');
+                  setIsFAQModalOpen(true);
+                }}
+                className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 transition cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <BrandLogo
+                    src={settings.logoUrl}
+                    alt={settings.storeName || 'WARUNG BANG KOBRA'}
+                    size="xs"
+                    className="w-5 h-5 rounded-md"
+                    border={false}
+                  />
+                  <span className="font-bold text-gray-900">Tentang Warung Bang Kobra</span>
                 </div>
                 <ChevronRight className="w-4 h-4 text-gray-400" />
               </button>
@@ -1359,43 +1659,28 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                 className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 transition cursor-pointer"
               >
                 <div className="flex items-center gap-3">
-                  <MessageCircle className="w-5 h-5 text-emerald-600" />
-                  <span className="font-bold text-gray-900">Chat Kasir via WhatsApp</span>
+                  <MessageCircle className="w-5 h-5 text-[#16A34A]" />
+                  <span className="font-bold text-gray-900">Hubungi Kasir via WhatsApp</span>
                 </div>
                 <ChevronRight className="w-4 h-4 text-gray-400" />
               </button>
 
-              {deferredPrompt && (
-                <button
-                  type="button"
-                  onClick={handleInstallPWA}
-                  className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 transition cursor-pointer bg-red-50/50"
-                >
-                  <div className="flex items-center gap-3">
-                    <Download className="w-5 h-5 text-red-600" />
-                    <div>
-                      <span className="font-bold text-red-700 block">Pasang Aplikasi ke Smartphone</span>
-                      <span className="text-[11px] text-red-500">Akses tanpa browser dari layar utama</span>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-red-400" />
-                </button>
-              )}
-            </div>
-
-            {/* Help & Store Information Accordion */}
-            <div className="p-4 rounded-3xl bg-gray-50 border border-gray-100 text-xs space-y-2">
-              <h4 className="font-bold text-gray-800 flex items-center gap-2">
-                <HelpCircle className="w-4 h-4 text-gray-500" />
-                Informasi Warung Bang Kobra
-              </h4>
-              <p className="text-gray-500 leading-relaxed">
-                Menyajikan aneka makanan, indomie spesial dengan varian rasa lengkap, serta aneka jus buah segar asli 100%. Layanan delivery tersedia khusus area sekitar Pesantren DQM dengan minimal order {formatRupiah(settings.deliveryMinOrder || DELIVERY_MIN_ORDER_AMOUNT)}.
-              </p>
-              <div className="pt-2 border-t border-gray-200 text-[11px] text-gray-400 flex items-center justify-between">
-                <span>Versi Customer App: v2.5.0 PWA</span>
-                <span>Warung Bang Kobra</span>
-              </div>
+              {/* Reset Session */}
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.removeItem('wbk_customer_cart');
+                  setCart([]);
+                  showToast?.('Sesi keranjang telah dibersihkan.', 'info');
+                }}
+                className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 transition cursor-pointer text-rose-600"
+              >
+                <div className="flex items-center gap-3">
+                  <RotateCcw className="w-5 h-5" />
+                  <span className="font-bold">Reset Keranjang & Data Sesi</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-rose-300" />
+              </button>
             </div>
 
             {/* Discreet Staff Portal Switcher */}
@@ -1449,7 +1734,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                     type="text"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E50914]"
                   />
                 </div>
                 <div>
@@ -1458,7 +1743,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                     type="tel"
                     value={editPhone}
                     onChange={(e) => setEditPhone(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 font-mono"
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E50914] font-mono"
                   />
                 </div>
                 <div>
@@ -1467,7 +1752,16 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                     type="email"
                     value={editEmail}
                     onChange={(e) => setEditEmail(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E50914]"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Alamat Tersimpan</label>
+                  <input
+                    type="text"
+                    value={editAddress}
+                    onChange={(e) => setEditAddress(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#E50914]"
                   />
                 </div>
               </div>
@@ -1486,16 +1780,17 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                     localStorage.setItem('wbk_customer_name', editName.trim());
                     localStorage.setItem('wbk_customer_phone', editPhone.trim());
                     localStorage.setItem('wbk_customer_email', editEmail.trim());
+                    localStorage.setItem('wbk_customer_address', editAddress.trim());
                     setCustomerProfile({
                       name: editName.trim() || 'Pelanggan Bang Kobra',
                       phone: editPhone.trim(),
                       email: editEmail.trim(),
-                      savedAddress: editAddress,
+                      savedAddress: editAddress.trim(),
                     });
                     setIsEditProfileOpen(false);
                     showToast?.('Profil Anda berhasil diperbarui!', 'success');
                   }}
-                  className="py-2.5 rounded-xl bg-red-600 text-white font-bold text-xs shadow-md shadow-red-600/20"
+                  className="py-2.5 rounded-xl bg-[#E50914] text-white font-bold text-xs shadow-md shadow-red-600/20"
                 >
                   Simpan
                 </button>
@@ -1504,10 +1799,10 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
           </div>
         )}
 
-        {/* ================= FLOATING CART BAR (Section G) ================= */}
+        {/* ================= FLOATING CART BAR ================= */}
         {cart.length > 0 && activeTab !== 'cart' && (
           <div className="fixed bottom-20 sm:bottom-22 left-0 right-0 z-40 px-4 max-w-md sm:max-w-xl md:max-w-2xl lg:max-w-4xl mx-auto pointer-events-none">
-            <div className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white shadow-xl shadow-red-600/40 flex items-center justify-between pointer-events-auto transition animate-in slide-in-from-bottom duration-300 ring-2 ring-white/30">
+            <div className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-[#E50914] via-[#A80710] to-[#151515] text-white shadow-xl shadow-red-600/40 flex items-center justify-between pointer-events-auto transition animate-in slide-in-from-bottom duration-300 ring-2 ring-white/30">
               <button
                 type="button"
                 onClick={() => handleTabChange('cart')}
@@ -1520,7 +1815,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                   <span className="font-extrabold text-xs block">
                     {cartItemCount} Menu di Keranjang
                   </span>
-                  <span className="text-xs text-white/90 font-mono font-bold">
+                  <span className="text-xs text-white/95 font-mono font-bold">
                     {formatRupiah(cartSubtotal)}
                   </span>
                 </div>
@@ -1532,12 +1827,12 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                   onClick={() => handleTabChange('cart')}
                   className="text-xs font-bold bg-white/15 hover:bg-white/25 text-white px-2.5 py-1.5 rounded-xl transition cursor-pointer"
                 >
-                  Keranjang
+                  Lihat
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsCheckoutModalOpen(true)}
-                  className="flex items-center gap-1 font-black text-xs bg-white text-red-600 hover:bg-red-50 px-3.5 py-1.5 rounded-xl shadow-md transition active:scale-95 cursor-pointer"
+                  className="flex items-center gap-1 font-black text-xs bg-white text-[#E50914] hover:bg-gray-100 px-3.5 py-1.5 rounded-xl shadow-md transition active:scale-95 cursor-pointer"
                 >
                   <span>Checkout</span>
                   <ChevronRight className="w-3.5 h-3.5" />
@@ -1547,7 +1842,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
           </div>
         )}
 
-        {/* ================= MODERN BOTTOM NAVIGATION (5 Tabs) ================= */}
+        {/* ================= MODERN BOTTOM NAVIGATION (Requirement 11) ================= */}
         <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200/80 max-w-md sm:max-w-xl md:max-w-2xl lg:max-w-4xl mx-auto shadow-lg">
           <div className="grid grid-cols-5 h-16 sm:h-18 px-1">
             {[
@@ -1555,7 +1850,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
               { id: 'menu', label: 'Menu', icon: UtensilsCrossed },
               { id: 'cart', label: 'Keranjang', icon: ShoppingBag, badge: cartItemCount },
               { id: 'orders', label: 'Pesanan', icon: Clock },
-              { id: 'profile', label: 'Profil', icon: User },
+              { id: 'profile', label: 'Akun', icon: User },
             ].map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -1565,20 +1860,20 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                   type="button"
                   onClick={() => handleTabChange(item.id as TabType)}
                   className={`flex flex-col items-center justify-center gap-1 transition-all cursor-pointer relative ${
-                    isActive ? 'text-red-600 font-black' : 'text-gray-400 hover:text-gray-600 font-medium'
+                    isActive ? 'text-[#E50914] font-black' : 'text-gray-400 hover:text-gray-600 font-medium'
                   }`}
                 >
                   <div className="relative">
                     <Icon className={`w-5 h-5 transition-transform ${isActive ? 'scale-110' : ''}`} />
                     {typeof item.badge === 'number' && item.badge > 0 && (
-                      <span className="absolute -top-1.5 -right-2 bg-red-600 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
+                      <span className="absolute -top-1.5 -right-2 bg-[#E50914] text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
                         {item.badge}
                       </span>
                     )}
                   </div>
                   <span className="text-[10px] tracking-tight">{item.label}</span>
                   {isActive && (
-                    <span className="w-5 h-0.5 bg-red-600 rounded-full absolute bottom-1.5" />
+                    <span className="w-5 h-0.5 bg-[#E50914] rounded-full absolute bottom-1.5" />
                   )}
                 </button>
               );
@@ -1638,10 +1933,62 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
               setMyOrders((prev) =>
                 prev.map((o) => (o.id_transaksi === updated.id_transaksi ? updated : o))
               );
-              showToast?.(`Update status: ${updated.status}`, 'info');
+              showToast?.(`Update status pesanan: ${updated.status}`, 'info');
             }}
           />
         )}
+
+        {/* ================= PROMO MODAL ================= */}
+        <CustomerPromoModal
+          isOpen={isPromoModalOpen}
+          onClose={() => setIsPromoModalOpen(false)}
+          onApplyPromo={(promo) => {
+            showToast?.(`Kode voucher "${promo.code}" berhasil disalin dan siap digunakan!`, 'success');
+          }}
+          onNavigateToCategory={(cat) => {
+            setSelectedCategory(cat);
+            handleTabChange('menu');
+          }}
+          showToast={showToast}
+        />
+
+        {/* ================= NOTIFICATION MODAL ================= */}
+        <CustomerNotificationModal
+          isOpen={isNotificationModalOpen}
+          onClose={() => setIsNotificationModalOpen(false)}
+          notifications={notifications}
+          onMarkAsRead={handleMarkAsRead}
+          onMarkAllAsRead={handleMarkAllAsRead}
+          onSelectOrder={(orderId) => {
+            const found = myOrders.find((o) => o.id_transaksi === orderId);
+            if (found) {
+              setTrackedOrder(found);
+              setIsTrackingModalOpen(true);
+            } else {
+              handleTabChange('orders');
+            }
+          }}
+          onNavigateToPromo={() => setIsPromoModalOpen(true)}
+        />
+
+        {/* ================= ADDRESS MODAL ================= */}
+        <CustomerAddressModal
+          isOpen={isAddressModalOpen}
+          onClose={() => setIsAddressModalOpen(false)}
+          currentAddress={customerProfile.savedAddress}
+          onSaveAddress={(newAddr) => {
+            setCustomerProfile((prev) => ({ ...prev, savedAddress: newAddr }));
+          }}
+          showToast={showToast}
+        />
+
+        {/* ================= FAQ & ABOUT MODAL ================= */}
+        <CustomerFAQModal
+          isOpen={isFAQModalOpen}
+          onClose={() => setIsFAQModalOpen(false)}
+          settings={settings}
+          initialTab={faqModalTab}
+        />
 
         {/* ================= CUSTOMER SHARE MENU MODAL ================= */}
         <CustomerShareModal
@@ -1655,3 +2002,5 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
     </div>
   );
 };
+
+export default CustomerApp;

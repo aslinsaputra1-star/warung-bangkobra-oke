@@ -61,12 +61,14 @@ export const CustomerProductDetailModal: React.FC<CustomerProductDetailModalProp
 
   const selectedVariant = productVariants.find((v) => v.variantId === selectedVariantId);
   const currentPrice = selectedVariant ? selectedVariant.price : product.harga_jual;
-  const isOutOfStock = (selectedVariant ? selectedVariant.stock : product.stok) <= 0;
+  const availableStock = Math.max(0, selectedVariant ? selectedVariant.stock : product.stok);
+  const isOutOfStock = availableStock <= 0;
   const totalPrice = currentPrice * qty;
 
   const handleAdd = () => {
     if (isOutOfStock) return;
-    onAddToCart(product, selectedVariant, qty, notes.trim());
+    const finalQty = Math.min(qty, availableStock);
+    onAddToCart(product, selectedVariant, finalQty, notes.trim());
     onClose();
   };
 
@@ -224,9 +226,9 @@ export const CustomerProductDetailModal: React.FC<CustomerProductDetailModalProp
               </span>
               <button
                 type="button"
-                onClick={() => setQty((prev) => prev + 1)}
-                disabled={isOutOfStock}
-                className="w-8 h-8 rounded-xl bg-red-600 text-white flex items-center justify-center font-bold shadow-sm hover:bg-red-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                onClick={() => setQty((prev) => Math.min(availableStock, prev + 1))}
+                disabled={isOutOfStock || qty >= availableStock}
+                className="w-8 h-8 rounded-xl bg-[#E50914] text-white flex items-center justify-center font-bold shadow-sm hover:bg-[#A80710] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition"
               >
                 <Plus className="w-4 h-4" />
               </button>
